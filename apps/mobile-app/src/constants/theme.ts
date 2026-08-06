@@ -1,11 +1,79 @@
-/**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
- */
-
-import '@/global.css';
-
 import { Platform } from 'react-native';
+
+export type ThemeMode = 'light' | 'dark' | 'system';
+
+export interface ThemeColors {
+  primary: string;
+  primaryContainer: string;
+  onPrimary: string;
+  onPrimaryContainer: string;
+  secondary: string;
+  secondaryContainer: string;
+  background: string;
+  surface: string;
+  surfaceVariant: string;
+  card: string;
+  text: string;
+  textSecondary: string;
+  border: string;
+  error: string;
+  success: string;
+  warning: string;
+  icon: string;
+  tabBar: string;
+  tabBarBorder: string;
+  searchBg: string;
+  modalBg: string;
+}
+
+export const GooglePalette: { light: ThemeColors; dark: ThemeColors } = {
+  light: {
+    primary: '#1A73E8', // Google Blue
+    primaryContainer: '#E8F0FE',
+    onPrimary: '#FFFFFF',
+    onPrimaryContainer: '#174EA6',
+    secondary: '#3C4043',
+    secondaryContainer: '#F1F3F4',
+    background: '#FFFFFF',
+    surface: '#F8F9FA',
+    surfaceVariant: '#E8EAED',
+    card: '#FFFFFF',
+    text: '#202124',
+    textSecondary: '#5F6368',
+    border: '#DADCE0',
+    error: '#D93025',
+    success: '#188038',
+    warning: '#F9AB00',
+    icon: '#5F6368',
+    tabBar: '#FFFFFF',
+    tabBarBorder: '#E0E0E0',
+    searchBg: '#F1F3F4',
+    modalBg: '#FFFFFF',
+  },
+  dark: {
+    primary: '#8AB4F8', // Light Google Blue for Dark Mode
+    primaryContainer: '#1E3A5F',
+    onPrimary: '#202124',
+    onPrimaryContainer: '#D2E3FC',
+    secondary: '#E8EAED',
+    secondaryContainer: '#303134',
+    background: '#121212', // Google Dark background
+    surface: '#1E1E1E',
+    surfaceVariant: '#2D2E30',
+    card: '#1E1E1E',
+    text: '#E8EAED',
+    textSecondary: '#9AA0A6',
+    border: '#3C4043',
+    error: '#F28B82',
+    success: '#81C995',
+    warning: '#FDE293',
+    icon: '#9AA0A6',
+    tabBar: '#1E1E1E',
+    tabBarBorder: '#2D2E30',
+    searchBg: '#2D2E30',
+    modalBg: '#1E1E1E',
+  },
+};
 
 export const Colors = {
   light: {
@@ -26,31 +94,6 @@ export const Colors = {
 
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 
-export const Fonts = Platform.select({
-  ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
-    sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
-    serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
-    rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
-    mono: 'ui-monospace',
-  },
-  default: {
-    sans: 'normal',
-    serif: 'serif',
-    rounded: 'normal',
-    mono: 'monospace',
-  },
-  web: {
-    sans: 'var(--font-display)',
-    serif: 'var(--font-serif)',
-    rounded: 'var(--font-rounded)',
-    mono: 'var(--font-mono)',
-  },
-});
-
 export const Spacing = {
   half: 2,
   one: 4,
@@ -63,3 +106,18 @@ export const Spacing = {
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
 export const MaxContentWidth = 800;
+
+export const Fonts = Platform.select({
+  ios: {
+    sans: 'system-ui',
+    mono: 'ui-monospace',
+  },
+  default: {
+    sans: 'normal',
+    mono: 'monospace',
+  },
+  web: {
+    sans: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    mono: 'monospace',
+  },
+});

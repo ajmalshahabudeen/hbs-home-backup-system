@@ -1,18 +1,45 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useColorScheme } from 'react-native';
+import 'react-native-gesture-handler';
+import React from 'react';
+import { StyleSheet } from 'react-native';
+import { Stack } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { ThemeProvider, useAppTheme } from '../context/ThemeContext';
+import { ServerProvider } from '../context/ServerContext';
+import { AuthProvider } from '../context/AuthContext';
 
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import AppTabs from '@/components/app-tabs';
+function RootStack() {
+  const { isDark } = useAppTheme();
 
-SplashScreen.preventAutoHideAsync();
-
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
-      <AppTabs />
-    </ThemeProvider>
+    <>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="(auth)/login" />
+        <Stack.Screen name="(auth)/register" />
+        <Stack.Screen name="(tabs)" />
+      </Stack>
+    </>
   );
 }
+
+export default function RootLayout() {
+  return (
+    <GestureHandlerRootView style={styles.flex}>
+      <ThemeProvider>
+        <ServerProvider>
+          <AuthProvider>
+            <RootStack />
+          </AuthProvider>
+        </ServerProvider>
+      </ThemeProvider>
+    </GestureHandlerRootView>
+  );
+}
+
+const styles = StyleSheet.create({
+  flex: {
+    flex: 1,
+  },
+});

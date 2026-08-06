@@ -1,0 +1,21 @@
+# Conversation History
+
+## Session: 2026-08-06
+- Initialized analysis of HBS Turborepo workspace.
+- Asked user questions regarding mobile app features & backend integration:
+  1. Backend API: Enable full user media management (view, upload, search, photo grid, drive folders) + user-level file/photo endpoints in `apps/server` for non-admin users.
+  2. Backup: Include automatic/manual camera roll backup feature to backup local photos to server.
+  3. LAN Scanner: Fast parallel subnet scan on port 38480 checking `/api/health` + manual IP/hostname edit.
+- Plan approved by user.
+- Completed user API routes in `apps/server`: `/api/user/files`, `/api/user/photos`, `/api/user/upload`, `/api/user/media`, `/api/user/stats`.
+- Completed Expo mobile app in `apps/mobile-app` with Google Photos & Drive hybrid UI, LAN IP scanner, Light & Dark theme toggle, Better-Auth integration, camera roll backup, and storage quota dashboard.
+- Configured proper app name **HBS Cloud Drive & Photos** (`hbs-cloud`) and generated custom glassmorphic app icon, adaptive foreground, splash icon, and favicon.
+- Fixed Metro transformer `TypeError: Cannot read properties of undefined (reading 'transformFile')`:
+  1. Installed `@expo/metro-config@57.0.7` and `babel-preset-expo@57.0.6` directly into `apps/mobile-app` devDependencies.
+  2. Updated `metro.config.js` to require `@expo/metro-config` with monorepo `watchFolders` and `nodeModulesPaths`.
+- Fixed `Cannot find native module 'ExpoMediaLibraryNext'` error in Expo Go:
+  1. Refactored `backup.tsx` to use `expo-image-picker` (`ImagePicker.launchImageLibraryAsync`) which is natively supported out of the box in Expo Go.
+- Fixed `AsyncStorageError: Native module is null`:
+  1. Created `appStorage` utility (`src/utils/storage.ts`) with safe in-memory fallback trapping around `AsyncStorage`.
+  2. Updated `ThemeContext.tsx`, `ServerContext.tsx`, and `AuthContext.tsx` to consume `appStorage` safely without throwing unhandled native module null errors.
+- Verified TypeScript compilation across workspace.

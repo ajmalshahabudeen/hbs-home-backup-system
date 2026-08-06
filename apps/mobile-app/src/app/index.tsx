@@ -1,98 +1,191 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ActivityIndicator,
+  TouchableOpacity,
+  SafeAreaView,
+} from 'react-native';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { useAppTheme } from '../context/ThemeContext';
+import { useServer } from '../context/ServerContext';
+import { useAuth } from '../context/AuthContext';
+import { LanScannerModal } from '../components/LanScannerModal';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+export default function SplashScreen() {
+  const { colors } = useAppTheme();
+  const router = useRouter();
+  const { isConnected, isChecking, serverUrl, scanLanSubnet, isScanning } = useServer();
+  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const [showScanner, setShowScanner] = useState<boolean>(false);
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
+  useEffect(() => {
+    if (!isChecking && !isAuthLoading) {
+      const timer = setTimeout(() => {
+        if (isConnected && isAuthenticated) {
+          router.replace('/(tabs)/photos');
+        } else if (isConnected && !isAuthenticated) {
+          router.replace('/(auth)/login');
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isConnected, isAuthenticated, isChecking, isAuthLoading, router]);
+
+  const handleAutoScan = async () => {
+    setShowScanner(true);
+    await scanLanSubnet();
+  };
+
   return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Brand Splash Content */}
+      <View style={styles.brandBox}>
+        <View style={[styles.logoBadge, { backgroundColor: colors.primaryContainer }]}>
+          <Ionicons name="cloud-upload" size={54} color={colors.primary} />
+        </View>
 
-export default function HomeScreen() {
-  return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
+        <Text style={[styles.brandTitle, { color: colors.text }]}>HBS Cloud</Text>
+        <Text style={[styles.brandSub, { color: colors.textSecondary }]}>
+          Home Backup & Media Server
+        </Text>
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
+        {(isChecking || isAuthLoading || isScanning) && (
+          <View style={styles.loaderBox}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
+              {isScanning ? 'Scanning LAN for HBS server...' : 'Connecting to home server...'}
+            </Text>
+          </View>
+        )}
+      </View>
 
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
+      {/* Offline / Server Config Section */}
+      {!isChecking && !isConnected && (
+        <View style={styles.bottomBox}>
+          <View
+            style={[
+              styles.offlineCard,
+              { backgroundColor: colors.surfaceVariant, borderColor: colors.border },
+            ]}
+          >
+            <Ionicons name="wifi-outline" size={24} color={colors.error} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.offlineTitle, { color: colors.text }]}>
+                Server Unreachable
+              </Text>
+              <Text style={[styles.offlineSub, { color: colors.textSecondary }]}>
+                {serverUrl}
+              </Text>
+            </View>
+          </View>
 
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
+          <TouchableOpacity
+            style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
+            onPress={handleAutoScan}
+          >
+            <Ionicons name="scan-outline" size={20} color="#FFFFFF" />
+            <Text style={styles.primaryBtnText}>Scan LAN for Server IP</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.secondaryBtn, { borderColor: colors.border }]}
+            onPress={() => setShowScanner(true)}
+          >
+            <Text style={[styles.secondaryBtnText, { color: colors.text }]}>
+              Edit Server IP / URL
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* LAN Scanner Modal */}
+      <LanScannerModal visible={showScanner} onClose={() => setShowScanner(false)} />
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    justifyContent: 'space-between',
+    padding: 24,
+  },
+  brandBox: {
+    flex: 1,
     justifyContent: 'center',
+    alignItems: 'center',
+  },
+  logoBadge: {
+    width: 100,
+    height: 100,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  brandTitle: {
+    fontSize: 32,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  brandSub: {
+    fontSize: 15,
+    marginTop: 6,
+  },
+  loaderBox: {
+    marginTop: 40,
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 13,
+    marginTop: 12,
+  },
+  bottomBox: {
+    gap: 12,
+    marginBottom: 20,
+  },
+  offlineCard: {
     flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
     alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 12,
+    marginBottom: 8,
   },
-  heroSection: {
-    alignItems: 'center',
+  offlineTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  offlineSub: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  primaryBtn: {
+    flexDirection: 'row',
+    height: 50,
+    borderRadius: 25,
     justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
+    alignItems: 'center',
+    gap: 8,
   },
-  title: {
-    textAlign: 'center',
+  primaryBtnText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
-  code: {
-    textTransform: 'uppercase',
+  secondaryBtn: {
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+  secondaryBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
   },
 });
