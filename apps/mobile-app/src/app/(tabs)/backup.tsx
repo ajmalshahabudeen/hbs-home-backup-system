@@ -4,11 +4,11 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   Switch,
   ScrollView,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useAppTheme } from '../../context/ThemeContext';
@@ -55,16 +55,14 @@ export default function BackupScreen() {
         return;
       }
 
-      const selectedAssets = result.assets;
       setIsSyncing(true);
+      setTotalToSync(result.assets.length);
       setSyncedCount(0);
-      setTotalToSync(selectedAssets.length);
 
       let successCount = 0;
 
-      for (let i = 0; i < selectedAssets.length; i++) {
-        const asset = selectedAssets[i];
-        const fileUri = asset.uri;
+      for (let i = 0; i < result.assets.length; i++) {
+        const asset = result.assets[i];
         const fileName =
           asset.fileName ||
           `backup_${Date.now()}_${i}.${asset.type === 'video' ? 'mp4' : 'jpg'}`;
@@ -75,7 +73,7 @@ export default function BackupScreen() {
           await hbsApi.uploadFile(
             serverUrl,
             sessionToken,
-            fileUri,
+            asset.uri,
             fileName,
             mimeType,
             'MobileBackup'
@@ -97,7 +95,7 @@ export default function BackupScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
       <Header title="Photos Backup" onOpenServerScanner={() => setShowScannerModal(true)} />
 
       <ScrollView contentContainerStyle={styles.content}>

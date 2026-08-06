@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from '../context/ThemeContext';
 
 interface UploadModalProps {
@@ -26,6 +27,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   onCreateFolder,
 }) => {
   const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
 
   const handlePickPhoto = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -73,7 +75,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.overlay}>
           <TouchableWithoutFeedback>
-            <View style={[styles.sheet, { backgroundColor: colors.modalBg }]}>
+            <View style={[styles.sheet, { backgroundColor: colors.modalBg, paddingBottom: Math.max(insets.bottom, 24) }]}>
               <View style={[styles.dragHandle, { backgroundColor: colors.border }]} />
 
               <Text style={[styles.sheetTitle, { color: colors.text }]}>Create & Upload</Text>

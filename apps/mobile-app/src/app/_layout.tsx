@@ -4,6 +4,7 @@ import { StyleSheet } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider, useAppTheme } from '../context/ThemeContext';
 import { ServerProvider } from '../context/ServerContext';
 import { AuthProvider } from '../context/AuthContext';
@@ -27,13 +28,15 @@ function RootStack() {
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={styles.flex}>
-      <ThemeProvider>
-        <ServerProvider>
-          <AuthProvider>
-            <RootStack />
-          </AuthProvider>
-        </ServerProvider>
-      </ThemeProvider>
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <ServerProvider>
+            <AuthProvider>
+              <RootStack />
+            </AuthProvider>
+          </ServerProvider>
+        </ThemeProvider>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }

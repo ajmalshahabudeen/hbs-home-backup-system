@@ -7,9 +7,9 @@ import {
   TouchableOpacity,
   Image,
   Dimensions,
-  SafeAreaView,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../context/ThemeContext';
 import { PhotoMediaItem } from '../services/api';
