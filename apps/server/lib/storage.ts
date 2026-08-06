@@ -1,6 +1,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
+import { execSync } from "node:child_process";
 
 /**
  * Resolve the backup storage root.
@@ -42,6 +43,17 @@ export function getStorageRoot(): string {
     /* turbopackIgnore: true */ process.cwd(),
     resolved
   );
+}
+
+/** Host-facing path from env (e.g. G:/HBS-Backups) — may differ from container path. */
+export function getHostStoragePath(): string {
+  return (
+    process.env.HOST_STORAGE_PATH ||
+    process.env.STORAGE_ROOT ||
+    getStorageRoot()
+  )
+    .trim()
+    .replace(/\\/g, "/");
 }
 
 /** Absolute path for a user's private backup tree */
@@ -102,4 +114,154 @@ export function ensureUserDir(userId: string): string {
 
 export function toPosixRel(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+/, "");
+}
+
+export type DiskUsage = {
+  totalBytes: number;
+  freeBytes: number;
+  usedBytes: number;
+  usedPercent: number;
+  available: boolean;
+  error?: string;
+};
+
+function diskFromStatfs(target: string): DiskUsage | null {
+  try {
+    // Node 18.15+ / 20+
+    const statfs = (
+      fs as typeof fs & {
+        statfsSync?: (p: string) => {
+          bsize: number;
+          blocks: number;
+          bavail: number;
+          bfree: number;
+        };
+      }
+    ).statfsSync;
+    if (!statfs) return null;
+    const s = statfs(target);
+    const totalBytes = Number(s.blocks) * Number(s.bsize);
+    const freeBytes = Number(s.bavail) * Number(s.bsize);
+    const usedBytes = Math.max(0, totalBytes - freeBytes);
+    const usedPercent =
+      totalBytes > 0 ? Math.round((usedBytes / totalBytes) * 1000) / 10 : 0;
+    return {
+      totalBytes,
+      freeBytes,
+      usedBytes,
+      usedPercent,
+      available: true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function diskFromDf(target: string): DiskUsage | null {
+  try {
+    const out = execSync(`df -kP ${JSON.stringify(target)}`, {
+      encoding: "utf8",
+      timeout: 3000,
+    });
+    const lines = out.trim().split("\n");
+    const data = lines[lines.length - 1];
+    if (!data) return null;
+    const parts = data.split(/\s+/);
+    // Filesystem 1024-blocks Used Available Capacity Mounted
+    const totalK = Number(parts[1]);
+    const usedK = Number(parts[2]);
+    const freeK = Number(parts[3]);
+    if (!Number.isFinite(totalK)) return null;
+    const totalBytes = totalK * 1024;
+    const freeBytes = freeK * 1024;
+    const usedBytes = usedK * 1024;
+    const usedPercent =
+      totalBytes > 0 ? Math.round((usedBytes / totalBytes) * 1000) / 10 : 0;
+    return {
+      totalBytes,
+      freeBytes,
+      usedBytes,
+      usedPercent,
+      available: true,
+    };
+  } catch (e) {
+    return {
+      totalBytes: 0,
+      freeBytes: 0,
+      usedBytes: 0,
+      usedPercent: 0,
+      available: false,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
+export function getDiskUsage(target = getStorageRoot()): DiskUsage {
+  const fromStat = diskFromStatfs(target);
+  if (fromStat) return fromStat;
+  const fromDf = diskFromDf(target);
+  if (fromDf) return fromDf;
+  return {
+    totalBytes: 0,
+    freeBytes: 0,
+    usedBytes: 0,
+    usedPercent: 0,
+    available: false,
+    error: "Disk usage unavailable on this platform",
+  };
+}
+
+function parseDriveLetter(p: string): string | null {
+  const m = /^([A-Za-z]):/.exec(p.replace(/\\/g, "/"));
+  return m ? `${m[1]!.toUpperCase()}:` : null;
+}
+
+function storageDisplayName(hostPath: string, containerPath: string): string {
+  const drive = parseDriveLetter(hostPath);
+  if (drive) {
+    const rest = hostPath.replace(/\\/g, "/").replace(/^[A-Za-z]:\/?/, "");
+    return rest ? `${drive} ${rest.split("/").filter(Boolean).join(" / ")}` : `${drive} Drive`;
+  }
+  const base = path.basename(hostPath || containerPath) || "storage";
+  return base;
+}
+
+export type StorageInfo = {
+  ok: boolean;
+  writable: boolean;
+  exists: boolean;
+  root: string;
+  hostPath: string;
+  containerPath: string;
+  driveLetter: string | null;
+  name: string;
+  platform: string;
+  hostname: string;
+  error?: string;
+  disk: DiskUsage;
+  checkedAt: string;
+};
+
+export function getStorageInfo(): StorageInfo {
+  const containerPath = getStorageRoot();
+  const hostPath = getHostStoragePath();
+  const ready = ensureStorageReady();
+  const exists = fs.existsSync(/* turbopackIgnore: true */ containerPath);
+  const disk = getDiskUsage(containerPath);
+
+  return {
+    ok: ready.ok && disk.available !== false,
+    writable: ready.ok,
+    exists,
+    root: containerPath,
+    hostPath,
+    containerPath,
+    driveLetter: parseDriveLetter(hostPath),
+    name: storageDisplayName(hostPath, containerPath),
+    platform: process.platform,
+    hostname: os.hostname(),
+    error: ready.error || disk.error,
+    disk,
+    checkedAt: new Date().toISOString(),
+  };
 }

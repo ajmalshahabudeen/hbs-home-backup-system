@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Plus, RefreshCw, Trash2, Shield, Ban } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Plus, RefreshCw, Trash2, Ban } from "lucide-react";
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";
@@ -13,14 +13,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@workspace/ui/components/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@workspace/ui/components/table";
 import {
   Dialog,
   DialogContent,
@@ -37,6 +29,7 @@ import {
   SelectValue,
 } from "@workspace/ui/components/select";
 import { Alert, AlertDescription } from "@workspace/ui/components/alert";
+import { DataTable, type DataTableColumn } from "@/components/data-table";
 
 type UserRow = {
   id: string;
@@ -49,9 +42,13 @@ type UserRow = {
   _count: { backupFiles: number; sessions: number };
 };
 
+const roleItems = {
+  user: "User",
+  admin: "Admin",
+} as const;
+
 export default function UsersPage() {
   const [users, setUsers] = useState<UserRow[]>([]);
-  const [q, setQ] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -66,9 +63,7 @@ export default function UsersPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(
-        `/api/admin/users${q ? `?q=${encodeURIComponent(q)}` : ""}`
-      );
+      const res = await fetch("/api/admin/users");
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to load users");
       setUsers(data.users);
@@ -77,7 +72,7 @@ export default function UsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [q]);
+  }, []);
 
   useEffect(() => {
     load();
@@ -146,6 +141,106 @@ export default function UsersPage() {
     await load();
   }
 
+  const columns = useMemo<DataTableColumn<UserRow>[]>(
+    () => [
+      {
+        id: "user",
+        header: "User",
+        sortKey: "user",
+        searchValue: (u) => `${u.name} ${u.email}`,
+        cell: (u) => (
+          <div>
+            <div className="font-medium">{u.name}</div>
+            <div className="text-xs text-muted-foreground">{u.email}</div>
+          </div>
+        ),
+      },
+      {
+        id: "role",
+        header: "Role",
+        sortKey: "role",
+        searchValue: (u) => u.role || "user",
+        cell: (u) => (
+          <Select
+            value={u.role || "user"}
+            onValueChange={(v) => v && setRole(u.id, v)}
+            items={roleItems}
+          >
+            <SelectTrigger className="w-28">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="user">User</SelectItem>
+              <SelectItem value="admin">Admin</SelectItem>
+            </SelectContent>
+          </Select>
+        ),
+      },
+      {
+        id: "files",
+        header: "Files",
+        sortKey: "files",
+        searchValue: (u) => String(u._count.backupFiles),
+        className: "tabular-nums",
+        cell: (u) => u._count.backupFiles,
+      },
+      {
+        id: "sessions",
+        header: "Sessions",
+        sortKey: "sessions",
+        searchValue: (u) => String(u._count.sessions),
+        className: "tabular-nums",
+        cell: (u) => u._count.sessions,
+      },
+      {
+        id: "status",
+        header: "Status",
+        sortKey: "status",
+        searchValue: (u) => (u.banned ? "banned" : "active"),
+        cell: (u) =>
+          u.banned ? (
+            <Badge variant="destructive">banned</Badge>
+          ) : (
+            <Badge variant="secondary">active</Badge>
+          ),
+      },
+      {
+        id: "created",
+        header: "Created",
+        sortKey: "created",
+        searchValue: (u) => u.createdAt,
+        className: "text-xs text-muted-foreground whitespace-nowrap",
+        cell: (u) => new Date(u.createdAt).toLocaleDateString(),
+      },
+      {
+        id: "actions",
+        header: "",
+        headerClassName: "text-end",
+        className: "text-end",
+        cell: (u) => (
+          <div className="flex justify-end gap-1">
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              title={u.banned ? "Unban" : "Ban"}
+              onClick={() => toggleBan(u)}
+            >
+              <Ban className="size-4" />
+            </Button>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={() => remove(u.id)}
+            >
+              <Trash2 className="size-4 text-destructive" />
+            </Button>
+          </div>
+        ),
+      },
+    ],
+    []
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -174,92 +269,21 @@ export default function UsersPage() {
       )}
 
       <Card>
-        <CardHeader className="gap-3">
+        <CardHeader>
           <CardTitle>All accounts</CardTitle>
           <CardDescription>
             {loading ? "Loading…" : `${users.length} user(s)`}
           </CardDescription>
-          <Input
-            placeholder="Search name or email…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            className="max-w-sm"
-          />
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Files</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-end">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {users.map((u) => (
-                <TableRow key={u.id}>
-                  <TableCell>
-                    <div className="font-medium">{u.name}</div>
-                    <div className="text-xs text-muted-foreground">{u.email}</div>
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={u.role || "user"}
-                      onValueChange={(v) => v && setRole(u.id, v)}
-                    >
-                      <SelectTrigger className="w-28">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="user">user</SelectItem>
-                        <SelectItem value="admin">admin</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>{u._count.backupFiles}</TableCell>
-                  <TableCell>
-                    {u.banned ? (
-                      <Badge variant="destructive">banned</Badge>
-                    ) : (
-                      <Badge variant="secondary">active</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-end">
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        title={u.banned ? "Unban" : "Ban"}
-                        onClick={() => toggleBan(u)}
-                      >
-                        {u.role === "admin" ? (
-                          <Shield className="size-4" />
-                        ) : (
-                          <Ban className="size-4" />
-                        )}
-                      </Button>
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        onClick={() => remove(u.id)}
-                      >
-                        <Trash2 className="size-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {!loading && users.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground">
-                    No users found
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+          <DataTable
+            rows={users}
+            columns={columns}
+            rowKey={(u) => u.id}
+            searchPlaceholder="Search name or email…"
+            empty="No users found"
+            defaultPageSize={25}
+          />
         </CardContent>
       </Card>
 
@@ -279,7 +303,9 @@ export default function UsersPage() {
                   id="n"
                   required
                   value={form.name}
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, name: e.target.value }))
+                  }
                 />
               </div>
               <div className="space-y-1.5">
@@ -314,19 +340,24 @@ export default function UsersPage() {
                   onValueChange={(v) =>
                     v && setForm((f) => ({ ...f, role: v }))
                   }
+                  items={roleItems}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="user">user</SelectItem>
-                    <SelectItem value="admin">admin</SelectItem>
+                    <SelectItem value="user">User</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <DialogFooter className="mt-4">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setOpen(false)}
+              >
                 Cancel
               </Button>
               <Button type="submit">Create</Button>

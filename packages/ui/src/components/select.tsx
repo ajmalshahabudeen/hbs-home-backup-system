@@ -8,6 +8,12 @@ import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
 const Select = SelectPrimitive.Root
 
+/**
+ * Base UI Select shows the raw `value` in the trigger unless you pass `items`
+ * on <Select items={{ value: "Label" }}> (or an array of { value, label }).
+ * Always provide `items` when the display label differs from the option value.
+ */
+
 function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   return (
     <SelectPrimitive.Group

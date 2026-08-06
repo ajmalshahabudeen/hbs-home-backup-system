@@ -44,6 +44,15 @@ type Job = {
 
 type UserOpt = { id: string; email: string; name: string };
 
+const JOB_TYPE_ITEMS: Record<string, string> = {
+  SCAN: "SCAN user files",
+  CONSISTENCY: "CONSISTENCY check",
+  CHECKSUM: "CHECKSUM (parallel)",
+  WARM_STATS: "WARM_STATS cache",
+  REQUEUE_STALE: "REQUEUE_STALE",
+  CRON_CONSISTENCY_ALL: "CRON_CONSISTENCY_ALL",
+};
+
 export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [users, setUsers] = useState<UserOpt[]>([]);
@@ -110,6 +119,10 @@ export default function JobsPage() {
     }
   }
 
+  const userItems = Object.fromEntries(
+    users.map((u) => [u.id, `${u.name} · ${u.email}`])
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -142,32 +155,41 @@ export default function JobsPage() {
           <div className="flex flex-wrap items-end gap-3">
             <div className="space-y-1.5">
               <div className="text-xs text-muted-foreground">Type</div>
-              <Select value={type} onValueChange={(v) => v && setType(v)}>
+              <Select
+                value={type}
+                onValueChange={(v) => v && setType(v)}
+                items={JOB_TYPE_ITEMS}
+              >
                 <SelectTrigger className="w-52">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="SCAN">SCAN user files</SelectItem>
-                  <SelectItem value="CONSISTENCY">CONSISTENCY check</SelectItem>
-                  <SelectItem value="CHECKSUM">CHECKSUM (parallel)</SelectItem>
-                  <SelectItem value="WARM_STATS">WARM_STATS cache</SelectItem>
-                  <SelectItem value="REQUEUE_STALE">REQUEUE_STALE</SelectItem>
-                  <SelectItem value="CRON_CONSISTENCY_ALL">
-                    CRON_CONSISTENCY_ALL
-                  </SelectItem>
+                  {Object.entries(JOB_TYPE_ITEMS).map(([value, label]) => (
+                    <SelectItem key={value} value={value} label={label}>
+                      {label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
             {["SCAN", "CONSISTENCY", "CHECKSUM"].includes(type) && (
               <div className="space-y-1.5">
                 <div className="text-xs text-muted-foreground">User</div>
-                <Select value={userId} onValueChange={(v) => v && setUserId(v)}>
+                <Select
+                  value={userId || undefined}
+                  onValueChange={(v) => v && setUserId(v)}
+                  items={userItems}
+                >
                   <SelectTrigger className="w-64">
                     <SelectValue placeholder="Select user" />
                   </SelectTrigger>
                   <SelectContent>
                     {users.map((u) => (
-                      <SelectItem key={u.id} value={u.id}>
+                      <SelectItem
+                        key={u.id}
+                        value={u.id}
+                        label={`${u.name} · ${u.email}`}
+                      >
                         {u.name} · {u.email}
                       </SelectItem>
                     ))}

@@ -10,19 +10,55 @@ import {
   ScrollText,
   LogOut,
   Cog,
+  MonitorSmartphone,
+  ChevronsUpDown,
 } from "lucide-react";
-import { cn } from "@workspace/ui/lib/utils";
-import { Button } from "@workspace/ui/components/button";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarSeparator,
+  SidebarTrigger,
+} from "@workspace/ui/components/sidebar";
 import { Separator } from "@workspace/ui/components/separator";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@workspace/ui/components/dropdown-menu";
+import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar";
+import { TooltipProvider } from "@workspace/ui/components/tooltip";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { authClient } from "@/lib/auth-client";
 
-const nav = [
+const navMain = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/dashboard/users", label: "Users", icon: Users },
   { href: "/dashboard/files", label: "Files", icon: FolderOpen },
+  { href: "/dashboard/sessions", label: "Sessions", icon: MonitorSmartphone },
   { href: "/dashboard/jobs", label: "Jobs", icon: Cog },
   { href: "/dashboard/logs", label: "Logs", icon: ScrollText },
 ];
+
+function initials(name?: string | null, email?: string | null) {
+  const n = (name || email || "A").trim();
+  const parts = n.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
+  return n.slice(0, 2).toUpperCase();
+}
 
 export function DashboardShell({
   children,
@@ -41,58 +77,137 @@ export function DashboardShell({
   }
 
   return (
-    <div className="flex min-h-svh bg-background">
-      <aside className="sticky top-0 flex h-svh w-60 shrink-0 flex-col border-e bg-card/40 backdrop-blur">
-        <div className="flex items-center gap-2 px-4 py-5 font-semibold tracking-tight">
-          <HardDrive className="size-5 text-primary" />
-          HBS Admin
-        </div>
-        <Separator />
-        <nav className="flex flex-1 flex-col gap-1 p-3">
-          {nav.map((item) => {
-            const active =
-              item.href === "/dashboard"
-                ? pathname === "/dashboard"
-                : pathname.startsWith(item.href);
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition-colors",
-                  active
-                    ? "bg-primary/15 font-medium text-foreground"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                )}
-              >
-                <Icon className="size-4" />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="space-y-2 border-t p-3">
-          <div className="truncate px-2 text-xs text-muted-foreground">
-            <div className="truncate font-medium text-foreground">
-              {user?.name || "Admin"}
+    <TooltipProvider>
+      <SidebarProvider>
+        <Sidebar collapsible="icon" variant="inset">
+          <SidebarHeader>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  size="lg"
+                  render={<Link href="/dashboard" />}
+                  tooltip="HBS Admin"
+                >
+                  <div className="flex aspect-square size-8 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                    <HardDrive className="size-4" />
+                  </div>
+                  <div className="grid flex-1 text-start text-sm leading-tight">
+                    <span className="truncate font-semibold">HBS Admin</span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      Home Backup System
+                    </span>
+                  </div>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarHeader>
+
+          <SidebarContent>
+            <SidebarGroup>
+              <SidebarGroupLabel>Manage</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {navMain.map((item) => {
+                    const active =
+                      item.href === "/dashboard"
+                        ? pathname === "/dashboard"
+                        : pathname.startsWith(item.href);
+                    const Icon = item.icon;
+                    return (
+                      <SidebarMenuItem key={item.href}>
+                        <SidebarMenuButton
+                          isActive={active}
+                          tooltip={item.label}
+                          render={<Link href={item.href} />}
+                        >
+                          <Icon />
+                          <span>{item.label}</span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </SidebarContent>
+
+          <SidebarFooter>
+            <SidebarSeparator />
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <SidebarMenuButton
+                        size="lg"
+                        className="data-[state=open]:bg-sidebar-accent"
+                      />
+                    }
+                  >
+                    <Avatar className="size-8 rounded-xl">
+                      <AvatarFallback className="rounded-xl">
+                        {initials(user?.name, user?.email)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="grid flex-1 text-start text-sm leading-tight">
+                      <span className="truncate font-medium">
+                        {user?.name || "Admin"}
+                      </span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {user?.email}
+                      </span>
+                    </div>
+                    <ChevronsUpDown className="ms-auto size-4" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    className="min-w-56 rounded-xl"
+                    side="top"
+                    align="end"
+                    sideOffset={4}
+                  >
+                    <DropdownMenuLabel className="font-normal">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-sm font-medium">
+                          {user?.name || "Admin"}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {user?.email}
+                        </span>
+                      </div>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={logout}>
+                      <LogOut className="size-4" />
+                      Sign out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarFooter>
+          <SidebarRail />
+        </Sidebar>
+
+        <SidebarInset>
+          <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur supports-backdrop-filter:bg-background/60">
+            <SidebarTrigger className="-ms-1" />
+            <Separator orientation="vertical" className="me-2 h-4" />
+            <div className="flex flex-1 items-center gap-2 text-sm text-muted-foreground">
+              <span className="hidden font-medium text-foreground sm:inline">
+                {navMain.find((n) =>
+                  n.href === "/dashboard"
+                    ? pathname === "/dashboard"
+                    : pathname.startsWith(n.href)
+                )?.label || "Dashboard"}
+              </span>
             </div>
-            <div className="truncate">{user?.email}</div>
+            <ThemeToggle />
+          </header>
+          <div className="flex flex-1 flex-col gap-4 p-4 md:p-6 lg:p-8">
+            <div className="mx-auto w-full max-w-7xl">{children}</div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full justify-start gap-2"
-            onClick={logout}
-          >
-            <LogOut className="size-4" />
-            Sign out
-          </Button>
-        </div>
-      </aside>
-      <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-6xl p-6 md:p-8">{children}</div>
-      </main>
-    </div>
+        </SidebarInset>
+      </SidebarProvider>
+    </TooltipProvider>
   );
 }

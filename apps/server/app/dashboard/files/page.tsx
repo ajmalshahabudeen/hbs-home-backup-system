@@ -178,6 +178,10 @@ export default function FilesPage() {
 
   const crumbs = path ? path.split("/").filter(Boolean) : [];
 
+  const userItems = Object.fromEntries(
+    users.map((u) => [u.id, `${u.name} · ${u.email}`])
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -209,20 +213,21 @@ export default function FilesPage() {
             <div className="space-y-1.5">
               <Label>User</Label>
               <Select
-                value={userId}
+                value={userId || undefined}
                 onValueChange={(v) => {
                   if (v) {
                     setUserId(v);
                     setPath("");
                   }
                 }}
+                items={userItems}
               >
                 <SelectTrigger className="w-64">
                   <SelectValue placeholder="Select user" />
                 </SelectTrigger>
                 <SelectContent>
                   {users.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>
+                    <SelectItem key={u.id} value={u.id} label={`${u.name} · ${u.email}`}>
                       {u.name} · {u.email}
                     </SelectItem>
                   ))}

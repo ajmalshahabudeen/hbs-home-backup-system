@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@workspace/ui/components/button";
-import { Input } from "@workspace/ui/components/input";
 import { Badge } from "@workspace/ui/components/badge";
 import {
   Card,
@@ -13,14 +12,6 @@ import {
   CardTitle,
 } from "@workspace/ui/components/card";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@workspace/ui/components/table";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -28,6 +19,7 @@ import {
   SelectValue,
 } from "@workspace/ui/components/select";
 import { Alert, AlertDescription } from "@workspace/ui/components/alert";
+import { DataTable, type DataTableColumn } from "@/components/data-table";
 
 type LogRow = {
   id: string;
@@ -40,10 +32,26 @@ type LogRow = {
   ipAddress: string | null;
 };
 
+const typeItems = {
+  all: "All types",
+  LOGIN: "LOGIN",
+  REGISTER: "REGISTER",
+  USER_CRUD: "USER_CRUD",
+  FILE_CRUD: "FILE_CRUD",
+  SESSION: "SESSION",
+  SYSTEM: "SYSTEM",
+} as const;
+
+const levelItems = {
+  all: "All levels",
+  INFO: "INFO",
+  WARN: "WARN",
+  ERROR: "ERROR",
+} as const;
+
 export default function LogsPage() {
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [total, setTotal] = useState(0);
-  const [q, setQ] = useState("");
   const [type, setType] = useState<string>("all");
   const [level, setLevel] = useState<string>("all");
   const [error, setError] = useState<string | null>(null);
@@ -53,8 +61,7 @@ export default function LogsPage() {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({ limit: "200" });
-      if (q) params.set("q", q);
+      const params = new URLSearchParams({ limit: "500" });
       if (type !== "all") params.set("type", type);
       if (level !== "all") params.set("level", level);
       const res = await fetch(`/api/admin/logs?${params}`);
@@ -67,7 +74,7 @@ export default function LogsPage() {
     } finally {
       setLoading(false);
     }
-  }, [q, type, level]);
+  }, [type, level]);
 
   useEffect(() => {
     load();
@@ -96,13 +103,92 @@ export default function LogsPage() {
     await load();
   }
 
+  const columns = useMemo<DataTableColumn<LogRow>[]>(
+    () => [
+      {
+        id: "time",
+        header: "Time",
+        sortKey: "time",
+        searchValue: (l) => l.timestamp,
+        className: "whitespace-nowrap text-xs text-muted-foreground",
+        cell: (l) => new Date(l.timestamp).toLocaleString(),
+      },
+      {
+        id: "level",
+        header: "Level",
+        sortKey: "level",
+        searchValue: (l) => l.level,
+        cell: (l) => (
+          <Badge
+            variant={
+              l.level === "ERROR"
+                ? "destructive"
+                : l.level === "WARN"
+                  ? "outline"
+                  : "secondary"
+            }
+          >
+            {l.level}
+          </Badge>
+        ),
+      },
+      {
+        id: "type",
+        header: "Type",
+        sortKey: "type",
+        searchValue: (l) => l.type,
+        cell: (l) => <Badge variant="outline">{l.type}</Badge>,
+      },
+      {
+        id: "message",
+        header: "Message",
+        sortKey: "message",
+        searchValue: (l) => l.message,
+        className: "max-w-md truncate text-sm",
+        cell: (l) => l.message,
+      },
+      {
+        id: "user",
+        header: "User",
+        sortKey: "user",
+        searchValue: (l) => l.userEmail || "",
+        className: "text-xs text-muted-foreground",
+        cell: (l) => l.userEmail || "—",
+      },
+      {
+        id: "ip",
+        header: "IP",
+        sortKey: "ip",
+        searchValue: (l) => l.ipAddress || "",
+        className: "font-mono text-xs text-muted-foreground",
+        cell: (l) => l.ipAddress || "—",
+      },
+      {
+        id: "actions",
+        header: "",
+        headerClassName: "text-end",
+        className: "text-end",
+        cell: (l) => (
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={() => remove(l.id)}
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        ),
+      },
+    ],
+    []
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">System logs</h1>
           <p className="text-sm text-muted-foreground">
-            Full audit trail — auth, user CRUD, and file operations.
+            Full audit trail — auth, sessions, user CRUD, and file operations.
           </p>
         </div>
         <div className="flex gap-2">
@@ -129,101 +215,49 @@ export default function LogsPage() {
             {loading ? "Loading…" : `${total} total · showing ${logs.length}`}
           </CardDescription>
           <div className="flex flex-wrap gap-2">
-            <Input
-              placeholder="Search message / email…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              className="max-w-xs"
-            />
-            <Select value={type} onValueChange={(v) => v && setType(v)}>
+            <Select
+              value={type}
+              onValueChange={(v) => v && setType(v)}
+              items={typeItems}
+            >
               <SelectTrigger className="w-36">
                 <SelectValue placeholder="Type" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All types</SelectItem>
-                <SelectItem value="LOGIN">LOGIN</SelectItem>
-                <SelectItem value="REGISTER">REGISTER</SelectItem>
-                <SelectItem value="USER_CRUD">USER_CRUD</SelectItem>
-                <SelectItem value="FILE_CRUD">FILE_CRUD</SelectItem>
-                <SelectItem value="SYSTEM">SYSTEM</SelectItem>
+                {Object.entries(typeItems).map(([value, label]) => (
+                  <SelectItem key={value} value={value} label={label}>
+                    {label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
-            <Select value={level} onValueChange={(v) => v && setLevel(v)}>
+            <Select
+              value={level}
+              onValueChange={(v) => v && setLevel(v)}
+              items={levelItems}
+            >
               <SelectTrigger className="w-32">
                 <SelectValue placeholder="Level" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All levels</SelectItem>
-                <SelectItem value="INFO">INFO</SelectItem>
-                <SelectItem value="WARN">WARN</SelectItem>
-                <SelectItem value="ERROR">ERROR</SelectItem>
+                {Object.entries(levelItems).map(([value, label]) => (
+                  <SelectItem key={value} value={value} label={label}>
+                    {label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Time</TableHead>
-                <TableHead>Level</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Message</TableHead>
-                <TableHead>User</TableHead>
-                <TableHead className="text-end"> </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {logs.map((l) => (
-                <TableRow key={l.id}>
-                  <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                    {new Date(l.timestamp).toLocaleString()}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        l.level === "ERROR"
-                          ? "destructive"
-                          : l.level === "WARN"
-                            ? "outline"
-                            : "secondary"
-                      }
-                    >
-                      {l.level}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{l.type}</Badge>
-                  </TableCell>
-                  <TableCell className="max-w-md truncate text-sm">
-                    {l.message}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {l.userEmail || "—"}
-                  </TableCell>
-                  <TableCell className="text-end">
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      onClick={() => remove(l.id)}
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {!loading && logs.length === 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={6}
-                    className="text-center text-muted-foreground"
-                  >
-                    No logs
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+          <DataTable
+            rows={logs}
+            columns={columns}
+            rowKey={(l) => l.id}
+            searchPlaceholder="Search message / email / IP…"
+            empty="No logs"
+            defaultPageSize={25}
+          />
         </CardContent>
       </Card>
     </div>
