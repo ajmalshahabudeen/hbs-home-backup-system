@@ -1,0 +1,266 @@
+
+  ============================================================
+     HBS Home Backup System
+  ============================================================
+
+[ ok ] Using bash: C:\Program Files\Git\bin\bash.exe
+
+
+  _  _ ___ ___   _  _  ___  __  __ ___
+ | || | _ ) __| | || |/ _ \|  \/  | __|
+ | __ | _ \__ \ | __ | (_) | |\/| | _|
+ |_||_|___/___/ |_||_|\___/|_|  |_|___|
+      Home Backup System · Admin Server
+
+[ ok ] Loaded .env
+[hbs-home-backup] Normalized HOST_STORAGE_PATH=G:/HBS-Backups
+[hbs-home-backup] Storage path (HOST_STORAGE_PATH): G:/HBS-Backups
+[warn] Storage may not be writable from host shell — Docker mount will still be attempted.
+[hbs-home-backup] Checking Docker CLI...
+[hbs-home-backup] Waiting for Docker daemon (up to 60s)...
+[ ok ] Docker daemon is running.
+[ ok ] Using: docker compose
+[hbs-home-backup] Code fingerprint: 9b8286f7d1b0…
+[hbs-home-backup] Last built:       (none)
+[warn] Sources changed — will rebuild
+[hbs-home-backup] Compose up (attempt 1/3) → up -d --build --force-recreate
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.55kB done
+#1 DONE 0.0s
+
+#2 [beat internal] load build definition from Dockerfile
+#2 transferring dockerfile: 841B done
+#2 DONE 0.0s
+
+#3 [server internal] load build definition from Dockerfile
+#3 transferring dockerfile: 3.74kB done
+#3 DONE 0.0s
+
+#4 [server] resolve image config for docker-image://docker.io/docker/dockerfile:1
+#4 DONE 1.4s
+
+#5 [server] docker-image://docker.io/docker/dockerfile:1@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89
+#5 resolve docker.io/docker/dockerfile:1@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89 0.0s done
+#5 CACHED
+
+#6 [beat internal] load metadata for docker.io/library/python:3.12-slim-bookworm
+#6 ...
+
+#7 [server internal] load metadata for docker.io/library/node:22-bookworm-slim
+#7 DONE 1.0s
+
+#6 [beat internal] load metadata for docker.io/library/python:3.12-slim-bookworm
+#6 DONE 1.0s
+
+#8 [worker internal] load .dockerignore
+#8 transferring context: 542B done
+#8 DONE 0.0s
+
+#9 [server base 1/3] FROM docker.io/library/node:22-bookworm-slim@sha256:d649c27dae7ba0137b3cef5dd75baa422c08dc3d9e3fc0c23dfb172dc3cc6436
+#9 resolve docker.io/library/node:22-bookworm-slim@sha256:d649c27dae7ba0137b3cef5dd75baa422c08dc3d9e3fc0c23dfb172dc3cc6436 0.0s done
+#9 DONE 0.0s
+
+#10 [beat 1/8] FROM docker.io/library/python:3.12-slim-bookworm@sha256:4766d8b510c428e595d74b9cc5bbb2fae8e26316fffb4adc89908d79aacd58a2
+#10 resolve docker.io/library/python:3.12-slim-bookworm@sha256:4766d8b510c428e595d74b9cc5bbb2fae8e26316fffb4adc89908d79aacd58a2 0.0s done
+#10 DONE 0.0s
+
+#11 [worker internal] load build context
+#11 transferring context: 526B 0.0s done
+#11 DONE 0.0s
+
+#12 [worker 6/8] COPY python /app/python
+#12 CACHED
+
+#13 [worker 7/8] RUN chmod +x /app/python/worker-entrypoint.sh /app/python/beat-entrypoint.sh /app/python/enqueue_job.py   && sed -i 's/\r$//' /app/python/worker-entrypoint.sh /app/python/beat-entrypoint.sh
+#13 CACHED
+
+#14 [worker 2/8] WORKDIR /app
+#14 CACHED
+
+#15 [worker 3/8] RUN apt-get update   && apt-get install -y --no-install-recommends ca-certificates curl   && rm -rf /var/lib/apt/lists/*   && mkdir -p /data/storage/users   && chmod -R 777 /data/storage
+#15 CACHED
+
+#16 [worker 5/8] RUN pip install --no-cache-dir -r /app/python/requirements.txt
+#16 CACHED
+
+#17 [worker 4/8] COPY python/requirements.txt /app/python/requirements.txt
+#17 CACHED
+
+#18 [worker 8/8] WORKDIR /app/python
+#18 CACHED
+
+#19 [server internal] load build context
+#19 transferring context: 824.94kB 0.1s done
+#19 DONE 0.1s
+
+#20 [beat] exporting to image
+#20 exporting layers done
+#20 exporting manifest sha256:eb0c3fd283e0b9db503b8b00d55ec2f437dcc71efc0626764ccfd690dc452b4b done
+#20 exporting config sha256:57147f9a801b3b1b52d71d2b7f9bffba912d3229b8ea8abe3ec7a124fd44695d done
+#20 exporting attestation manifest sha256:cd7f88b220e8bf2b611037145ecc071f64d8c6c7d776de24d96027baebd33b57 0.1s done
+#20 exporting manifest list sha256:b4e051e015c97c710803ac3fb3a345569f9aac2537d46d2d3c8a7d6b7e27d109
+#20 exporting manifest list sha256:b4e051e015c97c710803ac3fb3a345569f9aac2537d46d2d3c8a7d6b7e27d109 0.0s done
+#20 naming to docker.io/library/hbs-home-backup-beat:latest 0.0s done
+#20 unpacking to docker.io/library/hbs-home-backup-beat:latest 0.0s done
+#20 DONE 0.2s
+
+#21 [server runner 12/14] RUN pip3 install --break-system-packages --no-cache-dir -r /app/python/requirements.txt   && chmod +x /app/python/enqueue_job.py /app/python/worker-entrypoint.sh /app/python/beat-entrypoint.sh   && sed -i 's/\r$//' /app/python/*.sh /app/python/enqueue_job.py || true
+#21 CACHED
+
+#22 [server runner  3/14] RUN apt-get update   && apt-get install -y --no-install-recommends     ca-certificates openssl curl unzip     python3 python3-pip python3-venv   && rm -rf /var/lib/apt/lists/*   && mkdir -p /data/storage/users   && chmod -R 777 /data/storage   && curl -fsSL https://bun.sh/install | bash
+#22 CACHED
+
+#23 [server builder  5/19] COPY apps/mobile-app/package.json ./apps/mobile-app/
+#23 CACHED
+
+#24 [server builder  8/19] COPY packages/auth/package.json ./packages/auth/
+#24 CACHED
+
+#25 [server runner  4/14] COPY --from=builder /app/apps/server/.next/standalone ./
+#25 CACHED
+
+#26 [server runner 10/14] COPY --from=builder /app/bun.lock ./bun.lock
+#26 CACHED
+
+#27 [server builder  3/19] COPY apps/web/package.json ./apps/web/
+#27 CACHED
+
+#28 [server builder 10/19] COPY packages/eslint-config ./packages/eslint-config
+#28 CACHED
+
+#29 [server builder 18/19] WORKDIR /app/apps/server
+#29 CACHED
+
+#30 [server builder 16/19] WORKDIR /app/packages/db
+#30 CACHED
+
+#31 [server runner  6/14] COPY --from=builder /app/apps/server/public ./apps/server/public
+#31 CACHED
+
+#32 [server builder 14/19] COPY apps/server ./apps/server
+#32 CACHED
+
+#33 [server builder  6/19] COPY packages/ui/package.json ./packages/ui/
+#33 CACHED
+
+#34 [server runner  5/14] COPY --from=builder /app/apps/server/.next/static ./apps/server/.next/static
+#34 CACHED
+
+#35 [server builder  9/19] COPY packages/typescript-config ./packages/typescript-config
+#35 CACHED
+
+#36 [server builder  2/19] COPY apps/server/package.json ./apps/server/
+#36 CACHED
+
+#37 [server runner  9/14] COPY --from=builder /app/package.json ./package.json
+#37 CACHED
+
+#38 [server builder  4/19] COPY apps/webapp/package.json ./apps/webapp/
+#38 CACHED
+
+#39 [server runner 13/14] COPY apps/server/docker-entrypoint.sh /app/docker-entrypoint.sh
+#39 CACHED
+
+#40 [server builder 11/19] COPY packages/db ./packages/db
+#40 CACHED
+
+#41 [server builder 17/19] RUN bunx prisma generate
+#41 CACHED
+
+#42 [server builder 19/19] RUN /usr/local/bin/node ./node_modules/next/dist/bin/next build
+#42 CACHED
+
+#43 [server builder 15/19] RUN bun install --frozen-lockfile || bun install
+#43 CACHED
+
+#44 [server builder 12/19] COPY packages/auth ./packages/auth
+#44 CACHED
+
+#45 [server builder 13/19] COPY packages/ui ./packages/ui
+#45 CACHED
+
+#46 [server runner  7/14] COPY --from=builder /app/packages/db ./packages/db
+#46 CACHED
+
+#47 [server base 2/3] WORKDIR /app
+#47 CACHED
+
+#48 [server runner  8/14] COPY --from=builder /app/node_modules ./node_modules
+#48 CACHED
+
+#49 [server base 3/3] RUN apt-get update   && apt-get install -y --no-install-recommends ca-certificates curl unzip   && rm -rf /var/lib/apt/lists/*   && curl -fsSL https://bun.sh/install | bash
+#49 CACHED
+
+#50 [server runner 11/14] COPY python /app/python
+#50 CACHED
+
+#51 [server builder  7/19] COPY packages/db/package.json ./packages/db/
+#51 CACHED
+
+#52 [server builder  1/19] COPY package.json bun.lock turbo.json tsconfig.json ./
+#52 CACHED
+
+#53 [server runner 14/14] RUN chmod +x /app/docker-entrypoint.sh   && sed -i 's/\r$//' /app/docker-entrypoint.sh
+#53 CACHED
+
+#54 [worker] exporting to image
+#54 exporting layers done
+#54 exporting manifest sha256:fd1c3dad92cb3df2a3225b2c57b62409fc3bc1e72eb33f860aa11e5c4283d9ff done
+#54 exporting config sha256:08cd237c41bb1f5e79cdc52f0977a4dacd868332394634ceeca35862ec23793a done
+#54 exporting attestation manifest sha256:d780e0d5055090f9ab667d4ab876596d225c51a695d43ba53e7b9b4f3c8a1829 0.1s done
+#54 exporting manifest list sha256:a9ba7e0f26df4101b49923541d1f36a7a258991b2101d7a5a2d09ccecfdb2c1d 0.0s done
+#54 naming to docker.io/library/hbs-home-backup-worker:latest done
+#54 unpacking to docker.io/library/hbs-home-backup-worker:latest 0.0s done
+#54 DONE 0.2s
+
+#55 [server] exporting to image
+#55 exporting layers done
+#55 exporting manifest sha256:7a11c997ecd431accb71a0d7c7fd6931c58812712920f17e0c885d2de9c4646a done
+#55 exporting config sha256:dd2d0073e64efbb61983fda1fb171f91bf6214169f74564f66a0db3d99b3a819 done
+#55 exporting attestation manifest sha256:608b900b38c07aafa6a3a9bdc29dd28edf200bdd0be0261e6aae6bb8671e8d23
+#55 exporting attestation manifest sha256:608b900b38c07aafa6a3a9bdc29dd28edf200bdd0be0261e6aae6bb8671e8d23 0.1s done
+#55 exporting manifest list sha256:6be9e3adf1a8dfb32dc32c04c9f5124e91fcb4c1711f8a0cbf0350b275ee26f8 0.0s done
+#55 naming to docker.io/library/hbs-home-backup-server:latest done
+#55 unpacking to docker.io/library/hbs-home-backup-server:latest 0.0s done
+#55 DONE 0.2s
+
+#56 [beat] resolving provenance for metadata file
+#56 DONE 0.0s
+
+#57 [worker] resolving provenance for metadata file
+#57 DONE 0.0s
+
+#58 [server] resolving provenance for metadata file
+#58 DONE 0.0s
+[ ok ] Compose up finished.
+[ ok ] Saved build fingerprint → .docker-build-fingerprint
+[hbs-home-backup] Verifying containers...
+[ ok ] postgres + server are running.
+[hbs-home-backup] Waiting for health at http://127.0.0.1:38480/api/health (up to 180s)...
+  … not ready yet (1/90)[ ok ] App is healthy.
+[hbs-home-backup] Opening http://127.0.0.1:38480
+
+════════════════════════════════════════════════════
+  HBS is ready
+════════════════════════════════════════════════════
+
+  Admin UI     http://127.0.0.1:38480
+  Login        http://127.0.0.1:38480/login
+  Register     http://127.0.0.1:38480/register  (first user = admin)
+  Health       http://127.0.0.1:38480/api/health
+  Storage      G:/HBS-Backups  →  /data/storage
+  Postgres     localhost:5432  (volume: hbs_postgres_data)
+  Redis        localhost:6380  (volume: hbs_redis_data)
+  Fingerprint  9b8286f7d1b0…  (rebuilt)
+
+  Useful commands
+    docker compose logs -f server
+    docker compose logs -f worker
+    docker compose down          # stop (keeps DB volume)
+    docker compose down -v       # stop + WIPE database volume
+    FORCE_BUILD=1 ./run.sh       # force rebuild
+
+════════════════════════════════════════════════════
+
+
+Press any key to close this window...

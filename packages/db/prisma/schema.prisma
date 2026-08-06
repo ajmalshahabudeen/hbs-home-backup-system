@@ -1,7 +1,4 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
+// HBS Home Backup System — Prisma schema (PostgreSQL + Better Auth)
 
 generator client {
   provider = "prisma-client"
@@ -12,16 +9,18 @@ datasource db {
   provider = "postgresql"
 }
 
+// ─── Better Auth core ───────────────────────────────────────────────────────
+
 model User {
-  id            String       @id
+  id            String          @id
   name          String
   email         String
-  emailVerified Boolean      @default(false)
+  emailVerified Boolean         @default(false)
   image         String?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  role          String?
-  banned        Boolean?     @default(false)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  role          String?         @default("user")
+  banned        Boolean?        @default(false)
   banReason     String?
   banExpires    DateTime?
   sessions      Session[]
@@ -29,6 +28,9 @@ model User {
   passkeys      Passkey[]
   members       Member[]
   invitations   Invitation[]
+  backupFiles   BackupFile[]
+  systemLogs    SystemLog[]     @relation("LogActor")
+  jobs          BackgroundJob[]
 
   @@unique([email])
   @@map("user")
@@ -146,4 +148,76 @@ model Invitation {
   @@index([organizationId])
   @@index([email])
   @@map("invitation")
+}
+
+// ─── App domain ─────────────────────────────────────────────────────────────
+
+model BackupFile {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  path       String
+  name       String
+  parentPath String   @default("")
+  isDir      Boolean  @default(false)
+  mimeType   String?
+  size       BigInt   @default(0)
+  checksum   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, path])
+  @@index([userId])
+  @@index([userId, parentPath])
+  @@index([name])
+  @@map("backup_file")
+}
+
+model SystemLog {
+  id        String   @id @default(cuid())
+  timestamp DateTime @default(now())
+  level     String
+  type      String
+  message   String
+  status    String
+  userEmail String?
+  userId    String?
+  actor     User?    @relation("LogActor", fields: [userId], references: [id], onDelete: SetNull)
+  ipAddress String?
+  userAgent String?
+  metadata  String?
+  createdAt DateTime @default(now())
+
+  @@index([timestamp])
+  @@index([level])
+  @@index([type])
+  @@index([userId])
+  @@index([userEmail])
+  @@map("system_log")
+}
+
+/// Background jobs (Celery / Redis). Python workers claim and update these rows.
+model BackgroundJob {
+  id          String    @id @default(cuid())
+  type        String // SCAN | CONSISTENCY | CHECKSUM | CRON | CUSTOM
+  status      String    @default("PENDING") // PENDING | RUNNING | COMPLETED | FAILED | CANCELLED
+  stage       String?
+  stageLabel  String?
+  progress    Int       @default(0)
+  payload     String? // JSON
+  result      String? // JSON
+  error       String?
+  celeryTaskId String?
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  startedAt   DateTime?
+  finishedAt  DateTime?
+
+  @@index([status])
+  @@index([type])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("background_job")
 }

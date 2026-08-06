@@ -1,0 +1,31 @@
+# Standalone Postgres for local dev / packages/db tooling.
+# Prefer the root docker-compose.yml for full stack (postgres + server).
+#
+# Usage:
+#   cd packages/db && docker compose up -d
+#   bun run db:push
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hbs-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hbs}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hbs_secret_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-hbs_backup}
+    volumes:
+      # Persistent data — survives container restarts and recreates
+      - hbs_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hbs} -d ${POSTGRES_DB:-hbs_backup}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+volumes:
+  hbs_postgres_data:
+    name: hbs_postgres_data

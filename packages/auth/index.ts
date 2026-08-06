@@ -1,2 +1,2 @@
-export * from "./auth";
-export * from "./auth-client";
+export { auth } from "./auth";
+export type { Session } from "./auth";

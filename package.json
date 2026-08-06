@@ -7,7 +7,14 @@
     "dev": "turbo dev",
     "lint": "turbo lint",
     "format": "turbo format",
-    "typecheck": "turbo typecheck"
+    "typecheck": "turbo typecheck",
+    "db:up": "docker compose -f packages/db/docker-compose.yml up -d",
+    "db:generate": "bun run --filter @workspace/db db:generate",
+    "db:push": "bun run --filter @workspace/db db:push",
+    "server:dev": "bun run --filter server dev",
+    "stack:up": "docker compose up -d --build",
+    "stack:down": "docker compose down",
+    "stack:logs": "docker compose logs -f"
   },
   "devDependencies": {
     "@workspace/eslint-config": "workspace:*",

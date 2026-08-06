@@ -1,0 +1,1 @@
+{"ok":true,"service":"hbs-server","time":"2026-08-06T15:47:17.922Z","database":"up","redis":"up","queueBackend":"celery","jobs":{"pending":0,"running":0},"storage":{"ok":true,"root":"/data/storage"}}

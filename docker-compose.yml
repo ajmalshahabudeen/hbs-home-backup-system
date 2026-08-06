@@ -1,0 +1,168 @@
+# HBS Home Backup System — full stack
+# Postgres (persistent) + Redis + Admin Server + Celery worker + Celery beat
+#
+# Host storage (Windows/Linux drive) is bind-mounted into server/worker at /data/storage.
+#
+# HOST_STORAGE_PATH examples (use FORWARD slashes; avoid bare "G:" alone):
+#   Windows:  G:/HBS-Backups    F:/Backups    C:/Users/you/HBS
+#   Linux:    /mnt/data/hbs     /media/backup
+#   Dev:      ./data/storage
+#
+# IMPORTANT: Do NOT use short mount syntax "G:/path:/data/storage" — the drive
+# colon breaks Docker ("too many colons"). We use long-form bind mounts below.
+
+name: hbs-home-backup
+
+x-storage-env: &storage-env
+  STORAGE_ROOT: /data/storage
+  HOST_STORAGE_PATH: /data/storage
+  DATABASE_URL: postgresql://${POSTGRES_USER:-hbs}:${POSTGRES_PASSWORD:-hbs_secret_change_me}@postgres:5432/${POSTGRES_DB:-hbs_backup}?schema=public
+  REDIS_URL: redis://redis:6379/0
+
+# Long-form bind mount — safe with Windows drive letters (G:/...)
+x-storage-vol: &storage-vol
+  type: bind
+  source: ${HOST_STORAGE_PATH:-./data/storage}
+  target: /data/storage
+  bind:
+    create_host_path: true
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hbs-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hbs}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hbs_secret_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-hbs_backup}
+    volumes:
+      - hbs_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hbs} -d ${POSTGRES_DB:-hbs_backup}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - hbs
+
+  redis:
+    image: redis:7-alpine
+    container_name: hbs-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    volumes:
+      - hbs_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    networks:
+      - hbs
+
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    container_name: hbs-server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-38480}:38480"
+    environment:
+      <<: *storage-env
+      NODE_ENV: production
+      PORT: "38480"
+      HOSTNAME: "0.0.0.0"
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-TEOieM5KzQa0qegWGFdUvkWAffEcEfEevaElfivVA}
+      # Runtime server-side only — do NOT pin NEXT_PUBLIC_APP_URL to localhost
+      # or the browser bundle will call localhost from LAN clients (CORS fail).
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:38480}
+      BETTER_AUTH_STRICT_ORIGINS: ${BETTER_AUTH_STRICT_ORIGINS:-false}
+      BETTER_AUTH_PUBLIC_HOSTS: ${BETTER_AUTH_PUBLIC_HOSTS:-}
+      BETTER_AUTH_TRUSTED_ORIGINS: ${BETTER_AUTH_TRUSTED_ORIGINS:-}
+      BETTER_AUTH_PROTOCOL: ${BETTER_AUTH_PROTOCOL:-auto}
+      BETTER_AUTH_SECURE_COOKIES: ${BETTER_AUTH_SECURE_COOKIES:-false}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      QUEUE_BACKEND: ${QUEUE_BACKEND:-celery}
+      PYTHON_BIN: python3
+      PYTHON_SCRIPTS_DIR: /app/python
+    volumes:
+      - *storage-vol
+    labels:
+      com.hbs.fingerprint: "${HBS_BUILD_FINGERPRINT:-unknown}"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:38480/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    networks:
+      - hbs
+
+  worker:
+    build:
+      context: .
+      dockerfile: python/Dockerfile
+    container_name: hbs-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      <<: *storage-env
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-3}
+      WORKER_MAX_TASKS_PER_CHILD: ${WORKER_MAX_TASKS_PER_CHILD:-25}
+      TASK_SOFT_TIME_LIMIT: ${TASK_SOFT_TIME_LIMIT:-1800}
+      TASK_TIME_LIMIT: ${TASK_TIME_LIMIT:-1900}
+      CELERY_QUEUES: default,scans,heavy,cron
+      STALE_JOB_MINUTES: ${STALE_JOB_MINUTES:-60}
+      WORKER_LOGLEVEL: ${WORKER_LOGLEVEL:-INFO}
+    volumes:
+      - *storage-vol
+    networks:
+      - hbs
+
+  beat:
+    build:
+      context: .
+      dockerfile: python/Dockerfile
+    container_name: hbs-beat
+    restart: unless-stopped
+    entrypoint: ["/bin/bash", "/app/python/beat-entrypoint.sh"]
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *storage-env
+      WORKER_LOGLEVEL: ${WORKER_LOGLEVEL:-INFO}
+    volumes:
+      - *storage-vol
+    networks:
+      - hbs
+
+volumes:
+  hbs_postgres_data:
+    name: hbs_postgres_data
+  hbs_redis_data:
+    name: hbs_redis_data
+
+networks:
+  hbs:
+    name: hbs_net
