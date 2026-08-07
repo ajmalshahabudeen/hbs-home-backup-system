@@ -5,12 +5,18 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  TextInput,
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useAppTheme } from '../context/ThemeContext';
 import { BackupFileItem } from '../services/api';
+import {
+  FilterSortBar,
+  SortField,
+  SortOrder,
+  GroupByOption,
+} from './FilterSortBar';
 
 interface DriveFileListProps {
   files: BackupFileItem[];
@@ -21,6 +27,11 @@ interface DriveFileListProps {
   onDeleteFile: (file: BackupFileItem) => void;
   onRefresh?: () => void;
   refreshing?: boolean;
+}
+
+interface FileGroup {
+  title: string;
+  data: BackupFileItem[];
 }
 
 export const DriveFileList: React.FC<DriveFileListProps> = ({
@@ -35,16 +46,13 @@ export const DriveFileList: React.FC<DriveFileListProps> = ({
 }) => {
   const { colors } = useAppTheme();
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
-  const [search, setSearch] = useState<string>('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
-  const categories = [
-    { key: 'all', label: 'All Files', icon: 'folder-open' },
-    { key: 'image', label: 'Images', icon: 'image' },
-    { key: 'video', label: 'Videos', icon: 'film' },
-    { key: 'document', label: 'Docs', icon: 'document-text' },
-    { key: 'audio', label: 'Audio', icon: 'musical-notes' },
-  ];
+  // Search, Sort, Filter, Group state
+  const [search, setSearch] = useState<string>('');
+  const [category, setCategory] = useState<string>('all');
+  const [sortField, setSortField] = useState<SortField>('name');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
+  const [groupBy, setGroupBy] = useState<GroupByOption>('none');
 
   // Breadcrumbs
   const pathParts = currentPath ? currentPath.split('/') : [];
@@ -58,15 +66,16 @@ export const DriveFileList: React.FC<DriveFileListProps> = ({
     }
   };
 
+  // Filter items
   const filteredFiles = files.filter((f) => {
     if (search && !f.name.toLowerCase().includes(search.toLowerCase())) {
       return false;
     }
-    if (selectedCategory === 'all') return true;
-    if (selectedCategory === 'image') return f.mimeType?.startsWith('image/');
-    if (selectedCategory === 'video') return f.mimeType?.startsWith('video/');
-    if (selectedCategory === 'audio') return f.mimeType?.startsWith('audio/');
-    if (selectedCategory === 'document')
+    if (category === 'all') return true;
+    if (category === 'image') return f.mimeType?.startsWith('image/');
+    if (category === 'video') return f.mimeType?.startsWith('video/');
+    if (category === 'audio') return f.mimeType?.startsWith('audio/');
+    if (category === 'document')
       return (
         f.mimeType?.includes('pdf') ||
         f.mimeType?.includes('text') ||
@@ -75,6 +84,54 @@ export const DriveFileList: React.FC<DriveFileListProps> = ({
       );
     return true;
   });
+
+  // Sort items (folders first, then sorted by sortField/order)
+  const sortedFiles = [...filteredFiles].sort((a, b) => {
+    if (a.isDir && !b.isDir) return -1;
+    if (!a.isDir && b.isDir) return 1;
+
+    let cmp = 0;
+    if (sortField === 'name') {
+      cmp = a.name.localeCompare(b.name);
+    } else if (sortField === 'date') {
+      cmp = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    } else if (sortField === 'size') {
+      cmp = b.size - a.size;
+    }
+    return sortOrder === 'asc' ? cmp : -cmp;
+  });
+
+  // Group items
+  const groupFiles = (items: BackupFileItem[]): FileGroup[] => {
+    if (groupBy === 'none') {
+      return [{ title: '', data: items }];
+    }
+
+    const groups: Record<string, BackupFileItem[]> = {};
+
+    items.forEach((item) => {
+      let groupKey = 'Files';
+      if (item.isDir) {
+        groupKey = 'Folders';
+      } else if (groupBy === 'category') {
+        const mime = item.mimeType || '';
+        if (mime.startsWith('image/')) groupKey = 'Images';
+        else if (mime.startsWith('video/')) groupKey = 'Videos';
+        else if (mime.startsWith('audio/')) groupKey = 'Audio';
+        else groupKey = 'Documents & Files';
+      }
+
+      if (!groups[groupKey]) groups[groupKey] = [];
+      groups[groupKey].push(item);
+    });
+
+    return Object.keys(groups).map((title) => ({
+      title,
+      data: groups[title],
+    }));
+  };
+
+  const fileGroups = groupFiles(sortedFiles);
 
   const getFileIcon = (file: BackupFileItem) => {
     if (file.isDir) return { name: 'folder', color: '#F9AB00' };
@@ -136,7 +193,7 @@ export const DriveFileList: React.FC<DriveFileListProps> = ({
           onPress={() => (item.isDir ? onNavigatePath(item.path) : onOpenFile(item))}
           onLongPress={() => promptRename(item)}
         >
-          <Ionicons name={iconInfo.name as any} size={38} color={iconInfo.color} />
+          <Ionicons name={iconInfo.name as any} size={36} color={iconInfo.color} />
           <Text style={[styles.gridName, { color: colors.text }]} numberOfLines={2}>
             {item.name}
           </Text>
@@ -156,12 +213,7 @@ export const DriveFileList: React.FC<DriveFileListProps> = ({
         onPress={() => (item.isDir ? onNavigatePath(item.path) : onOpenFile(item))}
         onLongPress={() => promptRename(item)}
       >
-        <View
-          style={[
-            styles.iconWrapper,
-            { backgroundColor: iconInfo.color + '15' },
-          ]}
-        >
+        <View style={[styles.iconWrapper, { backgroundColor: iconInfo.color + '15' }]}>
           <Ionicons name={iconInfo.name as any} size={22} color={iconInfo.color} />
         </View>
 
@@ -183,66 +235,23 @@ export const DriveFileList: React.FC<DriveFileListProps> = ({
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Search Input Bar */}
-      <View style={[styles.searchBar, { backgroundColor: colors.searchBg }]}>
-        <Ionicons name="search-outline" size={18} color={colors.textSecondary} />
-        <TextInput
-          style={[styles.searchInput, { color: colors.text }]}
-          placeholder="Search Drive files & folders..."
-          placeholderTextColor={colors.textSecondary}
-          value={search}
-          onChangeText={setSearch}
-        />
-        {search.length > 0 && (
-          <TouchableOpacity onPress={() => setSearch('')}>
-            <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
-          </TouchableOpacity>
-        )}
-      </View>
+      {/* Search, Sort, Filter, Group Control Bar */}
+      <FilterSortBar
+        searchQuery={search}
+        onSearchChange={setSearch}
+        selectedCategory={category}
+        onCategorySelect={setCategory}
+        sortField={sortField}
+        sortOrder={sortOrder}
+        onSortChange={(f, o) => {
+          setSortField(f);
+          setSortOrder(o);
+        }}
+        groupBy={groupBy}
+        onGroupByChange={setGroupBy}
+      />
 
-      {/* Category Pills Slider */}
-      <View style={styles.categoryRow}>
-        <FlatList
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          data={categories}
-          keyExtractor={(item) => item.key}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={[
-                styles.categoryChip,
-                {
-                  backgroundColor:
-                    selectedCategory === item.key
-                      ? colors.primaryContainer
-                      : colors.surfaceVariant,
-                },
-              ]}
-              onPress={() => setSelectedCategory(item.key)}
-            >
-              <Ionicons
-                name={item.icon as any}
-                size={14}
-                color={selectedCategory === item.key ? colors.primary : colors.textSecondary}
-              />
-              <Text
-                style={[
-                  styles.categoryText,
-                  {
-                    color:
-                      selectedCategory === item.key ? colors.primary : colors.textSecondary,
-                    fontWeight: selectedCategory === item.key ? '700' : '500',
-                  },
-                ]}
-              >
-                {item.label}
-              </Text>
-            </TouchableOpacity>
-          )}
-        />
-      </View>
-
-      {/* Breadcrumb Path & View Mode Toggle */}
+      {/* Breadcrumb Path & View Mode Toggle Header */}
       <View style={styles.pathHeader}>
         <View style={styles.breadcrumbs}>
           <TouchableOpacity onPress={() => navigateToBreadcrumb(-1)}>
@@ -257,8 +266,7 @@ export const DriveFileList: React.FC<DriveFileListProps> = ({
                   style={[
                     styles.breadcrumbText,
                     {
-                      color:
-                        index === pathParts.length - 1 ? colors.text : colors.primary,
+                      color: index === pathParts.length - 1 ? colors.text : colors.primary,
                       fontWeight: index === pathParts.length - 1 ? '700' : '400',
                     },
                   ]}
@@ -285,14 +293,28 @@ export const DriveFileList: React.FC<DriveFileListProps> = ({
 
       {/* File List / Grid */}
       <FlatList
-        data={filteredFiles}
-        key={viewMode}
-        keyExtractor={(item) => item.id}
-        numColumns={viewMode === 'grid' ? 2 : 1}
+        data={fileGroups}
+        keyExtractor={(item, idx) => item.title || `file_group_${idx}`}
         refreshing={refreshing}
         onRefresh={onRefresh}
         contentContainerStyle={{ paddingBottom: 100 }}
-        renderItem={renderFileItem}
+        renderItem={({ item: group }) => (
+          <View style={styles.groupSection}>
+            {group.title ? (
+              <Text style={[styles.groupTitle, { color: colors.text }]}>
+                {group.title}
+              </Text>
+            ) : null}
+
+            <FlatList
+              data={group.data}
+              key={viewMode}
+              keyExtractor={(item) => item.id}
+              numColumns={viewMode === 'grid' ? 2 : 1}
+              renderItem={renderFileItem}
+            />
+          </View>
+        )}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Ionicons name="folder-open-outline" size={54} color={colors.textSecondary} />
@@ -312,41 +334,13 @@ export const DriveFileList: React.FC<DriveFileListProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 16,
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    height: 42,
-    borderRadius: 24,
-    marginTop: 10,
-    gap: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-  },
-  categoryRow: {
-    marginVertical: 10,
-  },
-  categoryChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    marginRight: 8,
-    gap: 6,
-  },
-  categoryText: {
-    fontSize: 12,
   },
   pathHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    paddingHorizontal: 16,
+    marginBottom: 10,
   },
   breadcrumbs: {
     flexDirection: 'row',
@@ -362,12 +356,21 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 8,
   },
+  groupSection: {
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  groupTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
   listRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 12,
     paddingHorizontal: 12,
-    borderRadius: 10,
+    borderRadius: 12,
     marginBottom: 6,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
@@ -383,7 +386,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   fileName: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
   },
   fileMeta: {
@@ -397,14 +400,14 @@ const styles = StyleSheet.create({
     flex: 1,
     margin: 4,
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 120,
+    minHeight: 110,
   },
   gridName: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
     marginTop: 8,

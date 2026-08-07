@@ -39,6 +39,24 @@ export async function POST(request: NextRequest) {
     const name = rawName.replace(/[\\/]/g, "_");
     const rel = toPosixRel(parentPath ? `${parentPath}/${name}` : name);
 
+    // Preflight deduplication check
+    const checkOnly =
+      request.headers.get("x-check-only") === "1" ||
+      new URL(request.url).searchParams.get("check") === "1";
+    const existing = await prisma.backupFile.findUnique({
+      where: { userId_path: { userId, path: rel } },
+    });
+
+    if (checkOnly && existing) {
+      return ok({
+        duplicate: true,
+        file: {
+          ...existing,
+          size: Number(existing.size),
+        },
+      });
+    }
+
     const abs = resolveUserPath(userId, rel);
     fs.mkdirSync(path.dirname(abs), { recursive: true });
     const buf = Buffer.from(await file.arrayBuffer());

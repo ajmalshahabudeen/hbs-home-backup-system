@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -16,6 +17,14 @@ import { useAuth } from '../../context/AuthContext';
 import { hbsApi, UserStats } from '../../services/api';
 import { Header } from '../../components/Header';
 import { LanScannerModal } from '../../components/LanScannerModal';
+import { GlassCard } from '../../components/ui/GlassCard';
+import { safeNotifications } from '../../utils/safeNotifications';
+import {
+  getAppPermissionsStatus,
+  openSystemAppSettings,
+  PermissionStatusSummary,
+} from '../../utils/permissions';
+import { appStorage } from '../../utils/storage';
 
 export default function SettingsScreen() {
   const { colors, themeMode, setThemeMode } = useAppTheme();
@@ -25,12 +34,36 @@ export default function SettingsScreen() {
 
   const [stats, setStats] = useState<UserStats | null>(null);
   const [showScannerModal, setShowScannerModal] = useState<boolean>(false);
+  const [permissions, setPermissions] = useState<PermissionStatusSummary | null>(null);
+  const [notifEnabled, setNotifEnabled] = useState<boolean>(true);
 
   useEffect(() => {
     if (serverUrl && isConnected) {
       hbsApi.getUserStats(serverUrl, sessionToken).then(setStats).catch(() => {});
     }
+    loadPerms();
   }, [serverUrl, isConnected, sessionToken]);
+
+  const loadPerms = async () => {
+    const status = await getAppPermissionsStatus();
+    setPermissions(status);
+
+    const savedNotif = await appStorage.getItem('hbs_notifications_enabled');
+    if (savedNotif !== null) setNotifEnabled(JSON.parse(savedNotif));
+    else setNotifEnabled(status.notificationsGranted);
+  };
+
+  const handleToggleNotif = async (val: boolean) => {
+    if (val) {
+      const res = await safeNotifications.requestPermissionsAsync();
+      setNotifEnabled(res.granted);
+      await appStorage.setItem('hbs_notifications_enabled', JSON.stringify(res.granted));
+    } else {
+      setNotifEnabled(false);
+      await appStorage.setItem('hbs_notifications_enabled', JSON.stringify(false));
+    }
+    loadPerms();
+  };
 
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out of HBS?', [
@@ -57,7 +90,7 @@ export default function SettingsScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         {/* Profile Card */}
         {user && (
-          <View style={[styles.profileCard, { backgroundColor: colors.surfaceVariant }]}>
+          <GlassCard style={styles.profileCard} borderRadius={22}>
             <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
               <Text style={styles.avatarText}>
                 {(user.name || user.email || 'U')[0].toUpperCase()}
@@ -75,19 +108,18 @@ export default function SettingsScreen() {
                 </View>
               )}
             </View>
-          </View>
+          </GlassCard>
         )}
 
-        {/* Storage Quota Usage Card */}
+        {/* Cloud Storage Usage */}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Cloud Storage Usage</Text>
 
-        <View style={[styles.quotaCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <GlassCard style={styles.quotaCard} borderRadius={20}>
           <View style={styles.quotaHeader}>
             <Text style={[styles.quotaTitle, { color: colors.text }]}>Storage Used</Text>
             <Text style={[styles.quotaValue, { color: colors.primary }]}>{formattedUsedGb} GB</Text>
           </View>
 
-          {/* Simple Storage Bar */}
           <View style={[styles.quotaBarBg, { backgroundColor: colors.border }]}>
             <View
               style={[
@@ -117,9 +149,75 @@ export default function SettingsScreen() {
               </Text>
             </View>
           </View>
-        </View>
+        </GlassCard>
 
-        {/* Theme Settings Selector */}
+        {/* App Permissions Diagnostic Panel */}
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>System Permissions & Diagnostic</Text>
+
+        <GlassCard style={styles.permCard} borderRadius={20}>
+          <View style={styles.permRow}>
+            <Ionicons name="images-outline" size={20} color={colors.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.permTitle, { color: colors.text }]}>Media Library Access</Text>
+              <Text style={[styles.permSub, { color: colors.textSecondary }]}>
+                {permissions?.mediaLibraryGranted ? 'Granted & Active' : 'Permission Required'}
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.statusBadge,
+                {
+                  backgroundColor: permissions?.mediaLibraryGranted
+                    ? colors.success + '20'
+                    : colors.error + '20',
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.statusBadgeText,
+                  {
+                    color: permissions?.mediaLibraryGranted ? colors.success : colors.error,
+                  },
+                ]}
+              >
+                {permissions?.mediaLibraryGranted ? 'Active' : 'Missing'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+          <View style={styles.permRow}>
+            <Ionicons name="notifications-outline" size={20} color={colors.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.permTitle, { color: colors.text }]}>Push Notifications</Text>
+              <Text style={[styles.permSub, { color: colors.textSecondary }]}>
+                Receive auto-sync completion notifications
+              </Text>
+            </View>
+            <Switch
+              value={notifEnabled}
+              onValueChange={handleToggleNotif}
+              trackColor={{ false: colors.border, true: colors.primary }}
+            />
+          </View>
+
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+          <TouchableOpacity style={styles.permRow} onPress={openSystemAppSettings}>
+            <Ionicons name="settings-outline" size={20} color={colors.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.permTitle, { color: colors.text }]}>Open OS App Settings</Text>
+              <Text style={[styles.permSub, { color: colors.textSecondary }]}>
+                Manage system permissions directly in Android/iOS settings
+              </Text>
+            </View>
+            <Ionicons name="open-outline" size={18} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </GlassCard>
+
+        {/* Appearance & Theme Selector */}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Appearance & Theme</Text>
 
         <View style={[styles.themeGroup, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -146,27 +244,26 @@ export default function SettingsScreen() {
           ))}
         </View>
 
-        {/* Network & Server Settings */}
+        {/* Server Connection Card */}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Server Connection</Text>
 
-        <TouchableOpacity
-          style={[styles.serverCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-          onPress={() => setShowScannerModal(true)}
-        >
-          <View style={[styles.serverIconBg, { backgroundColor: colors.primaryContainer }]}>
-            <Ionicons name="wifi" size={20} color={colors.primary} />
-          </View>
+        <TouchableOpacity onPress={() => setShowScannerModal(true)}>
+          <GlassCard style={styles.serverCard} borderRadius={20}>
+            <View style={[styles.serverIconBg, { backgroundColor: colors.primaryContainer }]}>
+              <Ionicons name="wifi" size={20} color={colors.primary} />
+            </View>
 
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.serverCardTitle, { color: colors.text }]}>
-              HBS LAN Server Settings
-            </Text>
-            <Text style={[styles.serverCardSub, { color: colors.textSecondary }]} numberOfLines={1}>
-              {serverUrl}
-            </Text>
-          </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.serverCardTitle, { color: colors.text }]}>
+                HBS LAN Server Settings
+              </Text>
+              <Text style={[styles.serverCardSub, { color: colors.textSecondary }]} numberOfLines={1}>
+                {serverUrl}
+              </Text>
+            </View>
 
-          <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+          </GlassCard>
         </TouchableOpacity>
 
         {/* Sign Out Button */}
@@ -198,10 +295,8 @@ const styles = StyleSheet.create({
   profileCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    borderRadius: 20,
     gap: 14,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   avatar: {
     width: 52,
@@ -235,16 +330,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     marginBottom: 10,
     marginTop: 8,
   },
   quotaCard: {
-    padding: 18,
-    borderRadius: 16,
-    borderWidth: 1,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   quotaHeader: {
     flexDirection: 'row',
@@ -286,10 +378,40 @@ const styles = StyleSheet.create({
   statDetailText: {
     fontSize: 12,
   },
+  permCard: {
+    marginBottom: 20,
+  },
+  permRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    gap: 12,
+  },
+  permTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  permSub: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    marginVertical: 10,
+  },
   themeGroup: {
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   themeRow: {
     flexDirection: 'row',
@@ -299,17 +421,14 @@ const styles = StyleSheet.create({
   },
   themeLabel: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '500',
   },
   serverCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    borderRadius: 16,
-    borderWidth: 1,
     gap: 12,
-    marginBottom: 28,
+    marginBottom: 24,
   },
   serverIconBg: {
     width: 38,
@@ -319,7 +438,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   serverCardTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
   },
   serverCardSub: {
@@ -333,6 +452,7 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 24,
     gap: 8,
+    marginTop: 8,
   },
   logoutBtnText: {
     fontSize: 15,

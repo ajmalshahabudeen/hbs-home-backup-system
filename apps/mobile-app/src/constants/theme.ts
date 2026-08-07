@@ -15,6 +15,7 @@ export interface ThemeColors {
   card: string;
   text: string;
   textSecondary: string;
+  subtext: string;
   border: string;
   error: string;
   success: string;
@@ -40,6 +41,7 @@ export const GooglePalette: { light: ThemeColors; dark: ThemeColors } = {
     card: '#FFFFFF',
     text: '#202124',
     textSecondary: '#5F6368',
+    subtext: '#5F6368',
     border: '#DADCE0',
     error: '#D93025',
     success: '#188038',
@@ -63,6 +65,7 @@ export const GooglePalette: { light: ThemeColors; dark: ThemeColors } = {
     card: '#1E1E1E',
     text: '#E8EAED',
     textSecondary: '#9AA0A6',
+    subtext: '#9AA0A6',
     border: '#3C4043',
     error: '#F28B82',
     success: '#81C995',

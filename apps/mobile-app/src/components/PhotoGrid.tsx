@@ -6,11 +6,18 @@ import {
   FlatList,
   TouchableOpacity,
   Dimensions,
-  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, { FadeInUp } from 'react-native-reanimated';
+import { Image } from 'expo-image';
 import { useAppTheme } from '../context/ThemeContext';
 import { PhotoMediaItem } from '../services/api';
+import {
+  FilterSortBar,
+  SortField,
+  SortOrder,
+  GroupByOption,
+} from './FilterSortBar';
 
 interface PhotoGridProps {
   media: PhotoMediaItem[];
@@ -19,7 +26,7 @@ interface PhotoGridProps {
   refreshing?: boolean;
 }
 
-interface DateGroup {
+interface MediaGroup {
   title: string;
   data: PhotoMediaItem[];
 }
@@ -35,8 +42,42 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
   const { colors } = useAppTheme();
   const [columns, setColumns] = useState<number>(3);
 
-  // Group media by Date
-  const groupMediaByDate = (items: PhotoMediaItem[]): DateGroup[] => {
+  // Filter, Sort, Group state
+  const [search, setSearch] = useState<string>('');
+  const [category, setCategory] = useState<string>('all');
+  const [sortField, setSortField] = useState<SortField>('date');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const [groupBy, setGroupBy] = useState<GroupByOption>('day');
+
+  // Filter items
+  const filteredMedia = media.filter((item) => {
+    if (search && !item.name.toLowerCase().includes(search.toLowerCase())) {
+      return false;
+    }
+    if (category === 'image') return !item.isVideo;
+    if (category === 'video') return item.isVideo;
+    return true;
+  });
+
+  // Sort items
+  const sortedMedia = [...filteredMedia].sort((a, b) => {
+    let cmp = 0;
+    if (sortField === 'date') {
+      cmp = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    } else if (sortField === 'name') {
+      cmp = a.name.localeCompare(b.name);
+    } else if (sortField === 'size') {
+      cmp = b.size - a.size;
+    }
+    return sortOrder === 'desc' ? cmp : -cmp;
+  });
+
+  // Group media according to groupBy option
+  const groupMedia = (items: PhotoMediaItem[]): MediaGroup[] => {
+    if (groupBy === 'none') {
+      return [{ title: '', data: items }];
+    }
+
     const groups: Record<string, PhotoMediaItem[]> = {};
 
     const todayStr = new Date().toDateString();
@@ -46,16 +87,27 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
 
     items.forEach((item) => {
       const d = new Date(item.createdAt);
-      let groupKey = d.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      });
+      let groupKey = '';
 
-      if (d.toDateString() === todayStr) {
-        groupKey = 'Today';
-      } else if (d.toDateString() === yesterdayStr) {
-        groupKey = 'Yesterday';
+      if (groupBy === 'category') {
+        groupKey = item.isVideo ? 'Videos' : 'Photos';
+      } else if (groupBy === 'year') {
+        groupKey = String(d.getFullYear());
+      } else if (groupBy === 'month') {
+        groupKey = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      } else {
+        // day grouping default
+        if (d.toDateString() === todayStr) {
+          groupKey = 'Today';
+        } else if (d.toDateString() === yesterdayStr) {
+          groupKey = 'Yesterday';
+        } else {
+          groupKey = d.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          });
+        }
       }
 
       if (!groups[groupKey]) groups[groupKey] = [];
@@ -68,15 +120,36 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
     }));
   };
 
-  const dateGroups = groupMediaByDate(media);
+  const mediaGroups = groupMedia(sortedMedia);
   const itemSize = (windowWidth - 32 - (columns - 1) * 4) / columns;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Column Switcher Bar */}
+      {/* Search, Sort, Filter, Group Control Bar */}
+      <FilterSortBar
+        searchQuery={search}
+        onSearchChange={setSearch}
+        selectedCategory={category}
+        onCategorySelect={setCategory}
+        sortField={sortField}
+        sortOrder={sortOrder}
+        onSortChange={(f, o) => {
+          setSortField(f);
+          setSortOrder(o);
+        }}
+        groupBy={groupBy}
+        onGroupByChange={setGroupBy}
+        categories={[
+          { label: 'All Media', value: 'all', icon: 'images-outline' },
+          { label: 'Photos Only', value: 'image', icon: 'image-outline' },
+          { label: 'Videos Only', value: 'video', icon: 'film-outline' },
+        ]}
+      />
+
+      {/* Grid Layout Toggle & Item Counter Header */}
       <View style={styles.topControlRow}>
         <Text style={[styles.countText, { color: colors.textSecondary }]}>
-          {media.length} {media.length === 1 ? 'item' : 'photos & videos'}
+          Showing {sortedMedia.length} {sortedMedia.length === 1 ? 'item' : 'items'}
         </Text>
 
         <View style={[styles.gridToggleContainer, { backgroundColor: colors.surfaceVariant }]}>
@@ -102,54 +175,63 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
         </View>
       </View>
 
-      {media.length === 0 ? (
+      {sortedMedia.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Ionicons name="images-outline" size={64} color={colors.textSecondary} />
-          <Text style={[styles.emptyTitle, { color: colors.text }]}>No Photos Yet</Text>
+          <Ionicons name="images-outline" size={56} color={colors.textSecondary} />
+          <Text style={[styles.emptyTitle, { color: colors.text }]}>No Media Found</Text>
           <Text style={[styles.emptySub, { color: colors.textSecondary }]}>
-            Upload photos from your camera roll or backup automatically.
+            {search
+              ? `No items matching "${search}"`
+              : 'Upload photos from your device or configure auto-sync.'}
           </Text>
         </View>
       ) : (
         <FlatList
-          data={dateGroups}
-          keyExtractor={(item) => item.title}
+          data={mediaGroups}
+          keyExtractor={(item, idx) => item.title || `group_${idx}`}
           refreshing={refreshing}
           onRefresh={onRefresh}
-          contentContainerStyle={{ paddingBottom: 80 }}
+          contentContainerStyle={{ paddingBottom: 100 }}
           renderItem={({ item: group }) => (
             <View style={styles.groupSection}>
-              <Text style={[styles.groupTitle, { color: colors.text }]}>
-                {group.title}
-              </Text>
+              {group.title ? (
+                <Text style={[styles.groupTitle, { color: colors.text }]}>
+                  {group.title}
+                </Text>
+              ) : null}
 
               <View style={styles.gridContainer}>
-                {group.data.map((item) => (
-                  <TouchableOpacity
+                {group.data.map((item, index) => (
+                  <Animated.View
                     key={item.id}
-                    style={[
-                      styles.photoCard,
-                      {
-                        width: itemSize,
-                        height: itemSize,
-                        backgroundColor: colors.surfaceVariant,
-                      },
-                    ]}
-                    activeOpacity={0.85}
-                    onPress={() => onSelectMedia(item)}
+                    entering={FadeInUp.delay(Math.min(index * 25, 300)).duration(300)}
                   >
-                    <Image
-                      source={{ uri: item.url }}
-                      style={styles.thumbnailImage}
-                      resizeMode="cover"
-                    />
+                    <TouchableOpacity
+                      style={[
+                        styles.photoCard,
+                        {
+                          width: itemSize,
+                          height: itemSize,
+                          backgroundColor: colors.surfaceVariant,
+                        },
+                      ]}
+                      activeOpacity={0.85}
+                      onPress={() => onSelectMedia(item)}
+                    >
+                      <Image
+                        source={{ uri: item.url }}
+                        style={styles.thumbnailImage}
+                        contentFit="cover"
+                        transition={200}
+                      />
 
-                    {item.isVideo && (
-                      <View style={styles.videoBadge}>
-                        <Ionicons name="play" size={12} color="#FFFFFF" />
-                      </View>
-                    )}
-                  </TouchableOpacity>
+                      {item.isVideo && (
+                        <View style={styles.videoBadge}>
+                          <Ionicons name="play" size={12} color="#FFFFFF" />
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  </Animated.View>
                 ))}
               </View>
             </View>
@@ -163,16 +245,16 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 16,
   },
   topControlRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 8,
   },
   countText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
   gridToggleContainer: {
@@ -190,10 +272,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   groupSection: {
-    marginBottom: 20,
+    paddingHorizontal: 16,
+    marginBottom: 16,
   },
   groupTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     marginBottom: 8,
   },
@@ -203,7 +286,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   photoCard: {
-    borderRadius: 6,
+    borderRadius: 8,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -222,21 +305,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
     padding: 32,
-    marginTop: 60,
+    marginTop: 40,
   },
   emptyTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
-    marginTop: 16,
+    marginTop: 14,
   },
   emptySub: {
-    fontSize: 14,
+    fontSize: 13,
     textAlign: 'center',
-    marginTop: 8,
-    lineHeight: 20,
+    marginTop: 6,
+    lineHeight: 18,
   },
 });

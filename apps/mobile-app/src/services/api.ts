@@ -191,6 +191,26 @@ export const hbsApi = {
     return request<UserStats>(serverUrl, sessionToken, '/api/user/stats');
   },
 
+  checkDuplicate: async (
+    serverUrl: string,
+    sessionToken: string | null,
+    fileName: string,
+    size?: number,
+    checksum?: string,
+    parentPath: string = ''
+  ): Promise<{ duplicate: boolean; file: BackupFileItem | null }> => {
+    return request<{ duplicate: boolean; file: BackupFileItem | null }>(
+      serverUrl,
+      sessionToken,
+      '/api/user/upload/check',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: fileName, size, checksum, path: parentPath }),
+      }
+    );
+  },
+
   getMediaUrl: (serverUrl: string, mediaPath: string): string => {
     return `${serverUrl}/api/user/media/${encodeURIComponent(mediaPath)}`;
   },
