@@ -83,7 +83,7 @@
 - Completely removed all demo sample photos and videos (`sample_1`, `sample_2`, `sample_3` / Unsplash / Google Cloud links) and fallback demo albums from `safeMediaLibrary.ts`.
 - Fixed native media library access in `app.json` by adding the `"expo-media-library"` plugin (`photosPermission`, `savePhotosPermission`, `isAccessMediaLocationEnabled`) and adding `READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`, `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO` under `android.permissions`.
 - Fixed permission status bug in `safeMediaLibrary.ts` (was incorrectly returning `granted: true` when ungranted/uninitialized, blocking native OS permission dialogs).
-- Deprecated `<Header />` component in `Header.tsx` to return `null` and removed `<Header ... />` usages across all tab screens (`photos.tsx`, `drive.tsx`, `backup.tsx`, `settings.tsx`), replacing them with clean screen title bars as requested.
+- Refined Dark Mode theme palette in `theme.ts` to reduce glare and high contrast: updated primary accent to a smooth deep golden amber (`#E5A100` / `#D97706`), softened dark backgrounds (`#14120E` & `#1C1914`), and set body text to clean warm off-white (`#F3F4F6`).
 - Verified TypeScript compilation across workspace (`bun run typecheck`) with zero errors.
 
 

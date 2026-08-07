@@ -234,7 +234,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
                       />
 
                       {item.isBackedUp && (
-                        <View style={styles.cloudBadge}>
+                        <View style={[styles.cloudBadge, { backgroundColor: colors.primary }]}>
                           <Ionicons name="cloud-done" size={13} color="#FFFFFF" />
                         </View>
                       )}

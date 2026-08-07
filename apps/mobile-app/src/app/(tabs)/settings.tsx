@@ -259,7 +259,7 @@ export default function SettingsScreen() {
         <TouchableOpacity onPress={() => setShowScannerModal(true)} activeOpacity={0.8}>
           <GlassCard style={styles.serverCard} borderRadius={20}>
             <LinearGradient
-              colors={isDark ? ['#3B82F6', '#8B5CF6'] : ['#1A73E8', '#7C3AED']}
+              colors={isDark ? ['#FACC15', '#D97706'] : ['#F59E0B', '#B45309']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.cardIconBadge}
