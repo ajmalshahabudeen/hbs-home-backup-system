@@ -41,7 +41,11 @@
 - Verified TypeScript compilation across workspace (`bun run typecheck`) with zero errors.
 - Ran `bun run db:generate` in `packages/db` to generate fresh Prisma client types after dependency installation.
 - Created `safeNotifications.ts` and `safeMediaLibrary.ts` wrappers using conditional environment detection (`ExecutionEnvironment.StoreClient` / `appOwnership === 'expo'`) to prevent `expo-notifications` push token warning and `ExpoMediaLibraryNext` missing native module crashes in Expo Go while maintaining full functionality in standalone builds.
-- Migrated from deprecated `expo-background-fetch` to official Expo SDK 57 `expo-background-task` in `permissions.ts` and `backgroundSync.ts`, eliminating deprecation warnings.
+- Configured `"usesCleartextTraffic": true` and Android network permissions in `app.json` to fix Android 9+ security policy blocking unencrypted HTTP connections over LAN (`http://192.168.1.100:38480`) in production/standalone APK builds.
+- Upgraded `ServerContext.tsx` with persistent URL storage, 5000ms LAN health check timeout, fast-path candidate scanning for `192.168.1.100`, and IPv4 subnet parsing.
+- Installed `expo-build-properties` via Bun and configured `usesCleartextTraffic: true` under `"plugins"` in `app.json` to resolve Expo config schema validation warning while enforcing cleartext HTTP over LAN.
+
+
 
 
 

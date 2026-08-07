@@ -75,7 +75,7 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const urlToTest = normalizeServerUrl(targetUrl || serverUrl);
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
 
       const resp = await fetch(`${urlToTest}/api/health`, {
         signal: controller.signal,
@@ -98,10 +98,8 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const normalized = normalizeServerUrl(url);
     setIsChecking(true);
     setServerUrlState(normalized);
+    await appStorage.setItem(SERVER_URL_KEY, normalized).catch(() => {});
     const valid = await testConnection(normalized);
-    if (valid) {
-      await appStorage.setItem(SERVER_URL_KEY, normalized).catch(() => {});
-    }
     setIsChecking(false);
     return valid;
   };
@@ -121,7 +119,9 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const subnetsToScan: string[] = [];
 
     if (deviceIp && deviceIp !== '127.0.0.1' && deviceIp !== '0.0.0.0') {
-      const parts = deviceIp.split('.');
+      const ipv4Match = deviceIp.match(/(?:\d{1,3}\.){3}\d{1,3}/);
+      const cleanIp = ipv4Match ? ipv4Match[0] : deviceIp;
+      const parts = cleanIp.split('.');
       if (parts.length === 4) {
         subnetsToScan.push(`${parts[0]}.${parts[1]}.${parts[2]}`);
       }
@@ -131,20 +131,23 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       subnetsToScan.push('192.168.1');
     }
 
-    // Fast path: Check loopback & emulator hosts first
-    const fastCandidates = [
-      '127.0.0.1',
-      '10.0.2.2', // Android emulator loopback host
-      'localhost',
-      ...(deviceIp ? [deviceIp] : []),
-    ];
+    // Fast path: Check loopback, emulator hosts, and standard LAN IPs
+    const fastCandidates = Array.from(
+      new Set([
+        '192.168.1.100',
+        '127.0.0.1',
+        '10.0.2.2',
+        'localhost',
+        ...(deviceIp ? [deviceIp] : []),
+      ])
+    );
 
     for (const host of fastCandidates) {
       const target = `http://${host}:${DEFAULT_PORT}`;
       const start = Date.now();
       try {
         const controller = new AbortController();
-        const tid = setTimeout(() => controller.abort(), 1000);
+        const tid = setTimeout(() => controller.abort(), 1200);
         const res = await fetch(`${target}/api/health`, { signal: controller.signal });
         clearTimeout(tid);
         if (res.ok) {
