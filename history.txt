@@ -86,7 +86,9 @@
 - Enhanced `backup.tsx` with live sync progress tracking (current file name, step status, percentage badge, and smooth progress bar) and added a dedicated **Auto-Sync Selected Folders Now** engine (`handleStartAutoSync`).
 - Integrated background process sync (`BACKGROUND_SYNC_TASK` via `BackgroundTask.registerTaskAsync` / `TaskManager`) in `backgroundSync.ts` and `backup.tsx` to automatically run camera roll photo & video sync even when the app is closed or minimized.
 - Added progress notifications (`sendLocalSyncNotification`) with step & percentage progress updates during sync operations, and added a user toggle switch **Sync Progress Notifications** (`showSyncNotifications`) in `backup.tsx` preferences.
-- Installed `@expo-google-fonts/manrope` & `expo-font` in `apps/mobile-app`, loaded `Manrope` Google font family in `_layout.tsx`, and configured typography tokens in `theme.ts` to share the same clean typography as `apps/web`.
+- Implemented 5 curated color accent palettes (`Amber Gold`, `Ocean Blue`, `Emerald Mint`, `Violet Plum`, `Rose Amber`) in `theme.ts` with low-contrast, comfortable tones across both Light and Dark modes.
+- Added persistent palette storage (`hbs_app_color_palette` via `appStorage`) and dynamic theme state in `ThemeContext.tsx` (`paletteKey`, `setPaletteKey`).
+- Added an interactive **Color Accent Palette** selector in `settings.tsx` with live swatches and active checkmarks for instant real-time theme customization across all app screens.
 - Verified TypeScript compilation across workspace (`bun run typecheck`) with zero errors.
 
 

@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAppTheme } from '../../context/ThemeContext';
+import { ColorPalettes, PaletteKey } from '../../constants/theme';
 import { useServer } from '../../context/ServerContext';
 import { useAuth } from '../../context/AuthContext';
 import { hbsApi, UserStats } from '../../services/api';
@@ -27,7 +28,7 @@ import {
 import { appStorage } from '../../utils/storage';
 
 export default function SettingsScreen() {
-  const { colors, isDark, themeMode, setThemeMode } = useAppTheme();
+  const { colors, isDark, themeMode, setThemeMode, paletteKey, setPaletteKey } = useAppTheme();
   const router = useRouter();
   const { serverUrl, isConnected } = useServer();
   const { user, signOut, sessionToken } = useAuth();
@@ -45,24 +46,16 @@ export default function SettingsScreen() {
   }, [serverUrl, isConnected, sessionToken]);
 
   const loadPerms = async () => {
-    const status = await getAppPermissionsStatus();
-    setPermissions(status);
-
-    const savedNotif = await appStorage.getItem('hbs_notifications_enabled');
-    if (savedNotif !== null) setNotifEnabled(JSON.parse(savedNotif));
-    else setNotifEnabled(status.notificationsGranted);
+    const p = await getAppPermissionsStatus();
+    setPermissions(p);
   };
 
   const handleToggleNotif = async (val: boolean) => {
+    setNotifEnabled(val);
     if (val) {
-      const res = await safeNotifications.requestPermissionsAsync();
-      setNotifEnabled(res.granted);
-      await appStorage.setItem('hbs_notifications_enabled', JSON.stringify(res.granted));
-    } else {
-      setNotifEnabled(false);
-      await appStorage.setItem('hbs_notifications_enabled', JSON.stringify(false));
+      await safeNotifications.requestPermissionsAsync();
     }
-    loadPerms();
+    await appStorage.setItem('hbs_notif_enabled', JSON.stringify(val));
   };
 
   const handleSignOut = () => {
@@ -80,7 +73,7 @@ export default function SettingsScreen() {
   };
 
   const formatStorage = (bytes: number) => {
-    if (!bytes || bytes === 0) return '0.00 MB';
+    if (bytes === 0) return '0.00 MB';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -92,7 +85,6 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
-
       <ScrollView contentContainerStyle={styles.content}>
         {/* Profile Card */}
         {user && (
@@ -105,15 +97,12 @@ export default function SettingsScreen() {
 
             <View style={{ flex: 1 }}>
               <Text style={[styles.profileName, { color: colors.text }]}>{user.name}</Text>
-              <Text style={[styles.profileEmail, { color: colors.textSecondary }]}>
-                {user.email}
-              </Text>
-              {user.role === 'admin' && (
-                <View style={[styles.adminBadge, { backgroundColor: colors.primaryContainer }]}>
-                  <Text style={[styles.adminText, { color: colors.primary }]}>Admin Role</Text>
-                </View>
-              )}
+              <Text style={[styles.profileEmail, { color: colors.subtext }]}>{user.email}</Text>
             </View>
+
+            <TouchableOpacity style={styles.logoutIconButton} onPress={handleSignOut}>
+              <Ionicons name="log-out-outline" size={20} color={colors.error} />
+            </TouchableOpacity>
           </GlassCard>
         )}
 
@@ -250,13 +239,52 @@ export default function SettingsScreen() {
           ))}
         </View>
 
+        {/* Color Palette Accent Selector */}
+        <Text style={[styles.subSectionTitle, { color: colors.textSecondary }]}>Color Accent</Text>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.paletteContainer}>
+          {Object.values(ColorPalettes).map((palette) => {
+            const isSelected = paletteKey === palette.id;
+            return (
+              <TouchableOpacity
+                key={palette.id}
+                style={[
+                  styles.paletteCard,
+                  {
+                    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : '#F8FAFC',
+                    borderColor: isSelected ? colors.primary : colors.border,
+                    borderWidth: isSelected ? 2 : 1,
+                  },
+                ]}
+                onPress={() => setPaletteKey(palette.id as PaletteKey)}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.paletteCircle, { backgroundColor: palette.previewColor }]}>
+                  {isSelected && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
+                </View>
+                <Text
+                  style={[
+                    styles.paletteName,
+                    {
+                      color: colors.text,
+                      fontWeight: isSelected ? '700' : '500',
+                    },
+                  ]}
+                >
+                  {palette.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
         {/* Server Connection Card */}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Server Connection</Text>
 
         <TouchableOpacity onPress={() => setShowScannerModal(true)} activeOpacity={0.8}>
           <GlassCard style={styles.serverCard} borderRadius={20}>
             <LinearGradient
-              colors={isDark ? ['#FACC15', '#D97706'] : ['#F59E0B', '#B45309']}
+              colors={isDark ? [colors.primary, colors.secondary || colors.primary] : [colors.primary, colors.secondary || colors.primary]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.cardIconBadge}
@@ -314,53 +342,76 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 20,
-    paddingBottom: 80,
+    padding: 16,
   },
   profileCard: {
     flexDirection: 'row',
     alignItems: 'center',
+    padding: 16,
     gap: 14,
     marginBottom: 20,
   },
   avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
   },
   avatarText: {
     color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '800',
+    fontSize: 20,
+    fontWeight: '700',
   },
   profileName: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
   },
   profileEmail: {
     fontSize: 13,
     marginTop: 2,
   },
-  adminBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-    marginTop: 6,
-  },
-  adminText: {
-    fontSize: 11,
-    fontWeight: '700',
+  logoutIconButton: {
+    padding: 8,
   },
   sectionTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     marginBottom: 10,
-    marginTop: 8,
+    marginTop: 4,
+  },
+  subSectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 14,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  paletteContainer: {
+    gap: 10,
+    paddingBottom: 16,
+  },
+  paletteCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    gap: 10,
+  },
+  paletteCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paletteName: {
+    fontSize: 14,
   },
   quotaCard: {
+    padding: 16,
     marginBottom: 20,
   },
   quotaHeader: {
@@ -374,17 +425,18 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   quotaValue: {
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 15,
+    fontWeight: '700',
   },
   quotaBarBg: {
     height: 8,
     borderRadius: 4,
     overflow: 'hidden',
-    marginBottom: 14,
+    marginBottom: 12,
   },
   quotaBarFill: {
     height: '100%',
+    borderRadius: 4,
   },
   statsDetailsRow: {
     flexDirection: 'row',
@@ -404,12 +456,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   permCard: {
+    padding: 16,
     marginBottom: 20,
   },
   permRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 6,
+    paddingVertical: 8,
     gap: 12,
   },
   permTitle: {
@@ -417,43 +470,40 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   permSub: {
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 2,
   },
   statusBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 10,
+    borderRadius: 12,
   },
   statusBadgeText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    marginVertical: 10,
   },
   themeGroup: {
     borderRadius: 18,
     borderWidth: 1,
-    marginBottom: 20,
+    paddingHorizontal: 16,
   },
   themeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
+    paddingVertical: 14,
     gap: 12,
   },
   themeLabel: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '500',
   },
   serverCard: {
     flexDirection: 'row',
     alignItems: 'center',
+    padding: 16,
+    marginBottom: 20,
     gap: 12,
-    marginBottom: 24,
   },
   cardIconBadge: {
     width: 36,
@@ -473,33 +523,27 @@ const styles = StyleSheet.create({
   serverCardTitle: {
     fontSize: 14,
     fontWeight: '600',
-    letterSpacing: -0.2,
   },
   serverCardSub: {
     fontSize: 12,
     marginTop: 2,
   },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    marginVertical: 4,
+  },
   logoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    height: 48,
-    borderRadius: 24,
+    paddingVertical: 14,
+    borderRadius: 18,
     gap: 8,
-    marginTop: 8,
+    marginBottom: 30,
+    marginTop: 10,
   },
   logoutBtnText: {
     fontSize: 15,
     fontWeight: '700',
-  },
-  topBar: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
-  },
-  screenTitle: {
-    fontSize: 26,
-    fontWeight: '800',
-    letterSpacing: -0.5,
   },
 });
