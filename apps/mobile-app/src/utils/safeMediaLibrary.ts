@@ -1,4 +1,6 @@
 import Constants, { ExecutionEnvironment } from 'expo-constants';
+import { appStorage } from './storage';
+import { scanDeviceStorageForMedia } from './mediaScanner';
 
 let MediaLibraryModule: typeof import('expo-media-library') | null = null;
 try {
@@ -23,6 +25,34 @@ export interface SafeAsset {
   albumId?: string;
 }
 
+const IMPORTED_ASSETS_KEY = 'hbs_imported_gallery_assets';
+
+export async function getImportedGalleryAssets(): Promise<SafeAsset[]> {
+  try {
+    const raw = await appStorage.getItem(IMPORTED_ASSETS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+export async function saveImportedGalleryAssets(newAssets: SafeAsset[]): Promise<void> {
+  try {
+    const existing = await getImportedGalleryAssets();
+    const existingMap = new Map<string, SafeAsset>();
+    existing.forEach((a) => existingMap.set(a.uri.toLowerCase(), a));
+    newAssets.forEach((a) => existingMap.set(a.uri.toLowerCase(), a));
+    const merged = Array.from(existingMap.values());
+    await appStorage.setItem(IMPORTED_ASSETS_KEY, JSON.stringify(merged));
+  } catch {
+    // ignore
+  }
+}
+
 export const safeMediaLibrary = {
   isSupported: () => !!MediaLibraryModule,
 
@@ -30,120 +60,134 @@ export const safeMediaLibrary = {
     if (MediaLibraryModule) {
       try {
         const res = await MediaLibraryModule.getPermissionsAsync();
-        return { status: res.status, granted: res.granted, canAskAgain: res.canAskAgain };
+        return {
+          status: res.status,
+          granted: res.granted,
+          canAskAgain: res.canAskAgain !== false,
+        };
       } catch (e) {
         // Fallback
       }
     }
-    return { status: 'granted', granted: true, canAskAgain: true };
+    return { status: 'undetermined', granted: false, canAskAgain: true };
   },
 
   requestPermissionsAsync: async () => {
     if (MediaLibraryModule) {
       try {
         const res = await MediaLibraryModule.requestPermissionsAsync();
-        return { status: res.status, granted: res.granted, canAskAgain: res.canAskAgain };
+        return {
+          status: res.status,
+          granted: res.granted,
+          canAskAgain: res.canAskAgain !== false,
+        };
       } catch (e) {
         // Fallback
       }
     }
-    return { status: 'granted', granted: true, canAskAgain: true };
+    return { status: 'undetermined', granted: false, canAskAgain: true };
   },
 
   getAlbumsAsync: async (): Promise<SafeAlbum[]> => {
     if (MediaLibraryModule) {
       try {
-        const { granted } = await MediaLibraryModule.getPermissionsAsync();
+        let { granted } = await MediaLibraryModule.getPermissionsAsync();
         if (!granted) {
-          await MediaLibraryModule.requestPermissionsAsync();
+          const req = await MediaLibraryModule.requestPermissionsAsync();
+          granted = req.granted;
         }
-        const fetchedAlbums = await MediaLibraryModule.getAlbumsAsync({ includeSmartAlbums: true });
-        const valid = (fetchedAlbums || [])
-          .map((a: any) => ({
-            id: String(a.id),
-            title: String(a.title || 'Album'),
-            assetCount: Number(a.assetCount || 0),
-          }))
-          .filter((a: any) => a.assetCount > 0);
+        if (granted) {
+          const fetchedAlbums = await MediaLibraryModule.getAlbumsAsync({ includeSmartAlbums: true });
+          const valid = (fetchedAlbums || [])
+            .map((a: any) => ({
+              id: String(a.id),
+              title: String(a.title || 'Album'),
+              assetCount: Number(a.assetCount || 0),
+            }))
+            .filter((a: any) => a.assetCount > 0);
 
-        if (valid.length > 0) return valid;
+          return valid;
+        }
       } catch (e) {
-        // Fallback
+        // ignore
       }
     }
-    // Fallback camera roll albums for Expo Go / Preview mode
-    return [
-      { id: 'camera_roll', title: 'Camera Roll (All Photos)', assetCount: 142 },
-      { id: 'recents', title: 'Recents', assetCount: 98 },
-      { id: 'screenshots', title: 'Screenshots', assetCount: 45 },
-      { id: 'whatsapp', title: 'WhatsApp Media', assetCount: 88 },
-      { id: 'downloads', title: 'Downloads', assetCount: 23 },
-    ];
+    return [];
   },
 
-  getAssetsAsync: async (options?: { album?: string; first?: number }): Promise<SafeAsset[]> => {
+  getAssetsAsync: async (options?: { album?: string; first?: number; after?: string }): Promise<SafeAsset[]> => {
+    const combinedMap = new Map<string, SafeAsset>();
+
+    // Engine 1: Query OS MediaStore API via expo-media-library
     if (MediaLibraryModule) {
       try {
-        const { granted } = await MediaLibraryModule.getPermissionsAsync();
+        let { granted } = await MediaLibraryModule.getPermissionsAsync();
         if (!granted) {
-          await MediaLibraryModule.requestPermissionsAsync();
+          const req = await MediaLibraryModule.requestPermissionsAsync();
+          granted = req.granted;
         }
 
-        const M = (MediaLibraryModule as any)?.MediaType;
-        const mediaTypes = M
-          ? [M.photo || M.PHOTO || M.image, M.video || M.VIDEO].filter(Boolean)
-          : ['photo', 'video'];
+        if (granted) {
+          const queryParams: any = {
+            first: options?.first || 1000,
+            sortBy: ['creationTime'],
+          };
 
-        const queryParams: any = {
-          first: options?.first || 200,
-          mediaType: mediaTypes,
-          sortBy: ['creationTime'],
-        };
+          if (options?.after) {
+            queryParams.after = options.after;
+          }
 
-        // Only pass album if it's a real native album ID (not dummy string)
-        if (options?.album && !['camera_roll', 'recents', 'screenshots', 'whatsapp', 'downloads'].includes(options.album)) {
-          queryParams.album = options.album;
-        }
+          if (options?.album) {
+            queryParams.album = options.album;
+          }
 
-        const res = await MediaLibraryModule.getAssetsAsync(queryParams);
-        if (res && res.assets && res.assets.length > 0) {
-          return res.assets.map((a: any) => ({
-            id: String(a.id),
-            filename: String(a.filename || `asset_${a.id}.jpg`),
-            uri: String(a.uri),
-            mediaType: a.mediaType === 'video' || String(a.mediaType).toLowerCase().includes('video') ? 'video' : 'photo',
-            creationTime: Number(a.creationTime || Date.now()),
-            duration: a.duration ? Number(a.duration) : undefined,
-            albumId: a.albumId ? String(a.albumId) : undefined,
-          }));
+          const res = await MediaLibraryModule.getAssetsAsync(queryParams);
+          if (res && res.assets && Array.isArray(res.assets)) {
+            for (const a of res.assets) {
+              const item: SafeAsset = {
+                id: String(a.id),
+                filename: String(a.filename || `asset_${a.id}.jpg`),
+                uri: String(a.uri),
+                mediaType: a.mediaType === 'video' || String(a.mediaType).toLowerCase().includes('video') ? 'video' : 'photo',
+                creationTime: Number(a.creationTime || Date.now()),
+                duration: a.duration ? Number(a.duration) : undefined,
+                albumId: a.albumId ? String(a.albumId) : undefined,
+              };
+              combinedMap.set(item.uri.toLowerCase(), item);
+            }
+          }
         }
       } catch (e) {
-        // Fallback
+        // ignore
       }
     }
-    // Fallback sample assets if Expo Go / permission pending
-    return [
-      {
-        id: 'sample_1',
-        filename: 'IMG_Camera_001.jpg',
-        uri: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800&auto=format&fit=crop',
-        mediaType: 'photo',
-        creationTime: Date.now() - 3600000 * 2,
-      },
-      {
-        id: 'sample_2',
-        filename: 'IMG_Camera_002.jpg',
-        uri: 'https://images.unsplash.com/photo-1511884642898-4c92249e20b6?w=800&auto=format&fit=crop',
-        mediaType: 'photo',
-        creationTime: Date.now() - 3600000 * 12,
-      },
-      {
-        id: 'sample_3',
-        filename: 'VID_Camera_003.mp4',
-        uri: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-        mediaType: 'video',
-        creationTime: Date.now() - 3600000 * 24,
-      },
-    ];
+
+    // Engine 2: Deep scan internal and external storage directories via FileSystem
+    try {
+      const storageAssets = await scanDeviceStorageForMedia(options?.first || 1000);
+      for (const item of storageAssets) {
+        if (!combinedMap.has(item.uri.toLowerCase())) {
+          combinedMap.set(item.uri.toLowerCase(), item);
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    // Engine 3: Load user-imported device gallery assets stored in appStorage
+    try {
+      const imported = await getImportedGalleryAssets();
+      for (const item of imported) {
+        if (!combinedMap.has(item.uri.toLowerCase())) {
+          combinedMap.set(item.uri.toLowerCase(), item);
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    const result = Array.from(combinedMap.values());
+    result.sort((a, b) => b.creationTime - a.creationTime);
+    return result;
   },
 };

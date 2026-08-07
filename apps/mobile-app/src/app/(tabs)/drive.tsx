@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../../context/ThemeContext';
 import { useServer } from '../../context/ServerContext';
 import { useAuth } from '../../context/AuthContext';
 import { hbsApi, BackupFileItem } from '../../services/api';
-import { Header } from '../../components/Header';
 import { DriveFileList } from '../../components/DriveFileList';
 import { UploadModal } from '../../components/UploadModal';
 import { MediaViewerModal } from '../../components/MediaViewerModal';
@@ -58,10 +57,18 @@ export default function DriveScreen() {
       setPreviewMedia({
         ...file,
         isVideo: file.mimeType.startsWith('video/'),
-        url: hbsApi.getMediaUrl(serverUrl, file.path),
+        url: `${serverUrl}/api/files/download?path=${encodeURIComponent(file.path)}&token=${encodeURIComponent(sessionToken || '')}`,
       });
-    } else {
-      Alert.alert(file.name, `Type: ${file.mimeType || 'Unknown'}\nSize: ${(file.size / 1024).toFixed(1)} KB`);
+    }
+  };
+
+  const handleUploadMedia = async (uri: string, name: string, mimeType: string) => {
+    try {
+      await hbsApi.uploadFile(serverUrl, sessionToken, uri, name, mimeType, currentPath);
+      Alert.alert('Success', 'File uploaded successfully.');
+      fetchFiles();
+    } catch (e) {
+      Alert.alert('Upload Failed', e instanceof Error ? e.message : 'Unknown error');
     }
   };
 
@@ -70,23 +77,13 @@ export default function DriveScreen() {
       await hbsApi.createFolder(serverUrl, sessionToken, folderName, currentPath);
       fetchFiles();
     } catch (e) {
-      Alert.alert('Create Folder Failed', e instanceof Error ? e.message : 'Unknown error');
-    }
-  };
-
-  const handleUploadMedia = async (uri: string, name: string, mimeType: string) => {
-    try {
-      await hbsApi.uploadFile(serverUrl, sessionToken, uri, name, mimeType, currentPath);
-      Alert.alert('Success', 'File uploaded.');
-      fetchFiles();
-    } catch (e) {
-      Alert.alert('Upload Failed', e instanceof Error ? e.message : 'Unknown error');
+      Alert.alert('Error', e instanceof Error ? e.message : 'Unknown error');
     }
   };
 
   const handleRenameFile = async (file: BackupFileItem, newName: string) => {
     try {
-      await hbsApi.renameFile(serverUrl, sessionToken, file.id, newName);
+      await hbsApi.renameFile(serverUrl, sessionToken, file.path, newName);
       fetchFiles();
     } catch (e) {
       Alert.alert('Rename Failed', e instanceof Error ? e.message : 'Unknown error');
@@ -104,7 +101,9 @@ export default function DriveScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
-      <Header title="Google Drive" onOpenServerScanner={() => setShowScannerModal(true)} />
+      <View style={styles.topBar}>
+        <Text style={[styles.screenTitle, { color: colors.text }]}>Drive Files</Text>
+      </View>
 
       <DriveFileList
         files={files}
@@ -149,6 +148,16 @@ export default function DriveScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  topBar: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  screenTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    letterSpacing: -0.5,
   },
   fab: {
     position: 'absolute',

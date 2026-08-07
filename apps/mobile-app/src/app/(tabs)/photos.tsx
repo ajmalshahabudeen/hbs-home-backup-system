@@ -1,25 +1,31 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useAppTheme } from '../../context/ThemeContext';
 import { useServer } from '../../context/ServerContext';
 import { useAuth } from '../../context/AuthContext';
 import { hbsApi, PhotoMediaItem } from '../../services/api';
-import { safeMediaLibrary } from '../../utils/safeMediaLibrary';
-import { Header } from '../../components/Header';
+import {
+  safeMediaLibrary,
+  saveImportedGalleryAssets,
+  SafeAsset,
+} from '../../utils/safeMediaLibrary';
+import { requestMediaPermissionWithPrompt } from '../../utils/permissions';
 import { PhotoGrid } from '../../components/PhotoGrid';
 import { MediaViewerModal } from '../../components/MediaViewerModal';
 import { UploadModal } from '../../components/UploadModal';
 import { LanScannerModal } from '../../components/LanScannerModal';
 
 export default function PhotosScreen() {
-  const { colors } = useAppTheme();
+  const { colors, isDark } = useAppTheme();
   const { serverUrl } = useServer();
   const { sessionToken } = useAuth();
 
   const [mediaList, setMediaList] = useState<PhotoMediaItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [hasPermission, setHasPermission] = useState<boolean>(true);
   const [selectedMedia, setSelectedMedia] = useState<PhotoMediaItem | null>(null);
   const [showUploadModal, setShowUploadModal] = useState<boolean>(false);
   const [showScannerModal, setShowScannerModal] = useState<boolean>(false);
@@ -27,7 +33,15 @@ export default function PhotosScreen() {
   const fetchPhotos = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. Fetch server media
+      // 1. Check local media permissions
+      let perm = await safeMediaLibrary.getPermissionsAsync();
+      if (!perm.granted) {
+        const req = await safeMediaLibrary.requestPermissionsAsync();
+        perm = req;
+      }
+      setHasPermission(perm.granted);
+
+      // 2. Fetch server media
       let serverMedia: PhotoMediaItem[] = [];
       if (serverUrl) {
         try {
@@ -44,8 +58,8 @@ export default function PhotosScreen() {
         }
       }
 
-      // 2. Fetch local camera roll media
-      const localAssets = await safeMediaLibrary.getAssetsAsync({ first: 150 });
+      // 3. Fetch all local camera roll media files (photos & videos) from mobile device
+      const localAssets = await safeMediaLibrary.getAssetsAsync({ first: 1000 });
       const serverNameSet = new Set(serverMedia.map((m) => m.name.toLowerCase()));
 
       const mergedList: PhotoMediaItem[] = [...serverMedia];
@@ -62,7 +76,7 @@ export default function PhotosScreen() {
             mergedList[serverIdx].localUri = asset.uri;
           }
         } else {
-          // Local only media item
+          // Local only media item on device gallery
           mergedList.push({
             id: `local_${asset.id}`,
             userId: 'local',
@@ -82,7 +96,7 @@ export default function PhotosScreen() {
         }
       }
 
-      // Sort merged list by creation date descending
+      // Sort merged list by creation date descending (newest first like native gallery)
       mergedList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
       setMediaList(mergedList);
@@ -96,6 +110,47 @@ export default function PhotosScreen() {
   useEffect(() => {
     fetchPhotos();
   }, [fetchPhotos]);
+
+  const handleRequestPermission = async () => {
+    const granted = await requestMediaPermissionWithPrompt();
+    if (granted) {
+      setHasPermission(true);
+      fetchPhotos();
+    }
+  };
+
+  const handlePickDeviceMedia = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images', 'videos'],
+        allowsMultipleSelection: true,
+        quality: 1,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const newSafeAssets: SafeAsset[] = result.assets.map((asset, idx) => {
+          const fileName =
+            asset.fileName ||
+            `media_${Date.now()}_${idx}.${asset.type === 'video' ? 'mp4' : 'jpg'}`;
+          return {
+            id: `picker_${Date.now()}_${idx}`,
+            filename: fileName,
+            uri: asset.uri,
+            mediaType: asset.type === 'video' ? 'video' : 'photo',
+            creationTime: Date.now(),
+          };
+        });
+
+        await saveImportedGalleryAssets(newSafeAssets);
+        await fetchPhotos();
+      }
+    } catch (e) {
+      Alert.alert(
+        'Import Error',
+        e instanceof Error ? e.message : 'Could not pick device media'
+      );
+    }
+  };
 
   const handleUploadMedia = async (uri: string, name: string, mimeType: string) => {
     try {
@@ -140,10 +195,45 @@ export default function PhotosScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
-      <Header
-        title="Photos"
-        onOpenServerScanner={() => setShowScannerModal(true)}
-      />
+      {/* Top Header Bar */}
+      <View style={styles.topBar}>
+        <Text style={[styles.screenTitle, { color: colors.text }]}>Photos</Text>
+
+        <TouchableOpacity
+          style={[
+            styles.importBtn,
+            {
+              backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.surfaceVariant,
+              borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : colors.border,
+            },
+          ]}
+          onPress={handlePickDeviceMedia}
+          activeOpacity={0.75}
+        >
+          <Ionicons name="images-outline" size={18} color={colors.primary} />
+          <Text style={[styles.importBtnText, { color: colors.primary }]}>Import</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Permission Rationale Banner */}
+      {!hasPermission && (
+        <View style={[styles.permBanner, { backgroundColor: colors.warning + '15', borderColor: colors.warning + '40' }]}>
+          <Ionicons name="images-outline" size={24} color={colors.warning} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.permTitle, { color: colors.text }]}>Photos Permission Required</Text>
+            <Text style={[styles.permSub, { color: colors.textSecondary }]}>
+              Grant photos permission to automatically load your device's camera roll gallery.
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.permBtn, { backgroundColor: colors.primary }]}
+            onPress={handleRequestPermission}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.permBtnText}>Grant</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <PhotoGrid
         media={mediaList}
@@ -192,6 +282,60 @@ export default function PhotosScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  screenTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  importBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 6,
+  },
+  importBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  permBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginVertical: 8,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 12,
+  },
+  permTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  permSub: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  permBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 16,
+  },
+  permBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   fab: {
     position: 'absolute',

@@ -16,7 +16,6 @@ import { useAppTheme } from '../../context/ThemeContext';
 import { useServer } from '../../context/ServerContext';
 import { useAuth } from '../../context/AuthContext';
 import { hbsApi, UserStats } from '../../services/api';
-import { Header } from '../../components/Header';
 import { LanScannerModal } from '../../components/LanScannerModal';
 import { GlassCard } from '../../components/ui/GlassCard';
 import { safeNotifications } from '../../utils/safeNotifications';
@@ -93,7 +92,9 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
-      <Header title="Settings" onOpenServerScanner={() => setShowScannerModal(true)} />
+      <View style={styles.topBar}>
+        <Text style={[styles.screenTitle, { color: colors.text }]}>Settings</Text>
+      </View>
 
       <ScrollView contentContainerStyle={styles.content}>
         {/* Profile Card */}
@@ -493,5 +494,15 @@ const styles = StyleSheet.create({
   logoutBtnText: {
     fontSize: 15,
     fontWeight: '700',
+  },
+  topBar: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  screenTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    letterSpacing: -0.5,
   },
 });

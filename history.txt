@@ -77,7 +77,14 @@
   1. Concurrently tests fast candidates (`192.168.1.100`, subnet `.100`, `.101`, `.50`, etc.).
   2. As soon as the VERY FIRST active server responds (within ~30-50ms), sets `serverUrlState`, persists to `appStorage`, marks `isConnected: true`, and exits scan early.
   3. Eliminates waiting for all 254 subnet IPs to finish scanning, resulting in ultra-fast startup connection times.
-- Verified TypeScript compilation across workspace (`bun run --cwd apps/mobile-app typecheck` & `bun run typecheck`) with zero errors.
+- Updated `photos.tsx` and `safeMediaLibrary.ts` to automatically request media permissions on launch and fetch all mobile device photos & videos (up to 500 items) like a native gallery app, automatically merging local & cloud items into a unified timeline.
+- Created `mediaScanner.ts` deep device storage scanner that scans internal and external storage directories (`DCIM`, `Pictures`, `Download`, `WhatsApp`, `Movies`, `documentDirectory`, `cacheDirectory`) for real photos & videos via `FileSystem`.
+- Integrated `mediaScanner.ts` into `safeMediaLibrary.ts` as a dual-engine discovery system combining OS MediaStore API and deep storage filesystem scanning.
+- Completely removed all demo sample photos and videos (`sample_1`, `sample_2`, `sample_3` / Unsplash / Google Cloud links) and fallback demo albums from `safeMediaLibrary.ts`.
+- Fixed native media library access in `app.json` by adding the `"expo-media-library"` plugin (`photosPermission`, `savePhotosPermission`, `isAccessMediaLocationEnabled`) and adding `READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`, `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO` under `android.permissions`.
+- Fixed permission status bug in `safeMediaLibrary.ts` (was incorrectly returning `granted: true` when ungranted/uninitialized, blocking native OS permission dialogs).
+- Deprecated `<Header />` component in `Header.tsx` to return `null` and removed `<Header ... />` usages across all tab screens (`photos.tsx`, `drive.tsx`, `backup.tsx`, `settings.tsx`), replacing them with clean screen title bars as requested.
+- Verified TypeScript compilation across workspace (`bun run typecheck`) with zero errors.
 
 
 

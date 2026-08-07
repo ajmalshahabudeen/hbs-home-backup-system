@@ -16,7 +16,11 @@
       "permissions": [
         "INTERNET",
         "ACCESS_NETWORK_STATE",
-        "ACCESS_WIFI_STATE"
+        "ACCESS_WIFI_STATE",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#121212",
@@ -36,6 +40,14 @@
           "backgroundColor": "#121212",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 120
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow HBS Cloud Drive & Photos to access your photo gallery.",
+          "savePhotosPermission": "Allow HBS Cloud Drive & Photos to save photos to your photo gallery.",
+          "isAccessMediaLocationEnabled": true
         }
       ],
       [
