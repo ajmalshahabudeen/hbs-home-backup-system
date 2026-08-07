@@ -88,7 +88,7 @@
 - Added progress notifications (`sendLocalSyncNotification`) with step & percentage progress updates during sync operations, and added a user toggle switch **Sync Progress Notifications** (`showSyncNotifications`) in `backup.tsx` preferences.
 - Implemented 5 curated color accent palettes (`Amber Gold`, `Ocean Blue`, `Emerald Mint`, `Violet Plum`, `Rose Amber`) in `theme.ts` with low-contrast, comfortable tones across both Light and Dark modes.
 - Added persistent palette storage (`hbs_app_color_palette` via `appStorage`) and dynamic theme state in `ThemeContext.tsx` (`paletteKey`, `setPaletteKey`).
-- Added an interactive **Color Accent Palette** selector in `settings.tsx` with live swatches and active checkmarks for instant real-time theme customization across all app screens.
+- Fixed white navigation bar background bug by synchronizing `SystemUI.setBackgroundColorAsync(colors.background)` and `NavigationBar.setStyle()` in `ThemeContext.tsx`, setting dynamic `backgroundColor` on `<GestureHandlerRootView>` and `contentStyle` in `_layout.tsx`, and adding `sceneStyle` in `(tabs)/_layout.tsx`.
 - Verified TypeScript compilation across workspace (`bun run typecheck`) with zero errors.
 
 

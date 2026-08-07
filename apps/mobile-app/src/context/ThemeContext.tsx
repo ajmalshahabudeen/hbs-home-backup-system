@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { useColorScheme } from 'react-native';
+import { useColorScheme, Platform } from 'react-native';
+import * as SystemUI from 'expo-system-ui';
+import { NavigationBar } from 'expo-navigation-bar';
 import { appStorage } from '../utils/storage';
 import {
   ColorPalettes,
@@ -76,6 +78,23 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const activePreset = ColorPalettes[paletteKey] || ColorPalettes.amber;
   const colors = isDark ? activePreset.dark : activePreset.light;
+
+  // Dynamically synchronize OS System UI & Android NavigationBar with active theme
+  useEffect(() => {
+    try {
+      SystemUI.setBackgroundColorAsync(colors.background);
+    } catch {
+      // ignore
+    }
+
+    if (Platform.OS === 'android') {
+      try {
+        NavigationBar.setStyle(isDark ? 'light' : 'dark');
+      } catch {
+        // ignore
+      }
+    }
+  }, [colors.background, isDark]);
 
   return (
     <ThemeContext.Provider
