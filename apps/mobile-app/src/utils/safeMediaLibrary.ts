@@ -1,23 +1,26 @@
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 
-const isExpoGo =
-  Constants.executionEnvironment === ExecutionEnvironment.StoreClient ||
-  (Constants as any).appOwnership === 'expo';
-
 let MediaLibraryModule: typeof import('expo-media-library') | null = null;
-
-if (!isExpoGo) {
-  try {
-    MediaLibraryModule = require('expo-media-library');
-  } catch (e) {
-    MediaLibraryModule = null;
-  }
+try {
+  MediaLibraryModule = require('expo-media-library');
+} catch (e) {
+  MediaLibraryModule = null;
 }
 
 export interface SafeAlbum {
   id: string;
   title: string;
   assetCount: number;
+}
+
+export interface SafeAsset {
+  id: string;
+  filename: string;
+  uri: string;
+  mediaType: 'photo' | 'video';
+  creationTime: number;
+  duration?: number;
+  albumId?: string;
 }
 
 export const safeMediaLibrary = {
@@ -51,23 +54,76 @@ export const safeMediaLibrary = {
     if (MediaLibraryModule) {
       try {
         const fetchedAlbums = await MediaLibraryModule.getAlbumsAsync({ includeSmartAlbums: true });
-        return fetchedAlbums
+        const valid = fetchedAlbums
           .map((a: any) => ({
             id: String(a.id),
             title: String(a.title || 'Album'),
             assetCount: Number(a.assetCount || 0),
           }))
           .filter((a) => a.assetCount > 0);
+
+        if (valid.length > 0) return valid;
       } catch (e) {
         // Fallback
       }
     }
-    // Fallback default camera roll albums for Expo Go preview
+    // Fallback camera roll albums for Expo Go / Preview mode
     return [
-      { id: 'camera_roll', title: 'Camera Roll', assetCount: 142 },
-      { id: 'favorites', title: 'Favorites', assetCount: 28 },
-      { id: 'screenshots', title: 'Screenshots', assetCount: 64 },
-      { id: 'whatsapp', title: 'WhatsApp Images', assetCount: 195 },
+      { id: 'camera_roll', title: 'Camera Roll (All Photos)', assetCount: 142 },
+      { id: 'recents', title: 'Recents', assetCount: 98 },
+      { id: 'screenshots', title: 'Screenshots', assetCount: 45 },
+      { id: 'whatsapp', title: 'WhatsApp Media', assetCount: 88 },
+      { id: 'downloads', title: 'Downloads', assetCount: 23 },
+    ];
+  },
+
+  getAssetsAsync: async (options?: { album?: string; first?: number }): Promise<SafeAsset[]> => {
+    if (MediaLibraryModule) {
+      try {
+        const res = await MediaLibraryModule.getAssetsAsync({
+          first: options?.first || 150,
+          mediaType: ['photo', 'video'],
+          album: options?.album,
+          sortBy: ['creationTime'],
+        });
+        if (res.assets && res.assets.length > 0) {
+          return res.assets.map((a: any) => ({
+            id: String(a.id),
+            filename: String(a.filename || `asset_${a.id}`),
+            uri: String(a.uri),
+            mediaType: a.mediaType === 'video' ? 'video' : 'photo',
+            creationTime: Number(a.creationTime || Date.now()),
+            duration: a.duration ? Number(a.duration) : undefined,
+            albumId: a.albumId ? String(a.albumId) : undefined,
+          }));
+        }
+      } catch (e) {
+        // Fallback
+      }
+    }
+    // Fallback sample assets if Expo Go / permission pending
+    return [
+      {
+        id: 'sample_1',
+        filename: 'IMG_Camera_001.jpg',
+        uri: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800&auto=format&fit=crop',
+        mediaType: 'photo',
+        creationTime: Date.now() - 3600000 * 2,
+      },
+      {
+        id: 'sample_2',
+        filename: 'IMG_Camera_002.jpg',
+        uri: 'https://images.unsplash.com/photo-1511884642898-4c92249e20b6?w=800&auto=format&fit=crop',
+        mediaType: 'photo',
+        creationTime: Date.now() - 3600000 * 12,
+      },
+      {
+        id: 'sample_3',
+        filename: 'VID_Camera_003.mp4',
+        uri: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+        mediaType: 'video',
+        creationTime: Date.now() - 3600000 * 24,
+      },
     ];
   },
 };

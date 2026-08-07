@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Modal,
   View,
@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from '../context/ThemeContext';
+import { InputDialogModal } from './InputDialogModal';
 
 interface UploadModalProps {
   visible: boolean;
@@ -28,6 +29,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 }) => {
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
+  const [showFolderInput, setShowFolderInput] = useState(false);
 
   const handlePickPhoto = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -50,77 +52,76 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     }
   };
 
-  const handleCreateFolderPrompt = () => {
-    onClose();
-    Alert.prompt(
-      'Create New Folder',
-      'Enter folder name:',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Create',
-          onPress: (name?: string) => {
-            if (name && name.trim()) {
-              onCreateFolder(name.trim());
-            }
-          },
-        },
-      ],
-      'plain-text'
-    );
+  const handleCreateFolderClick = () => {
+    setShowFolderInput(true);
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <TouchableWithoutFeedback onPress={onClose}>
-        <View style={styles.overlay}>
-          <TouchableWithoutFeedback>
-            <View style={[styles.sheet, { backgroundColor: colors.modalBg, paddingBottom: Math.max(insets.bottom, 24) }]}>
-              <View style={[styles.dragHandle, { backgroundColor: colors.border }]} />
+    <>
+      <Modal visible={visible && !showFolderInput} animationType="slide" transparent onRequestClose={onClose}>
+        <TouchableWithoutFeedback onPress={onClose}>
+          <View style={styles.overlay}>
+            <TouchableWithoutFeedback>
+              <View style={[styles.sheet, { backgroundColor: colors.modalBg, paddingBottom: Math.max(insets.bottom, 24) }]}>
+                <View style={[styles.dragHandle, { backgroundColor: colors.border }]} />
 
-              <Text style={[styles.sheetTitle, { color: colors.text }]}>Create & Upload</Text>
+                <Text style={[styles.sheetTitle, { color: colors.text }]}>Create & Upload</Text>
 
-              <View style={styles.optionsGrid}>
-                {/* Upload Photo/Video */}
+                <View style={styles.optionsGrid}>
+                  {/* Upload Photo/Video */}
+                  <TouchableOpacity
+                    style={[styles.optionCard, { backgroundColor: colors.surfaceVariant }]}
+                    onPress={handlePickPhoto}
+                  >
+                    <View style={[styles.optionIcon, { backgroundColor: '#1A73E8' + '20' }]}>
+                      <Ionicons name="images" size={26} color="#1A73E8" />
+                    </View>
+                    <Text style={[styles.optionText, { color: colors.text }]}>
+                      Upload Media
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Create Folder */}
+                  <TouchableOpacity
+                    style={[styles.optionCard, { backgroundColor: colors.surfaceVariant }]}
+                    onPress={handleCreateFolderClick}
+                  >
+                    <View style={[styles.optionIcon, { backgroundColor: '#F9AB00' + '20' }]}>
+                      <Ionicons name="folder-open" size={26} color="#F9AB00" />
+                    </View>
+                    <Text style={[styles.optionText, { color: colors.text }]}>
+                      New Folder
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
                 <TouchableOpacity
-                  style={[styles.optionCard, { backgroundColor: colors.surfaceVariant }]}
-                  onPress={handlePickPhoto}
+                  style={[styles.cancelBtn, { backgroundColor: colors.surfaceVariant }]}
+                  onPress={onClose}
                 >
-                  <View style={[styles.optionIcon, { backgroundColor: '#1A73E8' + '20' }]}>
-                    <Ionicons name="images" size={26} color="#1A73E8" />
-                  </View>
-                  <Text style={[styles.optionText, { color: colors.text }]}>
-                    Upload Media
-                  </Text>
-                </TouchableOpacity>
-
-                {/* Create Folder */}
-                <TouchableOpacity
-                  style={[styles.optionCard, { backgroundColor: colors.surfaceVariant }]}
-                  onPress={handleCreateFolderPrompt}
-                >
-                  <View style={[styles.optionIcon, { backgroundColor: '#F9AB00' + '20' }]}>
-                    <Ionicons name="folder-open" size={26} color="#F9AB00" />
-                  </View>
-                  <Text style={[styles.optionText, { color: colors.text }]}>
-                    New Folder
+                  <Text style={[styles.cancelText, { color: colors.textSecondary }]}>
+                    Cancel
                   </Text>
                 </TouchableOpacity>
               </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
 
-              <TouchableOpacity
-                style={[styles.cancelBtn, { backgroundColor: colors.surfaceVariant }]}
-                onPress={onClose}
-              >
-                <Text style={[styles.cancelText, { color: colors.textSecondary }]}>
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </TouchableWithoutFeedback>
-        </View>
-      </TouchableWithoutFeedback>
-    </Modal>
+      <InputDialogModal
+        visible={showFolderInput}
+        title="Create New Folder"
+        placeholder="Folder name..."
+        confirmLabel="Create"
+        onConfirm={(folderName) => {
+          onCreateFolder(folderName);
+          setShowFolderInput(false);
+          onClose();
+        }}
+        onClose={() => setShowFolderInput(false)}
+      />
+    </>
   );
 };
 

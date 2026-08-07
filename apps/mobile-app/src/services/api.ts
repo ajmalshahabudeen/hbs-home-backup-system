@@ -1,3 +1,12 @@
+import {
+  uploadAsync,
+  downloadAsync,
+  FileSystemUploadType,
+  documentDirectory,
+} from 'expo-file-system/legacy';
+import { Platform } from 'react-native';
+import { appStorage } from '../utils/storage';
+
 export interface BackupFileItem {
   id: string;
   userId: string;
@@ -23,6 +32,10 @@ export interface PhotoMediaItem {
   updatedAt: string;
   isVideo: boolean;
   url: string;
+  thumbUrl?: string;
+  isLocalOnly?: boolean;
+  isBackedUp?: boolean;
+  localUri?: string;
 }
 
 export interface UserStats {
@@ -32,6 +45,23 @@ export interface UserStats {
   videoCount: number;
   docCount: number;
   otherCount: number;
+}
+
+async function getValidToken(sessionToken: string | null): Promise<string | null> {
+  if (sessionToken) return sessionToken;
+  try {
+    return await appStorage.getItem('hbs_auth_token');
+  } catch {
+    return null;
+  }
+}
+
+function authHeaders(token: string | null): Record<string, string> {
+  if (!token) return {};
+  return {
+    Authorization: `Bearer ${token}`,
+    Cookie: `better-auth.session_token=${token}`,
+  };
 }
 
 async function request<T>(
@@ -45,10 +75,8 @@ async function request<T>(
     ...(options.headers as Record<string, string>),
   };
 
-  if (sessionToken) {
-    headers['Authorization'] = `Bearer ${sessionToken}`;
-    headers['Cookie'] = `better-auth.session_token=${sessionToken}`;
-  }
+  const activeToken = await getValidToken(sessionToken);
+  Object.assign(headers, authHeaders(activeToken));
 
   const res = await fetch(`${serverUrl}${path}`, {
     ...options,
@@ -61,6 +89,28 @@ async function request<T>(
   }
 
   return res.json();
+}
+
+function absMediaUrl(serverUrl: string, urlOrPath: string, token: string | null): string {
+  if (!urlOrPath) return '';
+  if (
+    urlOrPath.startsWith('http://') ||
+    urlOrPath.startsWith('https://') ||
+    urlOrPath.startsWith('file:')
+  ) {
+    // ensure token present
+    if (token && urlOrPath.startsWith(serverUrl) && !urlOrPath.includes('token=')) {
+      const sep = urlOrPath.includes('?') ? '&' : '?';
+      return `${urlOrPath}${sep}token=${encodeURIComponent(token)}`;
+    }
+    return urlOrPath;
+  }
+  let path = urlOrPath.startsWith('/') ? urlOrPath : `/${urlOrPath}`;
+  if (token && !path.includes('token=')) {
+    const sep = path.includes('?') ? '&' : '?';
+    path = `${path}${sep}token=${encodeURIComponent(token)}`;
+  }
+  return `${serverUrl}${path}`;
 }
 
 export const hbsApi = {
@@ -138,11 +188,30 @@ export const hbsApi = {
     sessionToken: string | null,
     filter: 'all' | 'photos' | 'videos' = 'all'
   ): Promise<{ total: number; media: PhotoMediaItem[] }> => {
-    return request<{ total: number; media: PhotoMediaItem[] }>(
+    const res = await request<{ total: number; media: PhotoMediaItem[] }>(
       serverUrl,
       sessionToken,
       `/api/user/photos?filter=${filter}`
     );
+    const token = await getValidToken(sessionToken);
+    return {
+      total: res.total,
+      media: (res.media || []).map((m) => ({
+        ...m,
+        url: absMediaUrl(serverUrl, m.url, token),
+        thumbUrl: absMediaUrl(
+          serverUrl,
+          m.thumbUrl ||
+            (m.path
+              ? `/api/user/media/${m.path
+                  .split('/')
+                  .map((p) => encodeURIComponent(p))
+                  .join('/')}?thumb=1`
+              : m.url),
+          token
+        ),
+      })),
+    };
   },
 
   uploadFile: async (
@@ -153,35 +222,92 @@ export const hbsApi = {
     mimeType: string,
     parentPath: string = ''
   ): Promise<{ file: BackupFileItem }> => {
-    const formData = new FormData();
-    formData.append('path', parentPath);
-
-    // React Native FormData format
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    formData.append('file', {
-      uri: fileUri,
-      name: fileName,
-      type: mimeType,
-    } as any);
-
-    const headers: Record<string, string> = {};
-    if (sessionToken) {
-      headers['Authorization'] = `Bearer ${sessionToken}`;
-      headers['Cookie'] = `better-auth.session_token=${sessionToken}`;
+    const activeToken = await getValidToken(sessionToken);
+    if (!activeToken) {
+      throw new Error('Not authenticated — please sign in again');
     }
+    const headers = authHeaders(activeToken);
 
-    const res = await fetch(`${serverUrl}/api/user/upload`, {
-      method: 'POST',
-      headers,
-      body: formData,
-    });
+    // Prefer FormData fetch first — more reliable auth header handling on RN
+    // than expo-file-system uploadAsync (which often drops cookies).
+    const tryFetchUpload = async (): Promise<{ file: BackupFileItem }> => {
+      const formData = new FormData();
+      formData.append('path', parentPath);
+      formData.append('file', {
+        uri: fileUri,
+        name: fileName,
+        type: mimeType || 'application/octet-stream',
+      } as any);
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error(err.error || 'Upload failed');
+      const res = await fetch(`${serverUrl}/api/user/upload`, {
+        method: 'POST',
+        headers: {
+          ...headers,
+          Accept: 'application/json',
+          // Do NOT set Content-Type — RN sets multipart boundary
+        },
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(err.error || `Upload failed (${res.status})`);
+      }
+      return res.json();
+    };
+
+    try {
+      return await tryFetchUpload();
+    } catch (fetchErr) {
+      // Fallback to uploadAsync (some Android versions prefer it for large files)
+      try {
+        const uploadRes = await uploadAsync(
+          `${serverUrl}/api/user/upload`,
+          fileUri,
+          {
+            httpMethod: 'POST',
+            uploadType: FileSystemUploadType.MULTIPART,
+            fieldName: 'file',
+            mimeType,
+            parameters: {
+              path: parentPath,
+            },
+            headers: {
+              ...headers,
+              Accept: 'application/json',
+            },
+          }
+        );
+
+        if (uploadRes.status >= 200 && uploadRes.status < 300) {
+          return JSON.parse(uploadRes.body);
+        }
+        const errJson = JSON.parse(uploadRes.body || '{}');
+        throw new Error(errJson.error || `Upload failed (${uploadRes.status})`);
+      } catch {
+        throw fetchErr instanceof Error
+          ? fetchErr
+          : new Error('Upload failed');
+      }
     }
+  },
 
-    return res.json();
+  downloadFileToDevice: async (
+    serverUrl: string,
+    sessionToken: string | null,
+    fileRelPath: string,
+    fileName: string
+  ): Promise<string> => {
+    const targetUri = `${documentDirectory || ''}${fileName}`;
+    const activeToken = await getValidToken(sessionToken);
+    const headers = authHeaders(activeToken);
+
+    const downloadRes = await downloadAsync(
+      hbsApi.getMediaUrl(serverUrl, fileRelPath, activeToken),
+      targetUri,
+      { headers }
+    );
+    return downloadRes.uri;
   },
 
   getUserStats: async (
@@ -211,7 +337,33 @@ export const hbsApi = {
     );
   },
 
-  getMediaUrl: (serverUrl: string, mediaPath: string): string => {
-    return `${serverUrl}/api/user/media/${encodeURIComponent(mediaPath)}`;
+  getMediaUrl: (
+    serverUrl: string,
+    mediaPath: string,
+    token?: string | null
+  ): string => {
+    const enc = mediaPath
+      .split('/')
+      .map((p) => encodeURIComponent(p))
+      .join('/');
+    const base = `${serverUrl}/api/user/media/${enc}`;
+    if (token) return `${base}?token=${encodeURIComponent(token)}`;
+    return base;
   },
+
+  getThumbUrl: (
+    serverUrl: string,
+    mediaPath: string,
+    token?: string | null
+  ): string => {
+    const enc = mediaPath
+      .split('/')
+      .map((p) => encodeURIComponent(p))
+      .join('/');
+    const base = `${serverUrl}/api/user/media/${enc}`;
+    if (token) return `${base}?token=${encodeURIComponent(token)}&thumb=1`;
+    return `${base}?thumb=1`;
+  },
+
+  authHeaders,
 };

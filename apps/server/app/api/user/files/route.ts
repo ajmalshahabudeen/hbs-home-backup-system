@@ -207,7 +207,11 @@ export async function POST(request: NextRequest) {
       userId,
       userEmail: session.user.email,
       ...meta,
+      metadata: { path: rel, isDir },
     });
+    console.log(
+      `[HBS][FILE] create ${isDir ? "folder" : "file"} user=${session.user.email} path=${rel}`
+    );
 
     return ok({ file: serializeFile(row) }, { status: 201 });
   } catch (e) {
@@ -276,6 +280,18 @@ export async function PATCH(request: NextRequest) {
     }
 
     const updated = await prisma.backupFile.findUnique({ where: { id: row.id } });
+    const meta = clientMeta(request);
+    await writeLog({
+      type: "USER_FILE_CRUD",
+      message: `User renamed ${row.path} → ${newRel}`,
+      userId,
+      userEmail: session.user.email,
+      ...meta,
+      metadata: { from: row.path, to: newRel },
+    });
+    console.log(
+      `[HBS][FILE] rename user=${session.user.email} ${row.path} -> ${newRel}`
+    );
     return ok({ file: updated ? serializeFile(updated) : null });
   } catch (e) {
     return badRequest(e instanceof Error ? e.message : "Rename failed");
@@ -312,6 +328,19 @@ export async function DELETE(request: NextRequest) {
     } else {
       await prisma.backupFile.delete({ where: { id } });
     }
+
+    const meta = clientMeta(request);
+    await writeLog({
+      type: "USER_FILE_CRUD",
+      message: `User deleted ${row.isDir ? "folder" : "file"} ${row.path}`,
+      userId,
+      userEmail: session.user.email,
+      ...meta,
+      metadata: { path: row.path, isDir: row.isDir },
+    });
+    console.log(
+      `[HBS][FILE] delete user=${session.user.email} path=${row.path}`
+    );
 
     return ok({ deleted: true, id });
   } catch (e) {

@@ -44,6 +44,32 @@
 - Configured `"usesCleartextTraffic": true` and Android network permissions in `app.json` to fix Android 9+ security policy blocking unencrypted HTTP connections over LAN (`http://192.168.1.100:38480`) in production/standalone APK builds.
 - Upgraded `ServerContext.tsx` with persistent URL storage, 5000ms LAN health check timeout, fast-path candidate scanning for `192.168.1.100`, and IPv4 subnet parsing.
 - Installed `expo-build-properties` via Bun and configured `usesCleartextTraffic: true` under `"plugins"` in `app.json` to resolve Expo config schema validation warning while enforcing cleartext HTTP over LAN.
+- Executed full implementation plan resolving all 7 mobile & server issues:
+  1. Upgraded mobile uploads to `uploadAsync` (`expo-file-system/legacy`) and added fallback multipart parser to `apps/server/app/api/user/upload/route.ts`.
+  2. Created cross-platform `InputDialogModal` replacing iOS-only `Alert.prompt` for folder creation and file renaming on Android.
+  3. Upgraded `photos.tsx` with Google Photos hybrid timeline grid, cloud status badges on thumbnails, `expo-video` video player, and "Upload to Server" / "Save to Device" actions.
+  4. Scoped auto-sync in `backgroundSync.ts` strictly to user-enabled albums (`selectedAlbums`).
+  5. Enhanced `FolderSelectorModal` with permissions handling and fallback album loading on Android.
+  6. Updated `settings.tsx` with dynamic `formatStorage` utility (`MB`, `GB`, `KB`).
+  7. Created `PermissionChecker` startup component mounted in `_layout.tsx` to evaluate permissions on app launch.
+- Added automatic self-healing retry logic to `run.bat` and `run.sh`: if `docker compose up` fails, launcher runs `docker builder prune -af` and `docker compose build --no-cache` followed by `docker compose up -d --force-recreate`.
+- Diagnosed root cause of `archive/tar: invalid tar header`: removed accidental `G` folder created by Windows path mapping in workspace root and added `G*`, `.run-bat*`, `hbs-*.json` to `.dockerignore`.
+- Resolved mobile auth token & media display issues:
+  1. Updated `AuthContext.tsx` and `hbsApi` in `api.ts` to automatically fallback to `appStorage` for `sessionToken` so `Authorization` and `Cookie` headers are always present on upload / fetch requests.
+  2. Upgraded `safeMediaLibrary.ts` with robust asset and album fallbacks so main media grid and auto-sync folder selector populate smoothly across Expo Go and standalone builds.
+  3. Verified TypeScript compilation (`bun run typecheck`) with zero errors.
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

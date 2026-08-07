@@ -219,11 +219,25 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
                       onPress={() => onSelectMedia(item)}
                     >
                       <Image
-                        source={{ uri: item.url }}
+                        source={{
+                          uri: item.localUri || item.thumbUrl || item.url,
+                          headers:
+                            !item.localUri && item.url?.startsWith('http')
+                              ? undefined // token already in query string
+                              : undefined,
+                        }}
                         style={styles.thumbnailImage}
                         contentFit="cover"
                         transition={200}
+                        recyclingKey={item.id}
+                        placeholder={null}
                       />
+
+                      {item.isBackedUp && (
+                        <View style={styles.cloudBadge}>
+                          <Ionicons name="cloud-done" size={13} color="#FFFFFF" />
+                        </View>
+                      )}
 
                       {item.isVideo && (
                         <View style={styles.videoBadge}>
@@ -293,6 +307,16 @@ const styles = StyleSheet.create({
   thumbnailImage: {
     width: '100%',
     height: '100%',
+  },
+  cloudBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    backgroundColor: '#1A73E8',
+    borderRadius: 10,
+    padding: 3,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   videoBadge: {
     position: 'absolute',

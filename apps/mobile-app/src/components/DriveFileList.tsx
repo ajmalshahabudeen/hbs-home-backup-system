@@ -17,6 +17,7 @@ import {
   SortOrder,
   GroupByOption,
 } from './FilterSortBar';
+import { InputDialogModal } from './InputDialogModal';
 
 interface DriveFileListProps {
   files: BackupFileItem[];
@@ -144,24 +145,10 @@ export const DriveFileList: React.FC<DriveFileListProps> = ({
     return { name: 'document', color: colors.icon };
   };
 
+  const [renameTarget, setRenameTarget] = useState<BackupFileItem | null>(null);
+
   const promptRename = (file: BackupFileItem) => {
-    Alert.prompt(
-      'Rename Item',
-      `Enter new name for ${file.name}:`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Rename',
-          onPress: (newName?: string) => {
-            if (newName && newName.trim()) {
-              onRenameFile(file, newName.trim());
-            }
-          },
-        },
-      ],
-      'plain-text',
-      file.name
-    );
+    setRenameTarget(file);
   };
 
   const promptDelete = (file: BackupFileItem) => {
@@ -326,6 +313,21 @@ export const DriveFileList: React.FC<DriveFileListProps> = ({
             </Text>
           </View>
         }
+      />
+
+      <InputDialogModal
+        visible={!!renameTarget}
+        title="Rename Item"
+        placeholder="New name..."
+        initialValue={renameTarget?.name || ''}
+        confirmLabel="Rename"
+        onConfirm={(newName) => {
+          if (renameTarget) {
+            onRenameFile(renameTarget, newName);
+          }
+          setRenameTarget(null);
+        }}
+        onClose={() => setRenameTarget(null)}
       />
     </View>
   );

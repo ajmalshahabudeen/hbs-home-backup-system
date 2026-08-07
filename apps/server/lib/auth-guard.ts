@@ -7,9 +7,96 @@ export type AppSession = NonNullable<
   Awaited<ReturnType<typeof auth.api.getSession>>
 >;
 
+/** Extract session token from Authorization Bearer, Cookie, or ?token= query. */
+export function extractSessionToken(
+  request?: NextRequest,
+  headerBag?: Headers
+): string | null {
+  const h = headerBag || request?.headers;
+  if (!h) return null;
+
+  const authz = h.get("authorization") || h.get("Authorization");
+  if (authz) {
+    const m = authz.match(/^Bearer\s+(.+)$/i);
+    if (m?.[1]) return m[1].trim();
+  }
+
+  const cookie = h.get("cookie") || "";
+  // better-auth may use better-auth.session_token or __Secure-...
+  const cookieMatch = cookie.match(
+    /(?:^|;\s*)(?:__Secure-)?better-auth\.session_token=([^;]+)/i
+  );
+  if (cookieMatch?.[1]) {
+    try {
+      return decodeURIComponent(cookieMatch[1]);
+    } catch {
+      return cookieMatch[1];
+    }
+  }
+
+  if (request) {
+    const q = request.nextUrl?.searchParams?.get("token");
+    if (q) return q.trim();
+  }
+
+  return null;
+}
+
+/**
+ * Resolve session via Better Auth headers first, then fall back to direct
+ * Session table lookup (needed for Expo uploadAsync / mobile Bearer tokens).
+ */
 export async function getSession(request?: NextRequest) {
   const h = request ? request.headers : await headers();
-  return auth.api.getSession({ headers: h });
+
+  try {
+    const fromAuth = await auth.api.getSession({ headers: h });
+    if (fromAuth?.user) return fromAuth;
+  } catch {
+    // continue to token fallback
+  }
+
+  const token = extractSessionToken(
+    request,
+    request ? request.headers : h
+  );
+  if (!token) return null;
+
+  try {
+    const row = await prisma.session.findUnique({
+      where: { token },
+      include: { user: true },
+    });
+    if (!row) return null;
+    if (row.expiresAt.getTime() <= Date.now()) return null;
+    if (row.user.banned) return null;
+
+    return {
+      session: {
+        id: row.id,
+        userId: row.userId,
+        token: row.token,
+        expiresAt: row.expiresAt,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        ipAddress: row.ipAddress,
+        userAgent: row.userAgent,
+      },
+      user: {
+        id: row.user.id,
+        name: row.user.name,
+        email: row.user.email,
+        emailVerified: row.user.emailVerified,
+        image: row.user.image,
+        createdAt: row.user.createdAt,
+        updatedAt: row.user.updatedAt,
+        role: row.user.role,
+        banned: row.user.banned,
+      },
+    } as AppSession;
+  } catch {
+    return null;
+  }
 }
 
 export async function requireSession(request?: NextRequest) {
@@ -69,10 +156,16 @@ export async function writeLog(input: {
   userAgent?: string | null;
   metadata?: unknown;
 }) {
+  const level = input.level ?? "INFO";
+  const line = `[HBS][${level}][${input.type}] ${input.message}`;
+  if (level === "ERROR") console.error(line, input.metadata ?? "");
+  else if (level === "WARN") console.warn(line, input.metadata ?? "");
+  else console.log(line, input.metadata ?? "");
+
   try {
     await prisma.systemLog.create({
       data: {
-        level: input.level ?? "INFO",
+        level,
         type: input.type,
         status: input.status ?? "SUCCESS",
         message: input.message,
@@ -86,8 +179,8 @@ export async function writeLog(input: {
             : JSON.stringify(input.metadata),
       },
     });
-  } catch {
-    // never throw from logging
+  } catch (e) {
+    console.error("[HBS] writeLog failed", e);
   }
 }
 

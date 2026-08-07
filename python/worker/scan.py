@@ -179,6 +179,10 @@ def scan_user(
     user_id: str,
     progress_cb: Callable[[int, str, str], None] | None = None,
 ) -> dict[str, Any]:
+    from worker.db import write_system_log
+
+    print(f"[HBS][SCAN] start user={user_id}", flush=True)
+    write_system_log(f"SCAN start user={user_id}", type_="SCAN", user_id=user_id)
     if progress_cb:
         progress_cb(5, "WALK", "Walking filesystem")
     entries = walk_user_files(user_id)
@@ -187,13 +191,21 @@ def scan_user(
     count = upsert_entries(user_id, entries)
     if progress_cb:
         progress_cb(100, "DONE", "Scan complete")
-    return {
+    result = {
         "userId": user_id,
         "entries": len(entries),
         "upserted": count,
         "files": sum(1 for e in entries if not e["isDir"]),
         "dirs": sum(1 for e in entries if e["isDir"]),
     }
+    print(f"[HBS][SCAN] done user={user_id} result={result}", flush=True)
+    write_system_log(
+        f"SCAN done user={user_id} files={result['files']} dirs={result['dirs']}",
+        type_="SCAN",
+        user_id=user_id,
+        metadata=result,
+    )
+    return result
 
 
 def consistency_check(

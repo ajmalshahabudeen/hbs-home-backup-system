@@ -3,6 +3,8 @@ import fs from "node:fs";
 import { prisma } from "@workspace/db";
 import { requireSession, badRequest } from "@/lib/auth-guard";
 import { resolveUserPath, toPosixRel } from "@/lib/storage";
+import { getOrCreateThumbnail } from "@/lib/thumbnails";
+import { logAction } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -16,8 +18,13 @@ export async function GET(
 
   const userId = session.user.id;
   const params = await context.params;
-  const rawPath = params.path ? params.path.map(decodeURIComponent).join("/") : "";
+  const rawPath = params.path
+    ? params.path.map(decodeURIComponent).join("/")
+    : "";
   const relPath = toPosixRel(rawPath);
+  const wantThumb =
+    request.nextUrl.searchParams.get("thumb") === "1" ||
+    request.nextUrl.searchParams.get("thumbnail") === "1";
 
   if (!relPath) return badRequest("Path required");
 
@@ -31,10 +38,29 @@ export async function GET(
 
   try {
     const abs = resolveUserPath(userId, file.path);
-    if (!fs.existsSync(abs)) return badRequest("File missing on disk");
+    if (!fs.existsSync(/* turbopackIgnore: true */ abs)) {
+      return badRequest("File missing on disk");
+    }
 
-    const buf = fs.readFileSync(abs);
-    return new Response(buf, {
+    if (wantThumb) {
+      const thumb = await getOrCreateThumbnail({
+        userId,
+        relPath: file.path,
+        absPath: abs,
+        mimeType: file.mimeType,
+      });
+      return new Response(new Uint8Array(thumb.buffer), {
+        headers: {
+          "Content-Type": thumb.contentType,
+          "Content-Length": String(thumb.buffer.length),
+          "Cache-Control": "private, max-age=604800",
+          "X-HBS-Thumb-Cache": thumb.cached ? "HIT" : "MISS",
+        },
+      });
+    }
+
+    const buf = fs.readFileSync(/* turbopackIgnore: true */ abs);
+    return new Response(new Uint8Array(buf), {
       headers: {
         "Content-Type": file.mimeType || "application/octet-stream",
         "Content-Length": String(buf.length),
@@ -42,6 +68,15 @@ export async function GET(
       },
     });
   } catch (e) {
+    await logAction({
+      type: "MEDIA",
+      level: "ERROR",
+      status: "FAILURE",
+      message: `Media read failed: ${relPath}`,
+      userId,
+      userEmail: session.user.email,
+      metadata: { error: e instanceof Error ? e.message : String(e) },
+    });
     return badRequest(e instanceof Error ? e.message : "Media read error");
   }
 }

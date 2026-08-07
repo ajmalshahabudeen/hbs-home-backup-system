@@ -6,6 +6,7 @@ import { useAppTheme } from '../../context/ThemeContext';
 import { useServer } from '../../context/ServerContext';
 import { useAuth } from '../../context/AuthContext';
 import { hbsApi, PhotoMediaItem } from '../../services/api';
+import { safeMediaLibrary } from '../../utils/safeMediaLibrary';
 import { Header } from '../../components/Header';
 import { PhotoGrid } from '../../components/PhotoGrid';
 import { MediaViewerModal } from '../../components/MediaViewerModal';
@@ -24,13 +25,67 @@ export default function PhotosScreen() {
   const [showScannerModal, setShowScannerModal] = useState<boolean>(false);
 
   const fetchPhotos = useCallback(async () => {
-    if (!serverUrl) return;
     setLoading(true);
     try {
-      const res = await hbsApi.getPhotos(serverUrl, sessionToken, 'all');
-      setMediaList(res.media || []);
+      // 1. Fetch server media
+      let serverMedia: PhotoMediaItem[] = [];
+      if (serverUrl) {
+        try {
+          const res = await hbsApi.getPhotos(serverUrl, sessionToken, 'all');
+          serverMedia = (res.media || []).map((m) => ({
+            ...m,
+            isBackedUp: true,
+            isLocalOnly: false,
+          }));
+        } catch {
+          // offline or unreachable
+        }
+      }
+
+      // 2. Fetch local camera roll media
+      const localAssets = await safeMediaLibrary.getAssetsAsync({ first: 150 });
+      const serverNameSet = new Set(serverMedia.map((m) => m.name.toLowerCase()));
+
+      const mergedList: PhotoMediaItem[] = [...serverMedia];
+
+      // Add local assets if not already on server
+      for (const asset of localAssets) {
+        const name = asset.filename;
+        const existsOnServer = serverNameSet.has(name.toLowerCase());
+
+        if (existsOnServer) {
+          // Mark server item as having localUri
+          const serverIdx = mergedList.findIndex((m) => m.name.toLowerCase() === name.toLowerCase());
+          if (serverIdx !== -1) {
+            mergedList[serverIdx].localUri = asset.uri;
+          }
+        } else {
+          // Local only media item
+          mergedList.push({
+            id: `local_${asset.id}`,
+            userId: 'local',
+            path: name,
+            name,
+            parentPath: '',
+            mimeType: asset.mediaType === 'video' ? 'video/mp4' : 'image/jpeg',
+            size: 0,
+            createdAt: new Date(asset.creationTime).toISOString(),
+            updatedAt: new Date(asset.creationTime).toISOString(),
+            isVideo: asset.mediaType === 'video',
+            url: asset.uri,
+            localUri: asset.uri,
+            isLocalOnly: true,
+            isBackedUp: false,
+          });
+        }
+      }
+
+      // Sort merged list by creation date descending
+      mergedList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+      setMediaList(mergedList);
     } catch {
-      // ignore
+      // fallback
     } finally {
       setLoading(false);
     }
@@ -47,6 +102,28 @@ export default function PhotosScreen() {
       fetchPhotos();
     } catch (e) {
       Alert.alert('Upload Failed', e instanceof Error ? e.message : 'Unknown error');
+    }
+  };
+
+  const handleUploadItemToServer = async (item: PhotoMediaItem) => {
+    if (!item.url) return;
+    try {
+      const mime = item.mimeType || (item.isVideo ? 'video/mp4' : 'image/jpeg');
+      await hbsApi.uploadFile(serverUrl, sessionToken, item.url, item.name, mime, '');
+      Alert.alert('Backed Up', `${item.name} uploaded to server.`);
+      setSelectedMedia(null);
+      fetchPhotos();
+    } catch (e) {
+      Alert.alert('Upload Failed', e instanceof Error ? e.message : 'Unknown error');
+    }
+  };
+
+  const handleSaveToDevice = async (item: PhotoMediaItem) => {
+    try {
+      await hbsApi.downloadFileToDevice(serverUrl, sessionToken, item.path, item.name);
+      Alert.alert('Saved', `${item.name} saved to device.`);
+    } catch (e) {
+      Alert.alert('Save Failed', e instanceof Error ? e.message : 'Unknown error');
     }
   };
 
@@ -82,12 +159,14 @@ export default function PhotosScreen() {
         <Ionicons name="add" size={30} color="#FFFFFF" />
       </TouchableOpacity>
 
-      {/* Fullscreen Photo Viewer */}
+      {/* Fullscreen Photo/Video Viewer */}
       <MediaViewerModal
         visible={!!selectedMedia}
         media={selectedMedia}
         onClose={() => setSelectedMedia(null)}
         onDelete={handleDeleteMedia}
+        onUploadToServer={handleUploadItemToServer}
+        onSaveToDevice={handleSaveToDevice}
       />
 
       {/* Upload Modal */}

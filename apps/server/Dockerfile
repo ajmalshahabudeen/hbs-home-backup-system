@@ -66,6 +66,7 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends \
     ca-certificates openssl curl unzip \
     python3 python3-pip python3-venv \
+    ffmpeg \
   && rm -rf /var/lib/apt/lists/* \
   && mkdir -p /data/storage/users \
   && chmod -R 777 /data/storage \
@@ -76,11 +77,11 @@ COPY --from=builder /app/apps/server/.next/standalone ./
 COPY --from=builder /app/apps/server/.next/static ./apps/server/.next/static
 COPY --from=builder /app/apps/server/public ./apps/server/public
 
-# Prisma client + schema for migrate/push at boot
-COPY --from=builder /app/packages/db ./packages/db
-COPY --from=builder /app/node_modules ./node_modules
+# Prisma schema + generated client for boot database sync
+COPY --from=builder /app/packages/db/prisma ./packages/db/prisma
+COPY --from=builder /app/packages/db/generated ./packages/db/generated
+COPY --from=builder /app/packages/db/package.json ./packages/db/package.json
 COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/bun.lock ./bun.lock
 
 # Python enqueue client (same scripts as worker; needs celery+redis+psycopg)
 COPY python /app/python

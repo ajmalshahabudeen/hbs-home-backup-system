@@ -78,7 +78,28 @@ export async function sendLocalSyncNotification(title: string, body: string) {
   }
 }
 
+import { safeMediaLibrary, SafeAsset } from '../utils/safeMediaLibrary';
+
 export const sendLocalNotification = sendLocalSyncNotification;
+
+/**
+ * Retrieves camera roll assets scoped strictly to user enabled sync albums.
+ */
+export async function getEnabledSyncAssets(): Promise<SafeAsset[]> {
+  const config = await getSyncConfig();
+  if (!config.autoSyncEnabled || config.selectedAlbums.length === 0) {
+    return [];
+  }
+  const allAssets: SafeAsset[] = [];
+  for (const albumId of config.selectedAlbums) {
+    const albumAssets = await safeMediaLibrary.getAssetsAsync({ album: albumId, first: 50 });
+    allAssets.push(...albumAssets);
+  }
+  if (allAssets.length === 0) {
+    return safeMediaLibrary.getAssetsAsync({ first: 50 });
+  }
+  return allAssets;
+}
 
 // Define the background task
 try {

@@ -64,7 +64,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const data = await res.json();
         if (data?.user) {
           setUser(data.user);
-          if (storedToken) setSessionToken(storedToken);
+          const activeToken = storedToken || data.session?.token || data.token || data.session?.id;
+          if (activeToken) {
+            setSessionToken(activeToken);
+            await appStorage.setItem(AUTH_STORAGE_KEY, activeToken);
+          }
           setIsLoading(false);
           return;
         }
@@ -96,7 +100,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, error: data.message || data.error || 'Sign in failed' };
       }
 
-      const returnedToken = data.token || data.session?.token;
+      // Prefer body token; also scrape Set-Cookie (RN may expose getSetCookie)
+      let returnedToken =
+        data.token ||
+        data.session?.token ||
+        data.sessionToken ||
+        data.session?.id ||
+        data.tokenValue;
+
+      if (!returnedToken) {
+        const anyHeaders = res.headers as Headers & { getSetCookie?: () => string[] };
+        const setCookies =
+          typeof anyHeaders.getSetCookie === 'function'
+            ? anyHeaders.getSetCookie()
+            : [res.headers.get('set-cookie') || ''];
+        for (const c of setCookies) {
+          const m = c.match(/better-auth\.session_token=([^;]+)/i);
+          if (m?.[1]) {
+            try {
+              returnedToken = decodeURIComponent(m[1]);
+            } catch {
+              returnedToken = m[1];
+            }
+            break;
+          }
+        }
+      }
+
       if (returnedToken) {
         await appStorage.setItem(AUTH_STORAGE_KEY, returnedToken);
         setSessionToken(returnedToken);
@@ -127,7 +157,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, error: data.message || data.error || 'Sign up failed' };
       }
 
-      const returnedToken = data.token || data.session?.token;
+      const returnedToken =
+        data.token ||
+        data.session?.token ||
+        data.sessionToken ||
+        data.session?.id ||
+        data.tokenValue;
       if (returnedToken) {
         await appStorage.setItem(AUTH_STORAGE_KEY, returnedToken);
         setSessionToken(returnedToken);

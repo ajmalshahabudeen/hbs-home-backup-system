@@ -79,9 +79,16 @@ export default function SettingsScreen() {
     ]);
   };
 
-  const formattedUsedGb = stats
-    ? (stats.totalBytes / (1024 * 1024 * 1024)).toFixed(2)
-    : '0.00';
+  const formatStorage = (bytes: number) => {
+    if (!bytes || bytes === 0) return '0.00 MB';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    const val = (bytes / Math.pow(k, i)).toFixed(2);
+    return `${val} ${sizes[i]}`;
+  };
+
+  const formattedUsedStorage = stats ? formatStorage(stats.totalBytes) : '0.00 MB';
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
@@ -117,7 +124,7 @@ export default function SettingsScreen() {
         <GlassCard style={styles.quotaCard} borderRadius={20}>
           <View style={styles.quotaHeader}>
             <Text style={[styles.quotaTitle, { color: colors.text }]}>Storage Used</Text>
-            <Text style={[styles.quotaValue, { color: colors.primary }]}>{formattedUsedGb} GB</Text>
+            <Text style={[styles.quotaValue, { color: colors.primary }]}>{formattedUsedStorage}</Text>
           </View>
 
           <View style={[styles.quotaBarBg, { backgroundColor: colors.border }]}>

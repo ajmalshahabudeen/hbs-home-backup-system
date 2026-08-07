@@ -158,25 +158,41 @@ def write_system_log(
     user_id: str | None = None,
     metadata: Any = None,
 ) -> None:
-    with connect() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO system_log
-                  (id, timestamp, level, type, message, status, "userId", metadata, "createdAt")
-                VALUES (%s, NOW(), %s, %s, %s, %s, %s, %s, NOW())
-                """,
-                (
-                    new_id(),
-                    level,
-                    type_,
-                    message,
-                    status,
-                    user_id,
-                    json.dumps(metadata) if metadata is not None else None,
-                ),
-            )
-            conn.commit()
+    line = f"[HBS][{level}][{type_}] {message}"
+    if level == "ERROR":
+        print(line, flush=True)
+    elif level == "WARN":
+        print(line, flush=True)
+    else:
+        print(line, flush=True)
+    if metadata is not None:
+        try:
+            print(f"[HBS][META] {json.dumps(metadata, default=str)[:500]}", flush=True)
+        except Exception:
+            pass
+    try:
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO system_log
+                      (id, timestamp, level, type, message, status, "userId", metadata, "createdAt")
+                    VALUES (%s, NOW(), %s, %s, %s, %s, %s, %s, NOW())
+                    """
+                    ,
+                    (
+                        new_id(),
+                        level,
+                        type_,
+                        message,
+                        status,
+                        user_id,
+                        json.dumps(metadata) if metadata is not None else None,
+                    ),
+                )
+                conn.commit()
+    except Exception as e:  # noqa: BLE001
+        print(f"[HBS][ERROR][LOG] failed to persist system log: {e}", flush=True)
 
 
 def requeue_stale_running(minutes: int = 60) -> int:

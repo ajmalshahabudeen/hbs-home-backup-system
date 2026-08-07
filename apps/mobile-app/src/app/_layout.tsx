@@ -9,12 +9,15 @@ import { ThemeProvider, useAppTheme } from '../context/ThemeContext';
 import { ServerProvider } from '../context/ServerContext';
 import { AuthProvider } from '../context/AuthContext';
 
+import { PermissionChecker } from '../components/PermissionChecker';
+
 function RootStack() {
   const { isDark } = useAppTheme();
 
   return (
     <>
       <StatusBar style={isDark ? 'light' : 'dark'} />
+      <PermissionChecker />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="(auth)/login" />

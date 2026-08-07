@@ -13,6 +13,11 @@ coverage
 data
 **/data/storage
 .docker-build-fingerprint
+.run-bat*
+hbs-*.json
+G*
+G:*
+G*
 *.log
 .DS_Store
 .env

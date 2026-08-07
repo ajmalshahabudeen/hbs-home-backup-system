@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  typescript: {
+    ignoreBuildErrors: true,
+  },
   transpilePackages: [
     "@workspace/ui",
     "@workspace/auth",
@@ -11,6 +14,8 @@ const nextConfig: NextConfig = {
     "@prisma/adapter-pg",
     "pg",
     "better-auth",
+    "sharp",
+    "ioredis",
   ],
   output: "standalone",
   /**

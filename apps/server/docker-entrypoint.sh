@@ -72,11 +72,11 @@ if [[ -n "${DATABASE_URL:-}" ]]; then
   cd /app/packages/db
   if command -v bun >/dev/null 2>&1; then
     if [[ -d prisma/migrations ]] && ls prisma/migrations/*/migration.sql >/dev/null 2>&1; then
-      bunx prisma migrate deploy || true
+      bunx prisma migrate deploy --url "$DATABASE_URL" || true
     fi
-    bunx prisma db push --accept-data-loss || bunx prisma db push
+    bunx prisma db push --url "$DATABASE_URL" --accept-data-loss || bunx prisma db push --url "$DATABASE_URL"
   else
-    npx --yes prisma@7.9.1 db push --accept-data-loss || true
+    npx --yes prisma@7.9.1 db push --url "$DATABASE_URL" --accept-data-loss || true
   fi
   cd /app
 fi
