@@ -3,6 +3,9 @@ import * as BackgroundTask from 'expo-background-task';
 import * as Battery from 'expo-battery';
 import { appStorage } from '../utils/storage';
 import { safeNotifications } from '../utils/safeNotifications';
+import { safeMediaLibrary, SafeAsset } from '../utils/safeMediaLibrary';
+import { hbsApi } from './api';
+import { checkFileDuplicate } from '../utils/dedupe';
 
 export const BACKGROUND_SYNC_TASK = 'HBS_BACKGROUND_AUTO_SYNC';
 
@@ -78,8 +81,6 @@ export async function sendLocalSyncNotification(title: string, body: string) {
   }
 }
 
-import { safeMediaLibrary, SafeAsset } from '../utils/safeMediaLibrary';
-
 export const sendLocalNotification = sendLocalSyncNotification;
 
 /**
@@ -87,18 +88,85 @@ export const sendLocalNotification = sendLocalSyncNotification;
  */
 export async function getEnabledSyncAssets(): Promise<SafeAsset[]> {
   const config = await getSyncConfig();
-  if (!config.autoSyncEnabled || config.selectedAlbums.length === 0) {
+  if (!config.autoSyncEnabled) {
     return [];
   }
-  const allAssets: SafeAsset[] = [];
-  for (const albumId of config.selectedAlbums) {
-    const albumAssets = await safeMediaLibrary.getAssetsAsync({ album: albumId, first: 50 });
-    allAssets.push(...albumAssets);
+  return safeMediaLibrary.getAssetsAsync({ first: 100 });
+}
+
+/**
+ * Executes photo & video auto-sync engine against the user's home server.
+ */
+export async function syncPhotosNow(
+  serverUrl: string,
+  sessionToken: string | null
+): Promise<{ synced: number; skipped: number; total: number }> {
+  if (!serverUrl) return { synced: 0, skipped: 0, total: 0 };
+
+  const config = await getSyncConfig();
+  if (!config.autoSyncEnabled) {
+    return { synced: 0, skipped: 0, total: 0 };
   }
-  if (allAssets.length === 0) {
-    return safeMediaLibrary.getAssetsAsync({ first: 50 });
+
+  const batteryCheck = await isBatteryOkForSync(config.pauseOnLowBattery);
+  if (!batteryCheck.ok) {
+    return { synced: 0, skipped: 0, total: 0 };
   }
-  return allAssets;
+
+  const assets = await safeMediaLibrary.getAssetsAsync({ first: 100 });
+  if (!assets || assets.length === 0) {
+    return { synced: 0, skipped: 0, total: 0 };
+  }
+
+  let synced = 0;
+  let skipped = 0;
+
+  for (const asset of assets) {
+    const fileName = asset.filename || `auto_sync_${asset.id}.jpg`;
+    const mime = asset.mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
+
+    try {
+      const dup = await checkFileDuplicate(
+        serverUrl,
+        sessionToken,
+        fileName,
+        asset.uri,
+        0,
+        'AutoSync'
+      );
+
+      if (dup.isDuplicate) {
+        skipped++;
+        continue;
+      }
+
+      await hbsApi.uploadFile(
+        serverUrl,
+        sessionToken,
+        asset.uri,
+        fileName,
+        mime,
+        'AutoSync'
+      );
+      synced++;
+    } catch {
+      // continue next
+    }
+  }
+
+  if (synced > 0) {
+    await sendLocalSyncNotification(
+      'HBS Auto-Sync',
+      `Synced ${synced} new photo${synced > 1 ? 's' : ''} to server.`
+    );
+  }
+
+  await saveSyncConfig({
+    lastSyncTimestamp: new Date().toISOString(),
+    totalSyncedCount: (config.totalSyncedCount || 0) + synced,
+  });
+
+  return { synced, skipped, total: assets.length };
 }
 
 // Define the background task

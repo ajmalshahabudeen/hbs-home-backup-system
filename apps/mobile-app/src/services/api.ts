@@ -233,6 +233,8 @@ export const hbsApi = {
     const tryFetchUpload = async (): Promise<{ file: BackupFileItem }> => {
       const formData = new FormData();
       formData.append('path', parentPath);
+      formData.append('name', fileName);
+      formData.append('filename', fileName);
       formData.append('file', {
         uri: fileUri,
         name: fileName,
@@ -271,6 +273,8 @@ export const hbsApi = {
             mimeType,
             parameters: {
               path: parentPath,
+              name: fileName,
+              filename: fileName,
             },
             headers: {
               ...headers,

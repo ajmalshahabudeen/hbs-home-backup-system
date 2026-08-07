@@ -12,7 +12,14 @@ export async function GET(request: NextRequest) {
   const userId = session.user.id;
 
   const files = await prisma.backupFile.findMany({
-    where: { userId, isDir: false },
+    where: {
+      userId,
+      isDir: false,
+      NOT: [
+        { name: { contains: ".hbs-thumb" } },
+        { path: { contains: ".hbs-thumb" } },
+      ],
+    },
     select: { size: true, mimeType: true },
   });
 

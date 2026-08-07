@@ -18,6 +18,10 @@ export async function GET(request: NextRequest) {
     where: {
       userId,
       isDir: false,
+      NOT: [
+        { name: { contains: ".hbs-thumb" } },
+        { path: { contains: ".hbs-thumb" } },
+      ],
       OR:
         filter === "videos"
           ? [{ mimeType: { startsWith: "video/" } }]

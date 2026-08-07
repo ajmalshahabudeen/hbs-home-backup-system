@@ -54,10 +54,12 @@
   7. Created `PermissionChecker` startup component mounted in `_layout.tsx` to evaluate permissions on app launch.
 - Added automatic self-healing retry logic to `run.bat` and `run.sh`: if `docker compose up` fails, launcher runs `docker builder prune -af` and `docker compose build --no-cache` followed by `docker compose up -d --force-recreate`.
 - Diagnosed root cause of `archive/tar: invalid tar header`: removed accidental `G` folder created by Windows path mapping in workspace root and added `G*`, `.run-bat*`, `hbs-*.json` to `.dockerignore`.
-- Resolved mobile auth token & media display issues:
-  1. Updated `AuthContext.tsx` and `hbsApi` in `api.ts` to automatically fallback to `appStorage` for `sessionToken` so `Authorization` and `Cookie` headers are always present on upload / fetch requests.
-  2. Upgraded `safeMediaLibrary.ts` with robust asset and album fallbacks so main media grid and auto-sync folder selector populate smoothly across Expo Go and standalone builds.
+- Fixed thumbnail cache files (`.hbs-thumb.jpg`) showing up as separate media items:
+  1. Updated `apps/server/app/api/user/photos/route.ts`, `api/user/files/route.ts`, and `api/user/stats/route.ts` with `NOT: [{ name: { contains: ".hbs-thumb" } }, { path: { contains: ".hbs-thumb" } }]` so generated disk thumbnail files are excluded from API results and storage metrics.
+  2. Updated `photos.tsx` in `apps/mobile-app` to filter out `.hbs-thumb` files on client side as an extra safety net.
   3. Verified TypeScript compilation (`bun run typecheck`) with zero errors.
+
+
 
 
 

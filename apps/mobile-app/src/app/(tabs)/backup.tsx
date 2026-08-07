@@ -28,6 +28,7 @@ import {
   sendLocalSyncNotification,
   getSyncConfig,
   saveSyncConfig,
+  syncPhotosNow,
 } from '../../services/backgroundSync';
 import { appStorage } from '../../utils/storage';
 
@@ -78,6 +79,22 @@ export default function BackupScreen() {
     setAutoSyncEnabled(val);
     await saveSyncConfig({ autoSyncEnabled: val });
     await registerBackgroundSyncTask(val);
+
+    if (val && isConnected) {
+      setIsSyncing(true);
+      try {
+        const res = await syncPhotosNow(serverUrl, sessionToken);
+        setBackedUpCount((prev) => prev + res.synced);
+        setSkippedDuplicatesCount((prev) => prev + res.skipped);
+        if (res.synced > 0) {
+          Alert.alert('Auto-Sync Complete', `Synced ${res.synced} new items to server.`);
+        }
+      } catch {
+        // sync error
+      } finally {
+        setIsSyncing(false);
+      }
+    }
   };
 
   const handleToggleWifiOnly = async (val: boolean) => {

@@ -53,14 +53,18 @@ export const safeMediaLibrary = {
   getAlbumsAsync: async (): Promise<SafeAlbum[]> => {
     if (MediaLibraryModule) {
       try {
+        const { granted } = await MediaLibraryModule.getPermissionsAsync();
+        if (!granted) {
+          await MediaLibraryModule.requestPermissionsAsync();
+        }
         const fetchedAlbums = await MediaLibraryModule.getAlbumsAsync({ includeSmartAlbums: true });
-        const valid = fetchedAlbums
+        const valid = (fetchedAlbums || [])
           .map((a: any) => ({
             id: String(a.id),
             title: String(a.title || 'Album'),
             assetCount: Number(a.assetCount || 0),
           }))
-          .filter((a) => a.assetCount > 0);
+          .filter((a: any) => a.assetCount > 0);
 
         if (valid.length > 0) return valid;
       } catch (e) {
@@ -80,18 +84,34 @@ export const safeMediaLibrary = {
   getAssetsAsync: async (options?: { album?: string; first?: number }): Promise<SafeAsset[]> => {
     if (MediaLibraryModule) {
       try {
-        const res = await MediaLibraryModule.getAssetsAsync({
-          first: options?.first || 150,
-          mediaType: ['photo', 'video'],
-          album: options?.album,
+        const { granted } = await MediaLibraryModule.getPermissionsAsync();
+        if (!granted) {
+          await MediaLibraryModule.requestPermissionsAsync();
+        }
+
+        const M = (MediaLibraryModule as any)?.MediaType;
+        const mediaTypes = M
+          ? [M.photo || M.PHOTO || M.image, M.video || M.VIDEO].filter(Boolean)
+          : ['photo', 'video'];
+
+        const queryParams: any = {
+          first: options?.first || 200,
+          mediaType: mediaTypes,
           sortBy: ['creationTime'],
-        });
-        if (res.assets && res.assets.length > 0) {
+        };
+
+        // Only pass album if it's a real native album ID (not dummy string)
+        if (options?.album && !['camera_roll', 'recents', 'screenshots', 'whatsapp', 'downloads'].includes(options.album)) {
+          queryParams.album = options.album;
+        }
+
+        const res = await MediaLibraryModule.getAssetsAsync(queryParams);
+        if (res && res.assets && res.assets.length > 0) {
           return res.assets.map((a: any) => ({
             id: String(a.id),
-            filename: String(a.filename || `asset_${a.id}`),
+            filename: String(a.filename || `asset_${a.id}.jpg`),
             uri: String(a.uri),
-            mediaType: a.mediaType === 'video' ? 'video' : 'photo',
+            mediaType: a.mediaType === 'video' || String(a.mediaType).toLowerCase().includes('video') ? 'video' : 'photo',
             creationTime: Number(a.creationTime || Date.now()),
             duration: a.duration ? Number(a.duration) : undefined,
             albumId: a.albumId ? String(a.albumId) : undefined,

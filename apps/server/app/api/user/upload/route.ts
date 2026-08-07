@@ -56,10 +56,11 @@ export async function POST(request: NextRequest) {
     try {
       const form = await request.formData();
       parentPath = toPosixRel(String(form.get("path") || ""));
+      const customName = String(form.get("name") || form.get("filename") || "").trim();
       const file = form.get("file");
 
       if (file instanceof File) {
-        rawName = file.name || `upload_${Date.now()}`;
+        rawName = customName || file.name || `upload_${Date.now()}`;
         buf = Buffer.from(await file.arrayBuffer());
         mime = file.type || guessMime(rawName);
       }
@@ -71,7 +72,7 @@ export async function POST(request: NextRequest) {
       const fallback = await parseMultipartFallback(request, contentType);
       if (fallback) {
         parentPath = toPosixRel(fallback.parentPath);
-        rawName = fallback.fileName;
+        rawName = fallback.customName || fallback.fileName;
         buf = fallback.fileBuf;
         mime = fallback.mimeType || guessMime(rawName);
       }
@@ -176,6 +177,7 @@ async function parseMultipartFallback(
 ): Promise<{
   fileBuf: Buffer;
   fileName: string;
+  customName?: string;
   mimeType: string;
   parentPath: string;
 } | null> {
@@ -189,6 +191,7 @@ async function parseMultipartFallback(
 
     const parts = buffer.toString("binary").split(boundary);
     let fileName = "";
+    let customName = "";
     let mimeType = "";
     let parentPath = "";
     let fileBuf: Buffer | null = null;
@@ -206,6 +209,8 @@ async function parseMultipartFallback(
 
       if (fieldName === "path") {
         parentPath = rawBody.trim();
+      } else if (fieldName === "name" || fieldName === "filename") {
+        customName = rawBody.trim();
       } else if (fieldName === "file" || rawHeaders.includes("filename=")) {
         const filenameMatch = rawHeaders.match(/filename="([^"]+)"/i);
         fileName =
@@ -219,7 +224,7 @@ async function parseMultipartFallback(
     }
 
     if (fileBuf && fileName) {
-      return { fileBuf, fileName, mimeType, parentPath };
+      return { fileBuf, fileName, customName, mimeType, parentPath };
     }
   } catch {
     // fallback failed

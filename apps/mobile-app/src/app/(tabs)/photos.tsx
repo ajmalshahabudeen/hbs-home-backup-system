@@ -32,11 +32,13 @@ export default function PhotosScreen() {
       if (serverUrl) {
         try {
           const res = await hbsApi.getPhotos(serverUrl, sessionToken, 'all');
-          serverMedia = (res.media || []).map((m) => ({
-            ...m,
-            isBackedUp: true,
-            isLocalOnly: false,
-          }));
+          serverMedia = (res.media || [])
+            .filter((m) => !m.name.includes('.hbs-thumb') && !m.path.includes('.hbs-thumb'))
+            .map((m) => ({
+              ...m,
+              isBackedUp: true,
+              isLocalOnly: false,
+            }));
         } catch {
           // offline or unreachable
         }
@@ -163,6 +165,7 @@ export default function PhotosScreen() {
       <MediaViewerModal
         visible={!!selectedMedia}
         media={selectedMedia}
+        mediaList={mediaList}
         onClose={() => setSelectedMedia(null)}
         onDelete={handleDeleteMedia}
         onUploadToServer={handleUploadItemToServer}

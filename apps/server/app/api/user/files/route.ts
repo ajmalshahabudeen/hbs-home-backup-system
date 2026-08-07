@@ -146,7 +146,13 @@ export async function GET(request: NextRequest) {
   }
 
   const files = await prisma.backupFile.findMany({
-    where,
+    where: {
+      ...where,
+      NOT: [
+        { name: { contains: ".hbs-thumb" } },
+        { path: { contains: ".hbs-thumb" } },
+      ],
+    },
     orderBy: [{ isDir: "desc" }, { name: "asc" }],
   });
 
