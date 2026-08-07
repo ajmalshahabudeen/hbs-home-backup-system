@@ -101,9 +101,6 @@ export default function DriveScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
-      <View style={styles.topBar}>
-        <Text style={[styles.screenTitle, { color: colors.text }]}>Drive Files</Text>
-      </View>
 
       <DriveFileList
         files={files}

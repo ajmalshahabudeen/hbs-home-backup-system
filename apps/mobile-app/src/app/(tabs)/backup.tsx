@@ -340,9 +340,6 @@ export default function BackupScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
-      <View style={styles.topBar}>
-        <Text style={[styles.screenTitle, { color: colors.text }]}>Photos Backup</Text>
-      </View>
 
       <ScrollView contentContainerStyle={styles.content}>
         {/* Backup Status Hero Glass Card */}

@@ -195,10 +195,8 @@ export default function PhotosScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
-      {/* Top Header Bar */}
-      <View style={styles.topBar}>
-        <Text style={[styles.screenTitle, { color: colors.text }]}>Photos</Text>
-
+      {/* Top Action Bar */}
+      <View style={[styles.topBar, { justifyContent: 'flex-end' }]}>
         <TouchableOpacity
           style={[
             styles.importBtn,

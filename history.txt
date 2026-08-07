@@ -86,6 +86,7 @@
 - Enhanced `backup.tsx` with live sync progress tracking (current file name, step status, percentage badge, and smooth progress bar) and added a dedicated **Auto-Sync Selected Folders Now** engine (`handleStartAutoSync`).
 - Integrated background process sync (`BACKGROUND_SYNC_TASK` via `BackgroundTask.registerTaskAsync` / `TaskManager`) in `backgroundSync.ts` and `backup.tsx` to automatically run camera roll photo & video sync even when the app is closed or minimized.
 - Added progress notifications (`sendLocalSyncNotification`) with step & percentage progress updates during sync operations, and added a user toggle switch **Sync Progress Notifications** (`showSyncNotifications`) in `backup.tsx` preferences.
+- Removed top screen titles across all tab screens (`photos.tsx`, `drive.tsx`, `backup.tsx`, `settings.tsx`), providing a clean, seamless fullscreen content layout as requested.
 - Verified TypeScript compilation across workspace (`bun run typecheck`) with zero errors.
 
 

@@ -92,9 +92,6 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
-      <View style={styles.topBar}>
-        <Text style={[styles.screenTitle, { color: colors.text }]}>Settings</Text>
-      </View>
 
       <ScrollView contentContainerStyle={styles.content}>
         {/* Profile Card */}
