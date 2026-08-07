@@ -114,7 +114,8 @@ if "!FORCE_BUILD!"=="1" (
 if errorlevel 1 (
   echo [warn] compose up failed — purging BuildKit cache and retrying fresh rebuild...
   docker builder prune -af >nul 2>&1
-  docker compose --env-file .env up -d --build --force-recreate --no-cache
+  docker compose --env-file .env build --no-cache
+  docker compose --env-file .env up -d --force-recreate
   if errorlevel 1 (
     echo [error] docker compose failed after cache purge.
     echo         Try: docker compose logs

@@ -360,8 +360,9 @@ start_stack() {
     fi
     warn "compose up failed — purging BuildKit cache and retrying fresh rebuild..."
     docker builder prune -af >/dev/null 2>&1 || true
-    args=(up -d --build --force-recreate --no-cache)
-    NEED_BUILD=1
+    compose build --no-cache
+    args=(up -d --force-recreate)
+    NEED_BUILD=0
     NEED_RECREATE=1
     ((attempt++)) || true
     sleep 3
