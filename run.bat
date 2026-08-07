@@ -128,7 +128,7 @@ echo [hbs] Waiting for health...
 set /a I=1
 
 :health_loop
-powershell -NoProfile -Command "try { $r=Invoke-WebRequest -UseBasicParsing -TimeoutSec 5 -Uri 'http://127.0.0.1:%APP_PORT%/api/health'; if($r.StatusCode -ge 200 -and $r.StatusCode -lt 300){exit 0}else{exit 1} } catch { exit 1 }"
+powershell -NoProfile -Command "try { $r=Invoke-WebRequest -UseBasicParsing -TimeoutSec 5 -Uri 'http://127.0.0.1:!APP_PORT!/api/health'; if($r.StatusCode -ge 200 -and $r.StatusCode -lt 300){exit 0}else{exit 1} } catch { exit 1 }"
 if not errorlevel 1 goto healthy
 timeout /t 2 /nobreak >nul
 set /a I+=1
@@ -140,7 +140,7 @@ goto FINISH
 
 :healthy
 echo [ ok ] App is healthy.
-start "" "http://127.0.0.1:!APP_PORT!"
+powershell -NoProfile -Command "Start-Process 'http://127.0.0.1:!APP_PORT!'" >nul 2>&1 || start "" "http://127.0.0.1:!APP_PORT!"
 echo.
 echo ============================================================
 echo   HBS is ready

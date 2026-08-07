@@ -416,14 +416,14 @@ wait_for_health() {
 open_browser() {
   local url="$1"
   log "Opening ${url}"
-  if command -v xdg-open >/dev/null 2>&1; then
+  if command -v powershell.exe >/dev/null 2>&1; then
+    powershell.exe -NoProfile -Command "Start-Process '$url'" >/dev/null 2>&1 || true
+  elif command -v cmd.exe >/dev/null 2>&1; then
+    MSYS_NO_PATHCONV=1 cmd.exe /c start "" "$url" >/dev/null 2>&1 || true
+  elif command -v xdg-open >/dev/null 2>&1; then
     xdg-open "$url" >/dev/null 2>&1 || true
   elif command -v open >/dev/null 2>&1; then
     open "$url" >/dev/null 2>&1 || true
-  elif command -v cmd.exe >/dev/null 2>&1; then
-    cmd.exe /c start "" "$url" >/dev/null 2>&1 || true
-  elif command -v powershell.exe >/dev/null 2>&1; then
-    powershell.exe -NoProfile -Command "Start-Process '$url'" >/dev/null 2>&1 || true
   else
     warn "Could not auto-open browser. Visit: $url"
   fi
