@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useAppTheme } from '../../context/ThemeContext';
 import { useServer } from '../../context/ServerContext';
 import { useAuth } from '../../context/AuthContext';
@@ -27,7 +28,7 @@ import {
 import { appStorage } from '../../utils/storage';
 
 export default function SettingsScreen() {
-  const { colors, themeMode, setThemeMode } = useAppTheme();
+  const { colors, isDark, themeMode, setThemeMode } = useAppTheme();
   const router = useRouter();
   const { serverUrl, isConnected } = useServer();
   const { user, signOut, sessionToken } = useAuth();
@@ -254,13 +255,18 @@ export default function SettingsScreen() {
         {/* Server Connection Card */}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Server Connection</Text>
 
-        <TouchableOpacity onPress={() => setShowScannerModal(true)}>
+        <TouchableOpacity onPress={() => setShowScannerModal(true)} activeOpacity={0.8}>
           <GlassCard style={styles.serverCard} borderRadius={20}>
-            <View style={[styles.serverIconBg, { backgroundColor: colors.primaryContainer }]}>
-              <Ionicons name="wifi" size={20} color={colors.primary} />
-            </View>
+            <LinearGradient
+              colors={isDark ? ['#3B82F6', '#8B5CF6'] : ['#1A73E8', '#7C3AED']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.cardIconBadge}
+            >
+              <Ionicons name="wifi" size={18} color="#FFFFFF" />
+            </LinearGradient>
 
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, justifyContent: 'center' }}>
               <Text style={[styles.serverCardTitle, { color: colors.text }]}>
                 HBS LAN Server Settings
               </Text>
@@ -269,7 +275,21 @@ export default function SettingsScreen() {
               </Text>
             </View>
 
-            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+            <View
+              style={[
+                styles.actionChevronBadge,
+                {
+                  backgroundColor: isDark
+                    ? 'rgba(255, 255, 255, 0.08)'
+                    : colors.surfaceVariant,
+                  borderColor: isDark
+                    ? 'rgba(255, 255, 255, 0.12)'
+                    : colors.border,
+                },
+              ]}
+            >
+              <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+            </View>
           </GlassCard>
         </TouchableOpacity>
 
@@ -437,16 +457,25 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 24,
   },
-  serverIconBg: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+  cardIconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  actionChevronBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
   serverCardTitle: {
     fontSize: 14,
     fontWeight: '600',
+    letterSpacing: -0.2,
   },
   serverCardSub: {
     fontSize: 12,

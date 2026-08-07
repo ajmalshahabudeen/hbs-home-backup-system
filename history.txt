@@ -68,8 +68,9 @@
   4. Interactive theme mode pill button (`sunny` / `moon` / `desktop-outline`).
   5. Gradient avatar ring for user profile.
   6. Embedded dynamic search input capsule.
-- Fixed light theme background contrast mismatch in `Header.tsx` by unifying `floatingContainer` background to `colors.surface` (`#F8F9FA`), setting `titleWrapper` and section wrappers to `transparent`, tuning `BlurView` intensity, and styling avatar inner background with `colors.primaryContainer`.
-- Verified TypeScript compilation (`bun run --cwd apps/mobile-app typecheck`) with zero errors.
+- Upgraded `GlassCard.tsx` with smart style splitting (forwarding inner flex/padding styles to inner container while preserving outer bounds & header-matching surface colors).
+- Aligned `Auto-Sync Folders` card in `backup.tsx` and `HBS LAN Server Settings` card in `settings.tsx` with the new Header design (vibrant `LinearGradient` squircle icon badges, centered vertical title alignment, and glass chevron action pills).
+- Verified TypeScript compilation across workspace (`bun run --cwd apps/mobile-app typecheck` & `bun run typecheck`) with zero errors.
 
 
 

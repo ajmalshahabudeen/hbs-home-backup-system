@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { safeMediaLibrary } from '../../utils/safeMediaLibrary';
 import { useAppTheme } from '../../context/ThemeContext';
@@ -33,7 +34,7 @@ import {
 import { appStorage } from '../../utils/storage';
 
 export default function BackupScreen() {
-  const { colors } = useAppTheme();
+  const { colors, isDark } = useAppTheme();
   const { serverUrl, isConnected } = useServer();
   const { sessionToken } = useAuth();
 
@@ -289,20 +290,39 @@ export default function BackupScreen() {
 
         <TouchableOpacity onPress={() => setShowFolderModal(true)} activeOpacity={0.8}>
           <GlassCard style={styles.folderCard}>
-            <View style={[styles.folderIconBg, { backgroundColor: colors.primaryContainer }]}>
-              <Ionicons name="folder-open-outline" size={20} color={colors.primary} />
-            </View>
+            <LinearGradient
+              colors={isDark ? ['#3B82F6', '#8B5CF6'] : ['#1A73E8', '#7C3AED']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.cardIconBadge}
+            >
+              <Ionicons name="folder-open" size={18} color="#FFFFFF" />
+            </LinearGradient>
 
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, justifyContent: 'center' }}>
               <Text style={[styles.folderCardTitle, { color: colors.text }]}>
                 Auto-Sync Folders ({selectedAlbums.length} Selected)
               </Text>
-              <Text style={[styles.folderCardSub, { color: colors.subtext }]}>
+              <Text style={[styles.folderCardSub, { color: colors.textSecondary }]}>
                 Select which camera roll albums auto-sync to server
               </Text>
             </View>
 
-            <Ionicons name="chevron-forward" size={18} color={colors.subtext} />
+            <View
+              style={[
+                styles.actionChevronBadge,
+                {
+                  backgroundColor: isDark
+                    ? 'rgba(255, 255, 255, 0.08)'
+                    : colors.surfaceVariant,
+                  borderColor: isDark
+                    ? 'rgba(255, 255, 255, 0.12)'
+                    : colors.border,
+                },
+              ]}
+            >
+              <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+            </View>
           </GlassCard>
         </TouchableOpacity>
 
@@ -478,16 +498,25 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 20,
   },
-  folderIconBg: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+  cardIconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  actionChevronBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
   folderCardTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
+    letterSpacing: -0.2,
   },
   folderCardSub: {
     fontSize: 12,
