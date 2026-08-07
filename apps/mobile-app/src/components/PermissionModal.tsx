@@ -9,7 +9,7 @@ interface PermissionModalProps {
   visible: boolean;
   type: 'media' | 'notification' | 'notifications' | 'background';
   onClose: () => void;
-  onRequestPermission: () => void;
+  onRequestPermission?: () => void;
   canAskAgain?: boolean;
 }
 
@@ -17,7 +17,7 @@ export const PermissionModal: React.FC<PermissionModalProps> = ({
   visible,
   type,
   onClose,
-  onRequestPermission,
+  onRequestPermission = onClose,
   canAskAgain = true,
 }) => {
   const { colors, isDark } = useAppTheme();

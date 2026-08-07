@@ -89,30 +89,79 @@ export const safeMediaLibrary = {
   },
 
   getAlbumsAsync: async (): Promise<SafeAlbum[]> => {
+    const albumMap = new Map<string, SafeAlbum>();
+
+    // 1. Fetch all assets to compute exact real item counts across categories
+    try {
+      const allAssets = await safeMediaLibrary.getAssetsAsync({ first: 2000 });
+      if (allAssets.length > 0) {
+        albumMap.set('camera_roll', {
+          id: 'camera_roll',
+          title: 'Camera Roll (All Photos & Videos)',
+          assetCount: allAssets.length,
+        });
+
+        let cameraCount = 0;
+        let screenshotsCount = 0;
+        let whatsappCount = 0;
+        let downloadsCount = 0;
+
+        for (const asset of allAssets) {
+          const pathLower = (asset.uri || asset.filename).toLowerCase();
+          if (pathLower.includes('whatsapp')) {
+            whatsappCount++;
+          } else if (pathLower.includes('screenshot')) {
+            screenshotsCount++;
+          } else if (pathLower.includes('download')) {
+            downloadsCount++;
+          } else {
+            cameraCount++;
+          }
+        }
+
+        if (cameraCount > 0) {
+          albumMap.set('camera', { id: 'camera', title: 'Camera & DCIM', assetCount: cameraCount });
+        }
+        if (whatsappCount > 0) {
+          albumMap.set('whatsapp', { id: 'whatsapp', title: 'WhatsApp Media', assetCount: whatsappCount });
+        }
+        if (screenshotsCount > 0) {
+          albumMap.set('screenshots', { id: 'screenshots', title: 'Screenshots', assetCount: screenshotsCount });
+        }
+        if (downloadsCount > 0) {
+          albumMap.set('downloads', { id: 'downloads', title: 'Downloads', assetCount: downloadsCount });
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    // 2. Query OS MediaStore native albums
     if (MediaLibraryModule) {
       try {
         let { granted } = await MediaLibraryModule.getPermissionsAsync();
-        if (!granted) {
-          const req = await MediaLibraryModule.requestPermissionsAsync();
-          granted = req.granted;
-        }
         if (granted) {
           const fetchedAlbums = await MediaLibraryModule.getAlbumsAsync({ includeSmartAlbums: true });
-          const valid = (fetchedAlbums || [])
-            .map((a: any) => ({
-              id: String(a.id),
-              title: String(a.title || 'Album'),
-              assetCount: Number(a.assetCount || 0),
-            }))
-            .filter((a: any) => a.assetCount > 0);
-
-          return valid;
+          (fetchedAlbums || []).forEach((a: any) => {
+            const count = Number(a.assetCount || 0);
+            if (count > 0 && a.title) {
+              const albumId = String(a.id);
+              if (!albumMap.has(albumId)) {
+                albumMap.set(albumId, {
+                  id: albumId,
+                  title: String(a.title),
+                  assetCount: count,
+                });
+              }
+            }
+          });
         }
-      } catch (e) {
+      } catch {
         // ignore
       }
     }
-    return [];
+
+    return Array.from(albumMap.values());
   },
 
   getAssetsAsync: async (options?: { album?: string; first?: number; after?: string }): Promise<SafeAsset[]> => {

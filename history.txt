@@ -83,7 +83,9 @@
 - Completely removed all demo sample photos and videos (`sample_1`, `sample_2`, `sample_3` / Unsplash / Google Cloud links) and fallback demo albums from `safeMediaLibrary.ts`.
 - Fixed native media library access in `app.json` by adding the `"expo-media-library"` plugin (`photosPermission`, `savePhotosPermission`, `isAccessMediaLocationEnabled`) and adding `READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`, `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO` under `android.permissions`.
 - Fixed permission status bug in `safeMediaLibrary.ts` (was incorrectly returning `granted: true` when ungranted/uninitialized, blocking native OS permission dialogs).
-- Refined Dark Mode theme palette in `theme.ts` to reduce glare and high contrast: updated primary accent to a smooth deep golden amber (`#E5A100` / `#D97706`), softened dark backgrounds (`#14120E` & `#1C1914`), and set body text to clean warm off-white (`#F3F4F6`).
+- Enhanced `backup.tsx` with live sync progress tracking (current file name, step status, percentage badge, and smooth progress bar) and added a dedicated **Auto-Sync Selected Folders Now** engine (`handleStartAutoSync`).
+- Integrated background process sync (`BACKGROUND_SYNC_TASK` via `BackgroundTask.registerTaskAsync` / `TaskManager`) in `backgroundSync.ts` and `backup.tsx` to automatically run camera roll photo & video sync even when the app is closed or minimized.
+- Added progress notifications (`sendLocalSyncNotification`) with step & percentage progress updates during sync operations, and added a user toggle switch **Sync Progress Notifications** (`showSyncNotifications`) in `backup.tsx` preferences.
 - Verified TypeScript compilation across workspace (`bun run typecheck`) with zero errors.
 
 

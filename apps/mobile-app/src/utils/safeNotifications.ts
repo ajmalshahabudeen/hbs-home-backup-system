@@ -1,6 +1,5 @@
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 
-// Check if running inside Expo Go client app where push notifications & certain native modules are disabled
 const isExpoGo =
   Constants.executionEnvironment === ExecutionEnvironment.StoreClient ||
   (Constants as any).appOwnership === 'expo';
@@ -73,3 +72,6 @@ export const safeNotifications = {
     return { status: 'granted', granted: true, canAskAgain: true };
   },
 };
+
+export const sendLocalSyncNotification = (title: string, body: string) =>
+  safeNotifications.scheduleNotificationAsync(title, body);

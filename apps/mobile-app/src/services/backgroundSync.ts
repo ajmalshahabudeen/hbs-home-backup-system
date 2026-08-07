@@ -9,12 +9,10 @@ import { checkFileDuplicate } from '../utils/dedupe';
 
 export const BACKGROUND_SYNC_TASK = 'HBS_BACKGROUND_AUTO_SYNC';
 
-/**
- * Interface for background sync configuration
- */
 export interface SyncConfig {
   autoSyncEnabled: boolean;
   pauseOnLowBattery: boolean;
+  showSyncNotifications: boolean;
   selectedAlbums: string[];
   lastSyncTimestamp?: string;
   totalSyncedCount?: number;
@@ -26,7 +24,14 @@ export async function getSyncConfig(): Promise<SyncConfig> {
   try {
     const raw = await appStorage.getItem(CONFIG_STORAGE_KEY);
     if (raw) {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      return {
+        autoSyncEnabled: false,
+        pauseOnLowBattery: true,
+        showSyncNotifications: true,
+        selectedAlbums: [],
+        ...parsed,
+      };
     }
   } catch (e) {
     // fallback
@@ -34,6 +39,7 @@ export async function getSyncConfig(): Promise<SyncConfig> {
   return {
     autoSyncEnabled: false,
     pauseOnLowBattery: true,
+    showSyncNotifications: true,
     selectedAlbums: [],
   };
 }
@@ -42,12 +48,14 @@ export async function saveSyncConfig(config: Partial<SyncConfig>): Promise<SyncC
   const current = await getSyncConfig();
   const updated = { ...current, ...config };
   await appStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(updated));
+
+  if (config.autoSyncEnabled !== undefined) {
+    await registerBackgroundSyncTask(config.autoSyncEnabled);
+  }
+
   return updated;
 }
 
-/**
- * Checks battery level & state to ensure background sync doesn't drain phone battery.
- */
 export async function isBatteryOkForSync(pauseOnLowBattery: boolean): Promise<{ ok: boolean; reason?: string }> {
   if (!pauseOnLowBattery) return { ok: true };
 
@@ -70,12 +78,12 @@ export async function isBatteryOkForSync(pauseOnLowBattery: boolean): Promise<{ 
   return { ok: true };
 }
 
-/**
- * Send local notification on backup complete or status update safely.
- */
 export async function sendLocalSyncNotification(title: string, body: string) {
   try {
-    await safeNotifications.scheduleNotificationAsync(title, body);
+    const config = await getSyncConfig();
+    if (config.showSyncNotifications) {
+      await safeNotifications.scheduleNotificationAsync(title, body);
+    }
   } catch (e) {
     // Ignore notification error
   }
@@ -83,20 +91,14 @@ export async function sendLocalSyncNotification(title: string, body: string) {
 
 export const sendLocalNotification = sendLocalSyncNotification;
 
-/**
- * Retrieves camera roll assets scoped strictly to user enabled sync albums.
- */
 export async function getEnabledSyncAssets(): Promise<SafeAsset[]> {
   const config = await getSyncConfig();
   if (!config.autoSyncEnabled) {
     return [];
   }
-  return safeMediaLibrary.getAssetsAsync({ first: 100 });
+  return safeMediaLibrary.getAssetsAsync({ first: 1000 });
 }
 
-/**
- * Executes photo & video auto-sync engine against the user's home server.
- */
 export async function syncPhotosNow(
   serverUrl: string,
   sessionToken: string | null
@@ -113,7 +115,7 @@ export async function syncPhotosNow(
     return { synced: 0, skipped: 0, total: 0 };
   }
 
-  const assets = await safeMediaLibrary.getAssetsAsync({ first: 100 });
+  const assets = await safeMediaLibrary.getAssetsAsync({ first: 1000 });
   if (!assets || assets.length === 0) {
     return { synced: 0, skipped: 0, total: 0 };
   }
@@ -121,7 +123,12 @@ export async function syncPhotosNow(
   let synced = 0;
   let skipped = 0;
 
-  for (const asset of assets) {
+  if (config.showSyncNotifications && assets.length > 0) {
+    await sendLocalSyncNotification('HBS Background Sync', `Syncing ${assets.length} items to home server...`);
+  }
+
+  for (let i = 0; i < assets.length; i++) {
+    const asset = assets[i];
     const fileName = asset.filename || `auto_sync_${asset.id}.jpg`;
     const mime = asset.mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
 
@@ -149,15 +156,24 @@ export async function syncPhotosNow(
         'AutoSync'
       );
       synced++;
+
+      // Send progress notification every 10 items if enabled
+      if (config.showSyncNotifications && (i + 1) % 10 === 0) {
+        const percent = Math.round(((i + 1) / assets.length) * 100);
+        await sendLocalSyncNotification(
+          'HBS Auto-Sync Progress',
+          `Synced ${i + 1} / ${assets.length} items (${percent}%)`
+        );
+      }
     } catch {
       // continue next
     }
   }
 
-  if (synced > 0) {
+  if (synced > 0 && config.showSyncNotifications) {
     await sendLocalSyncNotification(
-      'HBS Auto-Sync',
-      `Synced ${synced} new photo${synced > 1 ? 's' : ''} to server.`
+      'HBS Auto-Sync Complete',
+      `Successfully backed up ${synced} new item${synced > 1 ? 's' : ''} to server.`
     );
   }
 
@@ -169,7 +185,7 @@ export async function syncPhotosNow(
   return { synced, skipped, total: assets.length };
 }
 
-// Define the background task
+// Define the background task for expo-background-task
 try {
   TaskManager.defineTask(BACKGROUND_SYNC_TASK, async () => {
     try {
@@ -183,6 +199,13 @@ try {
         return BackgroundTask.BackgroundTaskResult.Success;
       }
 
+      const savedUrl = await appStorage.getItem('hbs_server_url');
+      const savedToken = await appStorage.getItem('hbs_session_token');
+
+      if (savedUrl) {
+        await syncPhotosNow(savedUrl, savedToken);
+      }
+
       await saveSyncConfig({ lastSyncTimestamp: new Date().toISOString() });
       return BackgroundTask.BackgroundTaskResult.Success;
     } catch (error) {
@@ -193,17 +216,20 @@ try {
   // Ignore task definition error in unsupported environments
 }
 
-/**
- * Register background task based on user preference.
- */
 export async function registerBackgroundSyncTask(enable: boolean = true): Promise<boolean> {
   try {
     if (enable) {
-      await BackgroundTask.registerTaskAsync(BACKGROUND_SYNC_TASK, {
-        minimumInterval: 15,
-      });
+      const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_SYNC_TASK);
+      if (!isRegistered) {
+        await BackgroundTask.registerTaskAsync(BACKGROUND_SYNC_TASK, {
+          minimumInterval: 15, // minimum interval in minutes
+        });
+      }
     } else {
-      await BackgroundTask.unregisterTaskAsync(BACKGROUND_SYNC_TASK);
+      const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_SYNC_TASK);
+      if (isRegistered) {
+        await BackgroundTask.unregisterTaskAsync(BACKGROUND_SYNC_TASK);
+      }
     }
     return true;
   } catch (err) {
