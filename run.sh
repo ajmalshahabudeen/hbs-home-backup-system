@@ -358,8 +358,9 @@ start_stack() {
       save_fingerprint
       return 0
     fi
-    warn "compose up failed — retrying with full rebuild..."
-    args=(up -d --build --force-recreate)
+    warn "compose up failed — purging BuildKit cache and retrying fresh rebuild..."
+    docker builder prune -af >/dev/null 2>&1 || true
+    args=(up -d --build --force-recreate --no-cache)
     NEED_BUILD=1
     NEED_RECREATE=1
     ((attempt++)) || true

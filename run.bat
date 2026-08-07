@@ -112,10 +112,15 @@ if "!FORCE_BUILD!"=="1" (
   docker compose --env-file .env up -d --build
 )
 if errorlevel 1 (
-  echo [error] docker compose failed.
-  echo         Try: docker compose logs
-  set "RC=1"
-  goto FINISH
+  echo [warn] compose up failed — purging BuildKit cache and retrying fresh rebuild...
+  docker builder prune -af >nul 2>&1
+  docker compose --env-file .env up -d --build --force-recreate --no-cache
+  if errorlevel 1 (
+    echo [error] docker compose failed after cache purge.
+    echo         Try: docker compose logs
+    set "RC=1"
+    goto FINISH
+  )
 )
 
 echo [hbs] Waiting for health...
