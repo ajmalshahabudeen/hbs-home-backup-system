@@ -22,7 +22,7 @@ export default function SplashScreen() {
   const [showScanner, setShowScanner] = useState<boolean>(false);
 
   useEffect(() => {
-    if (!isChecking && !isAuthLoading) {
+    if (!isChecking && !isScanning && !isAuthLoading) {
       const timer = setTimeout(() => {
         if (isConnected && isAuthenticated) {
           router.replace('/(tabs)/photos');
@@ -32,7 +32,7 @@ export default function SplashScreen() {
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [isConnected, isAuthenticated, isChecking, isAuthLoading, router]);
+  }, [isConnected, isAuthenticated, isChecking, isScanning, isAuthLoading, router]);
 
   const handleAutoScan = async () => {
     setShowScanner(true);
@@ -63,7 +63,7 @@ export default function SplashScreen() {
       </View>
 
       {/* Offline / Server Config Section */}
-      {!isChecking && !isConnected && (
+      {!isChecking && !isScanning && !isConnected && (
         <View style={styles.bottomBox}>
           <View
             style={[

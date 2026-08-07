@@ -8,6 +8,10 @@ export interface DiscoveredServer {
   responseTimeMs: number;
 }
 
+interface ScanOptions {
+  autoConnectOnFirst?: boolean;
+}
+
 interface ServerContextType {
   serverUrl: string;
   isConnected: boolean;
@@ -17,7 +21,7 @@ interface ServerContextType {
   discoveredServers: DiscoveredServer[];
   setServerUrl: (url: string) => Promise<boolean>;
   testConnection: (url?: string) => Promise<boolean>;
-  scanLanSubnet: () => Promise<DiscoveredServer[]>;
+  scanLanSubnet: (options?: ScanOptions) => Promise<DiscoveredServer[]>;
 }
 
 const SERVER_URL_KEY = 'hbs_server_url';
@@ -75,7 +79,7 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const urlToTest = normalizeServerUrl(targetUrl || serverUrl);
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
 
       const resp = await fetch(`${urlToTest}/api/health`, {
         signal: controller.signal,
@@ -104,10 +108,26 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return valid;
   };
 
-  const scanLanSubnet = async (): Promise<DiscoveredServer[]> => {
+  const scanLanSubnet = async (options?: ScanOptions): Promise<DiscoveredServer[]> => {
+    const autoConnectOnFirst = options?.autoConnectOnFirst ?? true;
     setIsScanning(true);
     setDiscoveredServers([]);
     const found: DiscoveredServer[] = [];
+    let hasConnectedFirst = false;
+
+    const handleDiscoveredServer = (server: DiscoveredServer) => {
+      if (!found.some((f) => f.url === server.url)) {
+        found.push(server);
+        setDiscoveredServers([...found]);
+      }
+      if (autoConnectOnFirst && !hasConnectedFirst) {
+        hasConnectedFirst = true;
+        setServerUrlState(server.url);
+        setIsConnected(true);
+        setIsChecking(false);
+        appStorage.setItem(SERVER_URL_KEY, server.url).catch(() => {});
+      }
+    };
 
     let deviceIp: string | null = null;
     try {
@@ -117,13 +137,15 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     const subnetsToScan: string[] = [];
+    let subnetPrefix = '192.168.1';
 
     if (deviceIp && deviceIp !== '127.0.0.1' && deviceIp !== '0.0.0.0') {
       const ipv4Match = deviceIp.match(/(?:\d{1,3}\.){3}\d{1,3}/);
       const cleanIp = ipv4Match ? ipv4Match[0] : deviceIp;
       const parts = cleanIp.split('.');
       if (parts.length === 4) {
-        subnetsToScan.push(`${parts[0]}.${parts[1]}.${parts[2]}`);
+        subnetPrefix = `${parts[0]}.${parts[1]}.${parts[2]}`;
+        subnetsToScan.push(subnetPrefix);
       }
     }
 
@@ -131,10 +153,14 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       subnetsToScan.push('192.168.1');
     }
 
-    // Fast path: Check loopback, emulator hosts, and standard LAN IPs
+    // Fast candidates: check common LAN server IPs & device IP first
     const fastCandidates = Array.from(
       new Set([
         '192.168.1.100',
+        `${subnetPrefix}.100`,
+        `${subnetPrefix}.101`,
+        `${subnetPrefix}.50`,
+        `${subnetPrefix}.2`,
         '127.0.0.1',
         '10.0.2.2',
         'localhost',
@@ -142,7 +168,8 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       ])
     );
 
-    for (const host of fastCandidates) {
+    // Concurrently test fast candidates
+    const fastPromises = fastCandidates.map(async (host) => {
       const target = `http://${host}:${DEFAULT_PORT}`;
       const start = Date.now();
       try {
@@ -151,22 +178,36 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const res = await fetch(`${target}/api/health`, { signal: controller.signal });
         clearTimeout(tid);
         if (res.ok) {
-          found.push({ ip: host, url: target, responseTimeMs: Date.now() - start });
+          handleDiscoveredServer({
+            ip: host,
+            url: target,
+            responseTimeMs: Date.now() - start,
+          });
         }
       } catch {
         // continue
       }
+    });
+
+    await Promise.all(fastPromises);
+
+    // If we already connected to a fast candidate server, stop scan early for ultra-fast load time!
+    if (autoConnectOnFirst && hasConnectedFirst) {
+      setIsScanning(false);
+      return found;
     }
 
-    // Sweep across subnet in small batches of 15
+    // Sweep across remaining subnet hosts in parallel batches of 20
     const primarySubnet = subnetsToScan[0];
     const totalHosts = 254;
     setScanProgress({ scanned: 0, total: totalHosts });
 
-    const batchSize = 15;
+    const batchSize = 20;
     let scannedCount = 0;
 
     for (let i = 1; i <= totalHosts; i += batchSize) {
+      if (autoConnectOnFirst && hasConnectedFirst) break;
+
       const batchPromises: Promise<void>[] = [];
 
       for (let j = i; j < i + batchSize && j <= totalHosts; j++) {
@@ -185,10 +226,11 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               clearTimeout(tid);
 
               if (res.ok) {
-                const elapsed = Date.now() - startTime;
-                if (!found.some((f) => f.url === target)) {
-                  found.push({ ip: hostIp, url: target, responseTimeMs: elapsed });
-                }
+                handleDiscoveredServer({
+                  ip: hostIp,
+                  url: target,
+                  responseTimeMs: Date.now() - startTime,
+                });
               }
             } catch {
               // unreachable
@@ -203,9 +245,7 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       await Promise.all(batchPromises);
     }
 
-    setDiscoveredServers(found);
     setIsScanning(false);
-
     return found;
   };
 
@@ -215,7 +255,19 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const saved = await appStorage.getItem(SERVER_URL_KEY);
       const initialUrl = saved ? normalizeServerUrl(saved) : DEFAULT_URL;
       setServerUrlState(initialUrl);
-      await testConnection(initialUrl);
+
+      // 1. Test saved / default URL first
+      const connected = await testConnection(initialUrl);
+
+      // 2. If saved URL fails, auto-scan LAN and immediately connect to the first discovered server IP
+      if (!connected) {
+        try {
+          await scanLanSubnet({ autoConnectOnFirst: true });
+        } catch {
+          // ignore auto-scan errors, fall back to offline state
+        }
+      }
+
       setIsChecking(false);
     })();
   }, []);
