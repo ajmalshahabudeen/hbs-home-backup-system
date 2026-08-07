@@ -17,6 +17,7 @@
       "name": "mobile-app",
       "version": "1.0.0",
       "dependencies": {
+        "@expo-google-fonts/manrope": "^0.4.2",
         "@expo/ui": "~57.0.9",
         "@expo/vector-icons": "^15.1.1",
         "@react-native-async-storage/async-storage": "^3.1.1",
@@ -29,7 +30,7 @@
         "expo-crypto": "^57.0.1",
         "expo-device": "~57.0.1",
         "expo-file-system": "^57.0.2",
-        "expo-font": "~57.0.1",
+        "expo-font": "^57.0.1",
         "expo-glass-effect": "~57.0.1",
         "expo-image": "~57.0.2",
         "expo-image-picker": "^57.0.8",
@@ -505,6 +506,8 @@
     "@eslint/object-schema": ["@eslint/object-schema@2.1.7", "", {}, "sha512-VtAOaymWVfZcmZbp6E2mympDIHvyjXs/12LqWYjVw6qjrfF+VK+fyG33kChz3nnK+SU5/NeHOqrTEHS8sXO3OA=="],
 
     "@eslint/plugin-kit": ["@eslint/plugin-kit@0.4.1", "", { "dependencies": { "@eslint/core": "^0.17.0", "levn": "^0.4.1" } }, "sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA=="],
+
+    "@expo-google-fonts/manrope": ["@expo-google-fonts/manrope@0.4.2", "", {}, "sha512-BZsKe8d9BJrVnIQIZcTS7/Kac0TbXnqs/+8EBSiQxrmK6GoCO6eTkmr50D1weIk/EoF20pTmAkpWICnovATr/g=="],
 
     "@expo-google-fonts/material-symbols": ["@expo-google-fonts/material-symbols@0.4.42", "", {}, "sha512-KZmHZRcthJ3KFZZlpzHjopA9guZgWR9fb3uVZlTR0BNlvG2pw1bnYBCpkze2PB0vRllwGhAM7lWXsfmcWCbXYg=="],
 

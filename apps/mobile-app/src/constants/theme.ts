@@ -112,15 +112,15 @@ export const MaxContentWidth = 800;
 
 export const Fonts = Platform.select({
   ios: {
-    sans: 'system-ui',
+    sans: 'Manrope',
     mono: 'ui-monospace',
   },
   default: {
-    sans: 'normal',
+    sans: 'Manrope',
     mono: 'monospace',
   },
   web: {
-    sans: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    sans: 'Manrope, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     mono: 'monospace',
   },
 });
