@@ -59,17 +59,17 @@
   2. Updated `photos.tsx` in `apps/mobile-app` to filter out `.hbs-thumb` files on client side as an extra safety net.
   3. Verified TypeScript compilation (`bun run typecheck`) with zero errors.
 
-
-
-
-
-
-
-
-
-
-
-
+## Session: 2026-08-07 (Header UI Redesign Completed)
+- Researched modern 2026 mobile app header design trends (Floating Glassmorphic Capsule, Dynamic Server Pulse Indicator, Linear Gradient Brand Badges, Theme Toggle Capsules).
+- Redesigned `apps/mobile-app/src/components/Header.tsx` into a floating glass capsule UI with:
+  1. `BlurView` frosted glass backdrop with subtle border highlights and drop shadows.
+  2. Vibrant multi-stop `LinearGradient` brand icon badge.
+  3. Animated server live pulse dot (continuous looping scale & opacity animation when connected to LAN server) and IP text capsule.
+  4. Interactive theme mode pill button (`sunny` / `moon` / `desktop-outline`).
+  5. Gradient avatar ring for user profile.
+  6. Embedded dynamic search input capsule.
+- Fixed light theme background contrast mismatch in `Header.tsx` by unifying `floatingContainer` background to `colors.surface` (`#F8F9FA`), setting `titleWrapper` and section wrappers to `transparent`, tuning `BlurView` intensity, and styling avatar inner background with `colors.primaryContainer`.
+- Verified TypeScript compilation (`bun run --cwd apps/mobile-app typecheck`) with zero errors.
 
 
 
