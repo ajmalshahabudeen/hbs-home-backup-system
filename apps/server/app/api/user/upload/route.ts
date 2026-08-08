@@ -56,8 +56,10 @@ export async function POST(request: NextRequest) {
 
     try {
       const form = await request.formData();
-      parentPath = toPosixRel(String(form.get("path") || ""));
-      const customName = String(form.get("name") || form.get("filename") || "").trim();
+      parentPath = toPosixRel(String(form.get("parentPath") || form.get("path") || ""));
+      const customName = String(
+        form.get("fileName") || form.get("name") || form.get("filename") || ""
+      ).trim();
       const file = form.get("file");
 
       if (!rawCreationTime) {
@@ -242,9 +244,9 @@ async function parseMultipartFallback(
       const nameMatch = rawHeaders.match(/name="([^"]+)"/i);
       const fieldName = nameMatch && nameMatch[1] ? nameMatch[1] : "";
 
-      if (fieldName === "path") {
+      if (fieldName === "parentPath" || fieldName === "path") {
         parentPath = rawBody.trim();
-      } else if (fieldName === "name" || fieldName === "filename") {
+      } else if (fieldName === "fileName" || fieldName === "name" || fieldName === "filename") {
         customName = rawBody.trim();
       } else if (fieldName === "creationTime" || fieldName === "capturedAt" || fieldName === "mtime") {
         creationTime = rawBody.trim();

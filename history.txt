@@ -431,3 +431,14 @@
 - Optimized `getFileChecksum` to digest file metadata (`filename_size_mtime_creationTime`) without loading heavy binary files as UTF-8 text via `file.text()`.
 - Verified workspace TypeScript compilation (`bun run typecheck`) across all packages with 0 errors.
 - Verified server Next.js build (`bun run build --filter=server`) with 100% success.
+
+## Session: 2026-08-08 (Fix MobileBackups Folder Placement Mismatch)
+- Diagnosed root cause of backed-up files landing outside `MobileBackups` folder in user root directory:
+  1. The Expo mobile app (`api.ts`, `backup.tsx`, `backgroundSync.ts`, `parallelUploadQueue.ts`) sends `parentPath: 'MobileBackups'` in multipart upload parameter data.
+  2. The server endpoint `apps/server/app/api/user/upload/route.ts` was only parsing `form.get("path")`, missing `form.get("parentPath")`.
+  3. Consequently, `parentPath` evaluated to empty string `""` on the server, saving uploaded files into the user's root folder `/` instead of `/MobileBackups/`.
+- Refactored server POST `/api/user/upload` route handler and `parseMultipartFallback` to check `parentPath` || `path`, and `fileName` || `name` || `filename`.
+- Refactored server POST `/api/user/files` route handler and admin upload route to accept `parentPath` || `path` and `folderName` || `name`.
+- Updated mobile app `api.ts` to supply both `parentPath` and `path`, `fileName` and `name`, `folderName` and `name` in upload requests for complete forward/backward compatibility.
+- Verified TypeScript compilation across workspace (`bun run typecheck`) with zero errors.
+

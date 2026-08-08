@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
   if (contentType.includes("multipart/form-data")) {
     const form = await request.formData();
     const userId = String(form.get("userId") || "");
-    const parentPath = toPosixRel(String(form.get("path") || ""));
+    const parentPath = toPosixRel(String(form.get("parentPath") || form.get("path") || ""));
     const file = form.get("file");
 
     if (!userId) return badRequest("userId required");

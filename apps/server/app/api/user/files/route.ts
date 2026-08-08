@@ -168,15 +168,15 @@ export async function POST(request: NextRequest) {
   if (error) return error;
 
   const userId = session.user.id;
-  let body: { path?: string; name?: string; isDir?: boolean };
+  let body: { path?: string; parentPath?: string; name?: string; folderName?: string; isDir?: boolean };
   try {
     body = await request.json();
   } catch {
     return badRequest("Invalid JSON body");
   }
 
-  const parentPath = toPosixRel(body.path || "");
-  const name = body.name?.trim().replace(/[\\/]/g, "_");
+  const parentPath = toPosixRel(body.parentPath || body.path || "");
+  const name = (body.folderName || body.name)?.trim().replace(/[\\/]/g, "_");
   const isDir = body.isDir !== false;
 
   if (!name) return badRequest("Name required");

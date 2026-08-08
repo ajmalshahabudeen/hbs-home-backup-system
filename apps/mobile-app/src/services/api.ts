@@ -157,7 +157,9 @@ export const hbsApi = {
         mimeType,
         parameters: {
           parentPath,
+          path: parentPath,
           fileName,
+          name: fileName,
         },
         headers,
       });
@@ -174,7 +176,9 @@ export const hbsApi = {
         const blob = await response.blob();
         formData.append('file', blob, fileName);
         formData.append('parentPath', parentPath);
+        formData.append('path', parentPath);
         formData.append('fileName', fileName);
+        formData.append('name', fileName);
 
         const res = await fetch(`${serverUrl}/api/user/upload`, {
           method: 'POST',
@@ -200,7 +204,7 @@ export const hbsApi = {
     return request(serverUrl, sessionToken, '/api/user/files', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ folderName, parentPath }),
+      body: JSON.stringify({ name: folderName, folderName, path: parentPath, parentPath, isDir: true }),
     });
   },
 
