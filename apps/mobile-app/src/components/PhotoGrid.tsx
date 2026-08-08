@@ -24,6 +24,7 @@ interface PhotoGridProps {
   onSelectMedia: (item: PhotoMediaItem) => void;
   onRefresh?: () => void;
   refreshing?: boolean;
+  onImport?: () => void;
 }
 
 interface MediaGroup {
@@ -38,6 +39,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
   onSelectMedia,
   onRefresh,
   refreshing = false,
+  onImport,
 }) => {
   const { colors } = useAppTheme();
   const [columns, setColumns] = useState<number>(3);
@@ -125,7 +127,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Search, Sort, Filter, Group Control Bar */}
+      {/* Ultra-Compact Control Bar with Search, Dropdowns & Import */}
       <FilterSortBar
         searchQuery={search}
         onSearchChange={setSearch}
@@ -139,41 +141,16 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
         }}
         groupBy={groupBy}
         onGroupByChange={setGroupBy}
+        columns={columns}
+        onColumnsChange={setColumns}
+        onImport={onImport}
+        totalCount={sortedMedia.length}
         categories={[
           { label: 'All Media', value: 'all', icon: 'images-outline' },
           { label: 'Photos Only', value: 'image', icon: 'image-outline' },
           { label: 'Videos Only', value: 'video', icon: 'film-outline' },
         ]}
       />
-
-      {/* Grid Layout Toggle & Item Counter Header */}
-      <View style={styles.topControlRow}>
-        <Text style={[styles.countText, { color: colors.textSecondary }]}>
-          Showing {sortedMedia.length} {sortedMedia.length === 1 ? 'item' : 'items'}
-        </Text>
-
-        <View style={[styles.gridToggleContainer, { backgroundColor: colors.surfaceVariant }]}>
-          {[2, 3, 4].map((col) => (
-            <TouchableOpacity
-              key={col}
-              style={[
-                styles.gridToggleBtn,
-                columns === col && { backgroundColor: colors.card },
-              ]}
-              onPress={() => setColumns(col)}
-            >
-              <Text
-                style={[
-                  styles.gridToggleText,
-                  { color: columns === col ? colors.primary : colors.textSecondary },
-                ]}
-              >
-                {col}x
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
 
       {sortedMedia.length === 0 ? (
         <View style={styles.emptyContainer}>

@@ -195,24 +195,6 @@ export default function PhotosScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
-      {/* Top Action Bar */}
-      <View style={[styles.topBar, { justifyContent: 'flex-end' }]}>
-        <TouchableOpacity
-          style={[
-            styles.importBtn,
-            {
-              backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.surfaceVariant,
-              borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : colors.border,
-            },
-          ]}
-          onPress={handlePickDeviceMedia}
-          activeOpacity={0.75}
-        >
-          <Ionicons name="images-outline" size={18} color={colors.primary} />
-          <Text style={[styles.importBtnText, { color: colors.primary }]}>Import</Text>
-        </TouchableOpacity>
-      </View>
-
       {/* Permission Rationale Banner */}
       {!hasPermission && (
         <View style={[styles.permBanner, { backgroundColor: colors.warning + '15', borderColor: colors.warning + '40' }]}>
@@ -238,6 +220,7 @@ export default function PhotosScreen() {
         onSelectMedia={(item) => setSelectedMedia(item)}
         onRefresh={fetchPhotos}
         refreshing={loading}
+        onImport={handlePickDeviceMedia}
       />
 
       {/* Floating Upload Button */}

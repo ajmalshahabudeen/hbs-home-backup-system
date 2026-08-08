@@ -4,7 +4,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  ScrollView,
   StyleSheet,
   Modal,
   Pressable,
@@ -17,7 +16,7 @@ export type SortField = 'date' | 'name' | 'size' | 'type';
 export type SortOrder = 'asc' | 'desc';
 export type GroupByOption = 'none' | 'day' | 'month' | 'year' | 'category';
 
-interface CategoryItem {
+export interface CategoryItem {
   label: string;
   value: string;
   key?: string;
@@ -36,6 +35,12 @@ interface FilterSortBarProps {
   onSortChange: (field: SortField, order: SortOrder) => void;
   groupBy?: GroupByOption;
   onGroupByChange?: (groupBy: GroupByOption) => void;
+  columns?: number;
+  onColumnsChange?: (cols: number) => void;
+  viewMode?: 'list' | 'grid';
+  onViewModeChange?: (mode: 'list' | 'grid') => void;
+  onImport?: () => void;
+  totalCount?: number;
 }
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
@@ -58,98 +63,224 @@ export const FilterSortBar: React.FC<FilterSortBarProps> = ({
   onSortChange,
   groupBy = 'none',
   onGroupByChange,
+  columns,
+  onColumnsChange,
+  viewMode,
+  onViewModeChange,
+  onImport,
+  totalCount,
 }) => {
   const { colors, isDark } = useAppTheme();
-  const [modalVisible, setModalVisible] = useState(false);
+  const [sortModalVisible, setSortModalVisible] = useState(false);
+  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
 
   const handleSelectCategory = (val: string) => {
     if (onCategoryChange) onCategoryChange(val);
     if (onCategorySelect) onCategorySelect(val);
+    setCategoryModalVisible(false);
   };
 
   const toggleSortOrder = () => {
     onSortChange(sortField, sortOrder === 'asc' ? 'desc' : 'asc');
   };
 
+  const currentCategoryObj =
+    categories.find((c) => (c.value || c.key) === selectedCategory) || categories[0];
+
   return (
     <View style={styles.container}>
-      {/* Search Input Box */}
-      <View style={[styles.searchBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Ionicons name="search-outline" size={18} color={colors.textSecondary} style={styles.searchIcon} />
-        <TextInput
-          style={[styles.searchInput, { color: colors.text }]}
-          placeholder="Search items by name..."
-          placeholderTextColor={colors.textSecondary}
-          value={searchQuery}
-          onChangeText={onSearchChange}
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => onSearchChange('')} style={styles.clearBtn}>
-            <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
+      {/* Compact Single-Row Header Bar */}
+      <View style={styles.barRow}>
+        {/* Search Input Box */}
+        <View style={[styles.searchBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Ionicons name="search-outline" size={15} color={colors.textSecondary} style={styles.searchIcon} />
+          <TextInput
+            style={[styles.searchInput, { color: colors.text }]}
+            placeholder={totalCount !== undefined ? `Search ${totalCount} items...` : "Search..."}
+            placeholderTextColor={colors.textSecondary}
+            value={searchQuery}
+            onChangeText={onSearchChange}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => onSearchChange('')} style={styles.clearBtn}>
+              <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Category Dropdown Pill */}
+        <TouchableOpacity
+          style={[
+            styles.actionPill,
+            {
+              backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : colors.surfaceVariant,
+              borderColor: isDark ? 'rgba(255,255,255,0.12)' : colors.border,
+            },
+          ]}
+          onPress={() => setCategoryModalVisible(true)}
+          activeOpacity={0.75}
+        >
+          <Ionicons name={(currentCategoryObj?.icon as any) || 'funnel-outline'} size={14} color={colors.primary} />
+          <Text style={[styles.actionPillText, { color: colors.text }]} numberOfLines={1}>
+            {currentCategoryObj?.label || 'All'}
+          </Text>
+          <Ionicons name="chevron-down" size={12} color={colors.textSecondary} />
+        </TouchableOpacity>
+
+        {/* Grid Column Toggle Button (for PhotoGrid) */}
+        {columns !== undefined && onColumnsChange && (
+          <TouchableOpacity
+            style={[
+              styles.iconPill,
+              {
+                backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : colors.surfaceVariant,
+                borderColor: isDark ? 'rgba(255,255,255,0.12)' : colors.border,
+              },
+            ]}
+            onPress={() => {
+              const next = columns === 2 ? 3 : columns === 3 ? 4 : 2;
+              onColumnsChange(next);
+            }}
+            activeOpacity={0.75}
+          >
+            <Text style={[styles.columnPillText, { color: colors.primary }]}>{columns}x</Text>
           </TouchableOpacity>
         )}
+
+        {/* View Mode Toggle (for DriveFileList) */}
+        {viewMode !== undefined && onViewModeChange && (
+          <TouchableOpacity
+            style={[
+              styles.iconPill,
+              {
+                backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : colors.surfaceVariant,
+                borderColor: isDark ? 'rgba(255,255,255,0.12)' : colors.border,
+              },
+            ]}
+            onPress={() => onViewModeChange(viewMode === 'list' ? 'grid' : 'list')}
+            activeOpacity={0.75}
+          >
+            <Ionicons
+              name={viewMode === 'list' ? 'grid-outline' : 'list-outline'}
+              size={16}
+              color={colors.primary}
+            />
+          </TouchableOpacity>
+        )}
+
+        {/* Sort & Options Button */}
         <TouchableOpacity
-          style={[styles.sortButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9' }]}
-          onPress={() => setModalVisible(true)}
-          activeOpacity={0.7}
+          style={[
+            styles.iconPill,
+            {
+              backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : colors.surfaceVariant,
+              borderColor: isDark ? 'rgba(255,255,255,0.12)' : colors.border,
+            },
+          ]}
+          onPress={() => setSortModalVisible(true)}
+          activeOpacity={0.75}
         >
-          <Ionicons name="options-outline" size={18} color={colors.primary} />
+          <Ionicons name="options-outline" size={16} color={colors.primary} />
         </TouchableOpacity>
+
+        {/* Import Action Button */}
+        {onImport && (
+          <TouchableOpacity
+            style={[
+              styles.iconPill,
+              {
+                backgroundColor: colors.primaryContainer || colors.primary + '20',
+                borderColor: colors.primary + '40',
+              },
+            ]}
+            onPress={onImport}
+            activeOpacity={0.75}
+          >
+            <Ionicons name="cloud-upload-outline" size={16} color={colors.primary} />
+          </TouchableOpacity>
+        )}
       </View>
 
-      {/* Categories Horizontal Scroll */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.categoriesContainer}
+      {/* Category Dropdown Selection Modal */}
+      <Modal
+        visible={categoryModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCategoryModalVisible(false)}
       >
-        {categories.map((cat) => {
-          const val = cat.value || cat.key || '';
-          const isActive = selectedCategory === val;
-          return (
-            <TouchableOpacity
-              key={val}
-              style={[
-                styles.categoryChip,
-                {
-                  backgroundColor: isActive
-                    ? colors.primary
-                    : isDark
-                    ? 'rgba(255,255,255,0.06)'
-                    : 'rgba(0,0,0,0.04)',
-                  borderColor: isActive ? colors.primary : colors.border,
-                },
-              ]}
-              onPress={() => handleSelectCategory(val)}
-              activeOpacity={0.8}
-            >
-              <Ionicons
-                name={cat.icon as any}
-                size={14}
-                color={isActive ? '#FFFFFF' : colors.textSecondary}
-              />
-              <Text
-                style={[
-                  styles.categoryText,
-                  { color: isActive ? '#FFFFFF' : colors.text, fontWeight: isActive ? '600' : '400' },
-                ]}
-              >
-                {cat.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+        <Pressable style={styles.modalOverlay} onPress={() => setCategoryModalVisible(false)}>
+          <Pressable style={styles.modalContainer} onPress={(e) => e.stopPropagation()}>
+            <GlassCard variant="gradient" style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>Select Filter</Text>
+                <TouchableOpacity onPress={() => setCategoryModalVisible(false)}>
+                  <Ionicons name="close" size={22} color={colors.text} />
+                </TouchableOpacity>
+              </View>
 
-      {/* Sort & GroupBy Options Modal */}
-      <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={() => setModalVisible(false)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setModalVisible(false)}>
+              <View style={styles.categoryList}>
+                {categories.map((cat) => {
+                  const val = cat.value || cat.key || '';
+                  const isActive = selectedCategory === val;
+                  return (
+                    <TouchableOpacity
+                      key={val}
+                      style={[
+                        styles.categoryRowItem,
+                        {
+                          backgroundColor: isActive
+                            ? isDark
+                              ? 'rgba(99, 102, 241, 0.2)'
+                              : '#EEF2FF'
+                            : 'transparent',
+                          borderColor: isActive ? colors.primary : 'transparent',
+                        },
+                      ]}
+                      onPress={() => handleSelectCategory(val)}
+                      activeOpacity={0.75}
+                    >
+                      <Ionicons
+                        name={(cat.icon as any) || 'ellipse'}
+                        size={18}
+                        color={isActive ? colors.primary : colors.textSecondary}
+                      />
+                      <Text
+                        style={[
+                          styles.categoryRowText,
+                          {
+                            color: isActive ? colors.primary : colors.text,
+                            fontWeight: isActive ? '700' : '500',
+                          },
+                        ]}
+                      >
+                        {cat.label}
+                      </Text>
+                      {isActive && (
+                        <Ionicons name="checkmark" size={18} color={colors.primary} style={{ marginLeft: 'auto' }} />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </GlassCard>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Sort & Group Options Modal */}
+      <Modal
+        visible={sortModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSortModalVisible(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setSortModalVisible(false)}>
           <Pressable style={styles.modalContainer} onPress={(e) => e.stopPropagation()}>
             <GlassCard variant="gradient" style={styles.modalCard}>
               <View style={styles.modalHeader}>
                 <Text style={[styles.modalTitle, { color: colors.text }]}>Sort & Group Options</Text>
-                <TouchableOpacity onPress={() => setModalVisible(false)}>
-                  <Ionicons name="close" size={24} color={colors.text} />
+                <TouchableOpacity onPress={() => setSortModalVisible(false)}>
+                  <Ionicons name="close" size={22} color={colors.text} />
                 </TouchableOpacity>
               </View>
 
@@ -196,7 +327,9 @@ export const FilterSortBar: React.FC<FilterSortBarProps> = ({
               <TouchableOpacity style={styles.orderRow} onPress={toggleSortOrder}>
                 <Text style={[styles.orderLabel, { color: colors.text }]}>Sort Order:</Text>
                 <View style={[styles.orderBadge, { backgroundColor: colors.primary }]}>
-                  <Text style={styles.orderText}>{sortOrder === 'desc' ? 'Newest / Z-A / Highest' : 'Oldest / A-Z / Lowest'}</Text>
+                  <Text style={styles.orderText}>
+                    {sortOrder === 'desc' ? 'Newest / Z-A / Highest' : 'Oldest / A-Z / Lowest'}
+                  </Text>
                   <Ionicons
                     name={sortOrder === 'desc' ? 'arrow-down' : 'arrow-up'}
                     size={14}
@@ -255,49 +388,59 @@ export const FilterSortBar: React.FC<FilterSortBarProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    marginVertical: 8,
+    paddingHorizontal: 14,
+    marginVertical: 6,
   },
-  searchBox: {
+  barRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 14,
+    gap: 6,
+  },
+  searchBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
     borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginHorizontal: 16,
-    marginBottom: 10,
+    paddingHorizontal: 10,
+    height: 38,
   },
   searchIcon: {
-    marginRight: 8,
+    marginRight: 6,
   },
   searchInput: {
     flex: 1,
-    fontSize: 15,
-    paddingVertical: 4,
+    fontSize: 13,
+    paddingVertical: 0,
   },
   clearBtn: {
-    padding: 4,
+    padding: 2,
   },
-  sortButton: {
-    padding: 8,
-    borderRadius: 10,
-    marginLeft: 6,
-  },
-  categoriesContainer: {
-    paddingHorizontal: 16,
-    gap: 8,
-  },
-  categoryChip: {
+  actionPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 20,
+    height: 38,
+    paddingHorizontal: 10,
+    borderRadius: 12,
     borderWidth: 1,
-    gap: 6,
+    gap: 4,
   },
-  categoryText: {
-    fontSize: 13,
+  actionPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    maxWidth: 90,
+  },
+  iconPill: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  columnPillText: {
+    fontSize: 12,
+    fontWeight: '800',
   },
   modalOverlay: {
     flex: 1,
@@ -308,69 +451,85 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     width: '100%',
-    maxWidth: 420,
+    maxWidth: 400,
   },
   modalCard: {
-    padding: 20,
+    padding: 18,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
   },
+  categoryList: {
+    gap: 6,
+  },
+  categoryRowItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 10,
+  },
+  categoryRowText: {
+    fontSize: 14,
+  },
   sectionLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   optionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   optionCard: {
     width: '48%',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    borderRadius: 10,
     borderWidth: 1,
     gap: 8,
   },
   optionText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
   },
   orderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 2,
   },
   orderLabel: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
   },
   orderBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
+    paddingVertical: 5,
+    borderRadius: 10,
     gap: 4,
   },
   orderText: {
     color: '#FFF',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
 });
+
