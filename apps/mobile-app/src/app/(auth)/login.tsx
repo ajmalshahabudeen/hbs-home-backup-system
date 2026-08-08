@@ -20,7 +20,7 @@ import { LanScannerModal } from '../../components/LanScannerModal';
 export default function LoginScreen() {
   const { colors } = useAppTheme();
   const router = useRouter();
-  const { signIn, isLoading } = useAuth();
+  const { signIn, signInWithGoogle, isLoading } = useAuth();
   const { serverUrl, isConnected } = useServer();
 
   const [email, setEmail] = useState<string>('');
@@ -28,6 +28,7 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showScannerModal, setShowScannerModal] = useState<boolean>(false);
+  const [googleLoading, setGoogleLoading] = useState<boolean>(false);
 
   const handleSignIn = async () => {
     if (!email.trim() || !password) {
@@ -43,13 +44,25 @@ export default function LoginScreen() {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    setErrorMsg(null);
+    setGoogleLoading(true);
+    const res = await signInWithGoogle();
+    setGoogleLoading(false);
+    if (res.success) {
+      router.replace('/(tabs)/photos');
+    } else if (res.error) {
+      setErrorMsg(res.error);
+    }
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 24 }}
       >
-        {/* Brand Bar */}
+        {/* Brand Header */}
         <View style={styles.brandHeader}>
           <View style={[styles.logoBadge, { backgroundColor: colors.primaryContainer }]}>
             <Ionicons name="cloud-upload" size={40} color={colors.primary} />
@@ -135,12 +148,41 @@ export default function LoginScreen() {
           <TouchableOpacity
             style={[styles.submitBtn, { backgroundColor: colors.primary }]}
             onPress={handleSignIn}
-            disabled={isLoading}
+            disabled={isLoading || googleLoading}
           >
             {isLoading ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
               <Text style={styles.submitBtnText}>Sign In</Text>
+            )}
+          </TouchableOpacity>
+
+          {/* Divider */}
+          <View style={styles.dividerRow}>
+            <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+            <Text style={[styles.dividerText, { color: colors.textSecondary }]}>OR</Text>
+            <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+          </View>
+
+          {/* Google Sign In Button */}
+          <TouchableOpacity
+            style={[
+              styles.googleBtn,
+              { backgroundColor: colors.surfaceVariant, borderColor: colors.border },
+            ]}
+            onPress={handleGoogleSignIn}
+            disabled={isLoading || googleLoading}
+            activeOpacity={0.85}
+          >
+            {googleLoading ? (
+              <ActivityIndicator color={colors.primary} />
+            ) : (
+              <>
+                <Ionicons name="logo-google" size={20} color="#EA4335" />
+                <Text style={[styles.googleBtnText, { color: colors.text }]}>
+                  Continue with Google
+                </Text>
+              </>
             )}
           </TouchableOpacity>
 
@@ -167,23 +209,23 @@ const styles = StyleSheet.create({
   },
   brandHeader: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   logoBadge: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
+    width: 64,
+    height: 64,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   title: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: '800',
   },
   subTitle: {
-    fontSize: 14,
-    marginTop: 4,
+    fontSize: 13,
+    marginTop: 2,
   },
   serverBanner: {
     flexDirection: 'row',
@@ -193,7 +235,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     gap: 8,
-    marginBottom: 24,
+    marginBottom: 16,
   },
   serverText: {
     flex: 1,
@@ -201,7 +243,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   form: {
-    gap: 12,
+    gap: 10,
   },
   errorBox: {
     flexDirection: 'row',
@@ -216,14 +258,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   label: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
-    height: 48,
+    height: 46,
     borderRadius: 12,
     gap: 10,
   },
@@ -232,21 +274,48 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   submitBtn: {
-    height: 50,
-    borderRadius: 25,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: 8,
   },
   submitBtnText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
   },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 10,
+    gap: 10,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+  },
+  dividerText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  googleBtn: {
+    flexDirection: 'row',
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 10,
+  },
+  googleBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
   footerRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: 16,
+    marginTop: 12,
   },
   linkText: {
     fontWeight: '700',

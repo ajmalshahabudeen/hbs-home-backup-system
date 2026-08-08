@@ -17,21 +17,33 @@ import { PhotoGrid } from '../../components/PhotoGrid';
 import { MediaViewerModal } from '../../components/MediaViewerModal';
 import { UploadModal } from '../../components/UploadModal';
 import { LanScannerModal } from '../../components/LanScannerModal';
+import { useMediaStore } from '../../stores/useMediaStore';
 
 export default function PhotosScreen() {
-  const { colors, isDark } = useAppTheme();
+  const { colors } = useAppTheme();
   const { serverUrl } = useServer();
   const { sessionToken } = useAuth();
+  const {
+    mediaList,
+    setMediaList,
+    loading,
+    setLoading,
+    hasPermission,
+    setHasPermission,
+    loadFromCache,
+  } = useMediaStore();
 
-  const [mediaList, setMediaList] = useState<PhotoMediaItem[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [hasPermission, setHasPermission] = useState<boolean>(true);
   const [selectedMedia, setSelectedMedia] = useState<PhotoMediaItem | null>(null);
   const [showUploadModal, setShowUploadModal] = useState<boolean>(false);
   const [showScannerModal, setShowScannerModal] = useState<boolean>(false);
 
   const fetchPhotos = useCallback(async () => {
+    // 0. Load cached data first if available for instant display
+    if (mediaList.length === 0) {
+      await loadFromCache();
+    }
     setLoading(true);
+
     try {
       // 1. Check local media permissions
       let perm = await safeMediaLibrary.getPermissionsAsync();
@@ -105,7 +117,7 @@ export default function PhotosScreen() {
     } finally {
       setLoading(false);
     }
-  }, [serverUrl, sessionToken]);
+  }, [serverUrl, sessionToken, mediaList.length, loadFromCache, setMediaList, setLoading, setHasPermission]);
 
   useEffect(() => {
     fetchPhotos();
@@ -219,7 +231,8 @@ export default function PhotosScreen() {
         media={mediaList}
         onSelectMedia={(item) => setSelectedMedia(item)}
         onRefresh={fetchPhotos}
-        refreshing={loading}
+        refreshing={loading && mediaList.length > 0}
+        loading={loading && mediaList.length === 0}
         onImport={handlePickDeviceMedia}
       />
 
@@ -263,32 +276,6 @@ export default function PhotosScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
-  },
-  screenTitle: {
-    fontSize: 26,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-  },
-  importBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    gap: 6,
-  },
-  importBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
   },
   permBanner: {
     flexDirection: 'row',

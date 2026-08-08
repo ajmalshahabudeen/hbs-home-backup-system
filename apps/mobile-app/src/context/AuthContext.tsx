@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { appStorage } from '../utils/storage';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import { useServer } from './ServerContext';
+import { createHbsAuthClient } from '../utils/authClient';
 
 export interface UserProfile {
   id: string;
@@ -15,21 +15,23 @@ interface AuthContextType {
   sessionToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  authClient: ReturnType<typeof createHbsAuthClient>;
   signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   signUp: (name: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  signInWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
   refreshSession: () => Promise<void>;
 }
-
-const AUTH_STORAGE_KEY = 'hbs_auth_token';
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   sessionToken: null,
   isAuthenticated: false,
   isLoading: true,
+  authClient: null as any,
   signIn: async () => ({ success: false }),
   signUp: async () => ({ success: false }),
+  signInWithGoogle: async () => ({ success: false }),
   signOut: async () => {},
   refreshSession: async () => {},
 });
@@ -40,157 +42,130 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const restoreSession = useCallback(async () => {
+  // Initialize official Better-Auth SDK client instance dynamically bound to serverUrl
+  const authClient = useMemo(() => {
+    return createHbsAuthClient(serverUrl || 'http://localhost:38480');
+  }, [serverUrl]);
+
+  // Restore and validate session exclusively using Better-Auth getSession SDK method
+  const refreshSession = useCallback(async () => {
+    setIsLoading(true);
     if (!serverUrl || !isConnected) {
       setIsLoading(false);
       return;
     }
 
     try {
-      const storedToken = await appStorage.getItem(AUTH_STORAGE_KEY);
-      const headers: Record<string, string> = {
-        Accept: 'application/json',
-      };
-      if (storedToken) {
-        headers['Authorization'] = `Bearer ${storedToken}`;
-        headers['Cookie'] = `better-auth.session_token=${storedToken}`;
-      }
-
-      const res = await fetch(`${serverUrl}/api/auth/get-session`, {
-        headers,
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.user) {
-          setUser(data.user);
-          const activeToken = storedToken || data.session?.token || data.token || data.session?.id;
-          if (activeToken) {
-            setSessionToken(activeToken);
-            await appStorage.setItem(AUTH_STORAGE_KEY, activeToken);
-          }
-          setIsLoading(false);
-          return;
-        }
+      const res: any = await authClient.getSession();
+      if (res?.data?.user) {
+        setUser(res.data.user as UserProfile);
+        const token = res.data.session?.token || res.data.session?.id || (authClient as any).getCookie?.();
+        setSessionToken(token || null);
+        setIsLoading(false);
+        return;
       }
     } catch {
-      // offline or session expired
+      // offline or unauthenticated
     }
+
     setUser(null);
+    setSessionToken(null);
     setIsLoading(false);
-  }, [serverUrl, isConnected]);
+  }, [serverUrl, isConnected, authClient]);
 
   useEffect(() => {
-    restoreSession();
-  }, [restoreSession]);
+    refreshSession();
+  }, [refreshSession]);
 
+  // Pure Better-Auth email sign-in method
   const signIn = async (email: string, password: string) => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${serverUrl}/api/auth/sign-in/email`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ email, password }),
+      const res: any = await authClient.signIn.email({
+        email,
+        password,
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
+      if (res?.error) {
         setIsLoading(false);
-        return { success: false, error: data.message || data.error || 'Sign in failed' };
+        return { success: false, error: res.error.message || 'Sign in failed' };
       }
 
-      // Prefer body token; also scrape Set-Cookie (RN may expose getSetCookie)
-      let returnedToken =
-        data.token ||
-        data.session?.token ||
-        data.sessionToken ||
-        data.session?.id ||
-        data.tokenValue;
-
-      if (!returnedToken) {
-        const anyHeaders = res.headers as Headers & { getSetCookie?: () => string[] };
-        const setCookies =
-          typeof anyHeaders.getSetCookie === 'function'
-            ? anyHeaders.getSetCookie()
-            : [res.headers.get('set-cookie') || ''];
-        for (const c of setCookies) {
-          const m = c.match(/better-auth\.session_token=([^;]+)/i);
-          if (m?.[1]) {
-            try {
-              returnedToken = decodeURIComponent(m[1]);
-            } catch {
-              returnedToken = m[1];
-            }
-            break;
-          }
-        }
+      if (res?.data?.user) {
+        setUser(res.data.user as UserProfile);
+        const token = res.data.session?.token || res.data.session?.id || (authClient as any).getCookie?.();
+        setSessionToken(token || null);
+        setIsLoading(false);
+        return { success: true };
       }
-
-      if (returnedToken) {
-        await appStorage.setItem(AUTH_STORAGE_KEY, returnedToken);
-        setSessionToken(returnedToken);
-      }
-
-      setUser(data.user || data.session?.user || { id: 'user_1', email, name: email.split('@')[0] });
-      setIsLoading(false);
-      return { success: true };
     } catch (e) {
       setIsLoading(false);
-      return { success: false, error: e instanceof Error ? e.message : 'Network error' };
+      return { success: false, error: e instanceof Error ? e.message : 'Sign in error' };
     }
+
+    setIsLoading(false);
+    return { success: false, error: 'Sign in failed' };
   };
 
+  // Pure Better-Auth email sign-up method
   const signUp = async (name: string, email: string, password: string) => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${serverUrl}/api/auth/sign-up/email`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ name, email, password }),
+      const res: any = await authClient.signUp.email({
+        name,
+        email,
+        password,
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
+      if (res?.error) {
         setIsLoading(false);
-        return { success: false, error: data.message || data.error || 'Sign up failed' };
+        return { success: false, error: res.error.message || 'Sign up failed' };
       }
 
-      const returnedToken =
-        data.token ||
-        data.session?.token ||
-        data.sessionToken ||
-        data.session?.id ||
-        data.tokenValue;
-      if (returnedToken) {
-        await appStorage.setItem(AUTH_STORAGE_KEY, returnedToken);
-        setSessionToken(returnedToken);
+      if (res?.data?.user) {
+        setUser(res.data.user as UserProfile);
+        const token = res.data.session?.token || res.data.session?.id || (authClient as any).getCookie?.();
+        setSessionToken(token || null);
+        setIsLoading(false);
+        return { success: true };
       }
-
-      setUser(data.user || data.session?.user || { id: 'user_new', email, name });
+    } catch (e) {
       setIsLoading(false);
+      return { success: false, error: e instanceof Error ? e.message : 'Sign up error' };
+    }
+
+    setIsLoading(false);
+    return { success: false, error: 'Sign up failed' };
+  };
+
+  // Pure Better-Auth social Google sign-in method
+  const signInWithGoogle = async () => {
+    setIsLoading(true);
+    try {
+      const res: any = await authClient.signIn.social({
+        provider: 'google',
+        callbackURL: 'hbs-cloud://(auth)/login',
+      });
+
+      if (res?.error) {
+        setIsLoading(false);
+        return { success: false, error: res.error.message || 'Google sign in failed' };
+      }
+
+      await refreshSession();
       return { success: true };
     } catch (e) {
       setIsLoading(false);
-      return { success: false, error: e instanceof Error ? e.message : 'Network error' };
+      return { success: false, error: e instanceof Error ? e.message : 'Google auth error' };
     }
   };
 
+  // Pure Better-Auth sign-out method
   const signOut = async () => {
     setIsLoading(true);
     try {
-      if (serverUrl && sessionToken) {
-        await fetch(`${serverUrl}/api/auth/sign-out`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${sessionToken}`,
-            Cookie: `better-auth.session_token=${sessionToken}`,
-          },
-        }).catch(() => {});
-      }
+      await authClient.signOut();
     } finally {
-      await appStorage.removeItem(AUTH_STORAGE_KEY).catch(() => {});
       setUser(null);
       setSessionToken(null);
       setIsLoading(false);
@@ -204,10 +179,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         sessionToken,
         isAuthenticated: !!user,
         isLoading,
+        authClient,
         signIn,
         signUp,
+        signInWithGoogle,
         signOut,
-        refreshSession: restoreSession,
+        refreshSession,
       }}
     >
       {children}

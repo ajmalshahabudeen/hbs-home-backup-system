@@ -206,8 +206,7 @@ export default function BackupScreen() {
             asset.uri,
             fileName,
             mimeType,
-            'MobileBackups',
-            asset.creationTime
+            'MobileBackups'
           );
           successCount++;
         } catch {

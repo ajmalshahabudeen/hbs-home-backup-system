@@ -18,12 +18,13 @@ import { useAuth } from '../../context/AuthContext';
 export default function RegisterScreen() {
   const { colors } = useAppTheme();
   const router = useRouter();
-  const { signUp, isLoading } = useAuth();
+  const { signUp, signInWithGoogle, isLoading } = useAuth();
 
   const [name, setName] = useState<string>('');
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [googleLoading, setGoogleLoading] = useState<boolean>(false);
 
   const handleRegister = async () => {
     if (!name.trim() || !email.trim() || !password) {
@@ -40,6 +41,18 @@ export default function RegisterScreen() {
       router.replace('/(tabs)/photos');
     } else {
       setErrorMsg(res.error || 'Registration failed.');
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setErrorMsg(null);
+    setGoogleLoading(true);
+    const res = await signInWithGoogle();
+    setGoogleLoading(false);
+    if (res.success) {
+      router.replace('/(tabs)/photos');
+    } else if (res.error) {
+      setErrorMsg(res.error);
     }
   };
 
@@ -110,12 +123,41 @@ export default function RegisterScreen() {
           <TouchableOpacity
             style={[styles.submitBtn, { backgroundColor: colors.primary }]}
             onPress={handleRegister}
-            disabled={isLoading}
+            disabled={isLoading || googleLoading}
           >
             {isLoading ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
               <Text style={styles.submitBtnText}>Create Account</Text>
+            )}
+          </TouchableOpacity>
+
+          {/* Divider */}
+          <View style={styles.dividerRow}>
+            <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+            <Text style={[styles.dividerText, { color: colors.textSecondary }]}>OR</Text>
+            <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+          </View>
+
+          {/* Google Sign In Button */}
+          <TouchableOpacity
+            style={[
+              styles.googleBtn,
+              { backgroundColor: colors.surfaceVariant, borderColor: colors.border },
+            ]}
+            onPress={handleGoogleSignIn}
+            disabled={isLoading || googleLoading}
+            activeOpacity={0.85}
+          >
+            {googleLoading ? (
+              <ActivityIndicator color={colors.primary} />
+            ) : (
+              <>
+                <Ionicons name="logo-google" size={20} color="#EA4335" />
+                <Text style={[styles.googleBtnText, { color: colors.text }]}>
+                  Sign up with Google
+                </Text>
+              </>
             )}
           </TouchableOpacity>
         </View>
@@ -129,21 +171,21 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   backBtn: {
-    marginBottom: 20,
+    marginBottom: 16,
   },
   header: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   title: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: '800',
   },
   subTitle: {
-    fontSize: 14,
-    marginTop: 4,
+    fontSize: 13,
+    marginTop: 2,
   },
   form: {
-    gap: 12,
+    gap: 10,
   },
   errorBox: {
     flexDirection: 'row',
@@ -158,14 +200,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   label: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
-    height: 48,
+    height: 46,
     borderRadius: 12,
     gap: 10,
   },
@@ -174,15 +216,42 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   submitBtn: {
-    height: 50,
-    borderRadius: 25,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 16,
+    marginTop: 10,
   },
   submitBtnText: {
     color: '#FFFFFF',
     fontSize: 16,
+    fontWeight: '700',
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 10,
+    gap: 10,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+  },
+  dividerText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  googleBtn: {
+    flexDirection: 'row',
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 10,
+  },
+  googleBtnText: {
+    fontSize: 15,
     fontWeight: '700',
   },
 });

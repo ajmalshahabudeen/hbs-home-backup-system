@@ -6,9 +6,9 @@ import {
   FlatList,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useAppTheme } from '../context/ThemeContext';
 import { BackupFileItem } from '../services/api';
 import {
@@ -28,12 +28,13 @@ interface DriveFileListProps {
   onDeleteFile: (file: BackupFileItem) => void;
   onRefresh?: () => void;
   refreshing?: boolean;
+  onLoadMore?: () => void;
+  hasMore?: boolean;
 }
 
-interface FileGroup {
-  title: string;
-  data: BackupFileItem[];
-}
+type ListItemType =
+  | { type: 'header'; id: string; title: string }
+  | { type: 'file'; id: string; data: BackupFileItem };
 
 export const DriveFileList: React.FC<DriveFileListProps> = ({
   files,
@@ -44,6 +45,8 @@ export const DriveFileList: React.FC<DriveFileListProps> = ({
   onDeleteFile,
   onRefresh,
   refreshing = false,
+  onLoadMore,
+  hasMore = false,
 }) => {
   const { colors } = useAppTheme();
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
@@ -102,10 +105,10 @@ export const DriveFileList: React.FC<DriveFileListProps> = ({
     return sortOrder === 'asc' ? cmp : -cmp;
   });
 
-  // Group items
-  const groupFiles = (items: BackupFileItem[]): FileGroup[] => {
+  // Build flattened single-level list for high-performance virtualization
+  const buildFlattenedList = (items: BackupFileItem[]): ListItemType[] => {
     if (groupBy === 'none') {
-      return [{ title: '', data: items }];
+      return items.map((item) => ({ type: 'file', id: item.id, data: item }));
     }
 
     const groups: Record<string, BackupFileItem[]> = {};
@@ -126,13 +129,18 @@ export const DriveFileList: React.FC<DriveFileListProps> = ({
       groups[groupKey].push(item);
     });
 
-    return Object.keys(groups).map((title) => ({
-      title,
-      data: groups[title],
-    }));
+    const flattened: ListItemType[] = [];
+    Object.keys(groups).forEach((title) => {
+      flattened.push({ type: 'header', id: `hdr_${title}`, title });
+      groups[title].forEach((file) => {
+        flattened.push({ type: 'file', id: file.id, data: file });
+      });
+    });
+
+    return flattened;
   };
 
-  const fileGroups = groupFiles(sortedFiles);
+  const flatData = buildFlattenedList(sortedFiles);
 
   const getFileIcon = (file: BackupFileItem) => {
     if (file.isDir) return { name: 'folder', color: '#F9AB00' };
@@ -166,9 +174,18 @@ export const DriveFileList: React.FC<DriveFileListProps> = ({
     );
   };
 
-  const renderFileItem = ({ item }: { item: BackupFileItem }) => {
-    const iconInfo = getFileIcon(item);
-    const sizeMb = item.isDir ? '' : (item.size / (1024 * 1024)).toFixed(2) + ' MB';
+  const renderItem = ({ item }: { item: ListItemType }) => {
+    if (item.type === 'header') {
+      return (
+        <View style={styles.groupHeaderRow}>
+          <Text style={[styles.groupTitle, { color: colors.text }]}>{item.title}</Text>
+        </View>
+      );
+    }
+
+    const file = item.data;
+    const iconInfo = getFileIcon(file);
+    const sizeMb = file.isDir ? '' : (file.size / (1024 * 1024)).toFixed(2) + ' MB';
 
     if (viewMode === 'grid') {
       return (
@@ -177,15 +194,15 @@ export const DriveFileList: React.FC<DriveFileListProps> = ({
             styles.gridCard,
             { backgroundColor: colors.surfaceVariant, borderColor: colors.border },
           ]}
-          onPress={() => (item.isDir ? onNavigatePath(item.path) : onOpenFile(item))}
-          onLongPress={() => promptRename(item)}
+          onPress={() => (file.isDir ? onNavigatePath(file.path) : onOpenFile(file))}
+          onLongPress={() => promptRename(file)}
         >
-          <Ionicons name={iconInfo.name as any} size={36} color={iconInfo.color} />
+          <Ionicons name={iconInfo.name as any} size={34} color={iconInfo.color} />
           <Text style={[styles.gridName, { color: colors.text }]} numberOfLines={2}>
-            {item.name}
+            {file.name}
           </Text>
           <Text style={[styles.gridMeta, { color: colors.textSecondary }]}>
-            {item.isDir ? 'Folder' : sizeMb}
+            {file.isDir ? 'Folder' : sizeMb}
           </Text>
         </TouchableOpacity>
       );
@@ -197,8 +214,8 @@ export const DriveFileList: React.FC<DriveFileListProps> = ({
           styles.listRow,
           { backgroundColor: colors.card, borderBottomColor: colors.border },
         ]}
-        onPress={() => (item.isDir ? onNavigatePath(item.path) : onOpenFile(item))}
-        onLongPress={() => promptRename(item)}
+        onPress={() => (file.isDir ? onNavigatePath(file.path) : onOpenFile(file))}
+        onLongPress={() => promptRename(file)}
       >
         <View style={[styles.iconWrapper, { backgroundColor: iconInfo.color + '15' }]}>
           <Ionicons name={iconInfo.name as any} size={22} color={iconInfo.color} />
@@ -206,14 +223,14 @@ export const DriveFileList: React.FC<DriveFileListProps> = ({
 
         <View style={styles.listDetails}>
           <Text style={[styles.fileName, { color: colors.text }]} numberOfLines={1}>
-            {item.name}
+            {file.name}
           </Text>
           <Text style={[styles.fileMeta, { color: colors.textSecondary }]}>
-            {item.isDir ? 'Folder' : `${sizeMb} • ${new Date(item.createdAt).toLocaleDateString()}`}
+            {file.isDir ? 'Folder' : `${sizeMb} • ${new Date(file.createdAt).toLocaleDateString()}`}
           </Text>
         </View>
 
-        <TouchableOpacity style={styles.actionBtn} onPress={() => promptDelete(item)}>
+        <TouchableOpacity style={styles.actionBtn} onPress={() => promptDelete(file)}>
           <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
         </TouchableOpacity>
       </TouchableOpacity>
@@ -278,30 +295,32 @@ export const DriveFileList: React.FC<DriveFileListProps> = ({
         </TouchableOpacity>
       </View>
 
-      {/* File List / Grid */}
+      {/* Single Virtualized FlatList */}
       <FlatList
-        data={fileGroups}
-        keyExtractor={(item, idx) => item.title || `file_group_${idx}`}
+        data={flatData}
+        key={viewMode}
+        keyExtractor={(item) => item.id}
+        numColumns={viewMode === 'grid' ? 2 : 1}
         refreshing={refreshing}
         onRefresh={onRefresh}
-        contentContainerStyle={{ paddingBottom: 100 }}
-        renderItem={({ item: group }) => (
-          <View style={styles.groupSection}>
-            {group.title ? (
-              <Text style={[styles.groupTitle, { color: colors.text }]}>
-                {group.title}
+        renderItem={renderItem}
+        onEndReached={onLoadMore}
+        onEndReachedThreshold={0.4}
+        initialNumToRender={20}
+        maxToRenderPerBatch={25}
+        windowSize={10}
+        removeClippedSubviews={true}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
+        ListFooterComponent={
+          hasMore ? (
+            <View style={styles.loadingFooter}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={[styles.loadingFooterText, { color: colors.textSecondary }]}>
+                Loading more items...
               </Text>
-            ) : null}
-
-            <FlatList
-              data={group.data}
-              key={viewMode}
-              keyExtractor={(item) => item.id}
-              numColumns={viewMode === 'grid' ? 2 : 1}
-              renderItem={renderFileItem}
-            />
-          </View>
-        )}
+            </View>
+          ) : null
+        }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Ionicons name="folder-open-outline" size={54} color={colors.textSecondary} />
@@ -358,14 +377,13 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 8,
   },
-  groupSection: {
-    paddingHorizontal: 16,
-    marginBottom: 12,
+  groupHeaderRow: {
+    paddingVertical: 8,
+    marginTop: 4,
   },
   groupTitle: {
     fontSize: 15,
     fontWeight: '700',
-    marginBottom: 8,
   },
   listRow: {
     flexDirection: 'row',
@@ -417,6 +435,17 @@ const styles = StyleSheet.create({
   gridMeta: {
     fontSize: 11,
     marginTop: 4,
+  },
+  loadingFooter: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 16,
+    gap: 8,
+  },
+  loadingFooterText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   emptyContainer: {
     alignItems: 'center',

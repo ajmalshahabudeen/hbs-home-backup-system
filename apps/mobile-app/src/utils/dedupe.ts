@@ -69,10 +69,10 @@ export async function checkFileDuplicate(
     );
 
     return {
-      isDuplicate: result.duplicate,
+      isDuplicate: result.isDuplicate,
       fileHash: hash,
-      existingFile: result.file,
-      reason: result.duplicate ? 'Identical file already backed up on server' : undefined,
+      existingFile: result.existingFile,
+      reason: result.isDuplicate ? 'Identical file already backed up on server' : undefined,
     };
   } catch (err) {
     // If preflight check fails (e.g. network issue), default to not duplicate so backup proceeds

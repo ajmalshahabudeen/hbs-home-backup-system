@@ -170,8 +170,7 @@ export async function syncPhotosNow(
         asset.uri,
         fileName,
         mime,
-        'MobileBackups',
-        asset.creationTime
+        'MobileBackups'
       );
       synced++;
     } catch {

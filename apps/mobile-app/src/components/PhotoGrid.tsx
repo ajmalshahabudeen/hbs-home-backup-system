@@ -18,12 +18,14 @@ import {
   SortOrder,
   GroupByOption,
 } from './FilterSortBar';
+import { SkeletonPhotoGrid } from './SkeletonPhotoGrid';
 
 interface PhotoGridProps {
   media: PhotoMediaItem[];
   onSelectMedia: (item: PhotoMediaItem) => void;
   onRefresh?: () => void;
   refreshing?: boolean;
+  loading?: boolean;
   onImport?: () => void;
 }
 
@@ -39,6 +41,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
   onSelectMedia,
   onRefresh,
   refreshing = false,
+  loading = false,
   onImport,
 }) => {
   const { colors } = useAppTheme();
@@ -125,6 +128,11 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
   const mediaGroups = groupMedia(sortedMedia);
   const itemSize = (windowWidth - 32 - (columns - 1) * 4) / columns;
 
+  // Render skeleton while initial fetch is loading and media is empty
+  if (loading && media.length === 0) {
+    return <SkeletonPhotoGrid columns={columns} itemCount={18} />;
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Ultra-Compact Control Bar with Search, Dropdowns & Import */}
@@ -206,6 +214,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
                         style={styles.thumbnailImage}
                         contentFit="cover"
                         transition={200}
+                        cachePolicy="memory-disk"
                         recyclingKey={item.id}
                         placeholder={null}
                       />

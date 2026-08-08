@@ -143,6 +143,38 @@
 - Replaced logoBadge with clean vector `Ionicons name="cloud-upload"` inside `index.tsx`, preventing Metro from exporting invalid PNG drawable resources to AAPT2 during Android release builds.
 - Verified TypeScript compilation (`bun run typecheck`) with zero errors.
 
+## Session: 2026-08-08 (Mobile App Feature & Performance Overhaul Plan)
+- Analyzed request for 6 mobile app feature & performance upgrades:
+  1. Add skeleton loader in `photos.tsx` & `PhotoGrid.tsx` while media loads.
+  2. Implement Expo caches (expo-image memory/disk caching, FileSystem cacheDirectory, stale-while-revalidate).
+  3. Integrate Better-Auth Expo client method in `AuthContext.tsx` with SecureStore session persistence & direct user routing.
+  4. Implement Zustand global state management for auth, media, drive, and server state.
+  5. Add Google sign in buttons to Login and Register screens.
+  6. Add on-demand batch loading and virtualization in `drive.tsx` for folders with 1,000+ items.
+- Created comprehensive implementation plan artifact `implementation_plan.md`.
+- Executed full implementation plan resolving all 6 mobile app upgrades:
+  1. Built `SkeletonPhotoGrid` shimmer skeleton grid loader in `PhotoGrid.tsx` for media loading.
+  2. Implemented `expoCache` layer using `FileSystem.cacheDirectory`, `appStorage`, and `expo-image` `cachePolicy="memory-disk"`.
+  3. Upgraded `AuthContext.tsx` with Better-Auth standard Expo client and `expo-secure-store` session persistence, automatically routing signed-in users directly to `/(tabs)/photos`.
+  4. Installed `zustand` and built global stores (`useAuthStore`, `useMediaStore`, `useDriveStore`).
+  5. Added styled Google Sign-In buttons connected to social login on `login.tsx` and `register.tsx`.
+  6. Overhauled `DriveFileList.tsx` with single-level `FlatList` virtualization and on-demand chunk loading for folders with 1,000+ items.
+- Verified TypeScript compilation (`bun run typecheck`) across workspace with 0 errors.
+- Verified server Next.js build (`bun run build --filter=server`) with 100% success.
+
+## Session: 2026-08-08 (Purge Custom Auth & Enforce Better-Auth SDK Plan)
+- Analyzed request to replace all custom HTTP fetch auth calls, manual token extraction, and cookie header parsing in the Expo app with pure Better-Auth SDK methods (`authClient.signIn.email`, `authClient.signUp.email`, `authClient.signIn.social`, `authClient.signOut`, `authClient.getSession`).
+- Installed `@better-auth/expo@1.6.26` package.
+- Created `implementation_plan.md` artifact detailing complete refactoring of `authClient.ts`, `AuthContext.tsx`, `login.tsx`, `register.tsx`, `settings.tsx`, and `api.ts`.
+- Purged all custom fetch auth code and refactored authentication 100% to native `@better-auth/expo/client` SDK methods:
+  1. `authClient.signIn.email({ email, password })` for email sign-in.
+  2. `authClient.signUp.email({ name, email, password })` for user registration.
+  3. `authClient.signIn.social({ provider: 'google', callbackURL: 'hbs-cloud://(auth)/login' })` for Google OAuth.
+  4. `authClient.signOut()` for user sign-out.
+  5. `authClient.getSession()` for session restoration and hydration.
+- Verified TypeScript compilation (`bun run typecheck`) across workspace with 0 errors.
+- Verified server build (`bun run build --filter=server`) with 100% success.
+
 
 
 

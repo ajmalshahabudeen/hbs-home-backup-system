@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../../context/ThemeContext';
@@ -10,15 +10,24 @@ import { DriveFileList } from '../../components/DriveFileList';
 import { UploadModal } from '../../components/UploadModal';
 import { MediaViewerModal } from '../../components/MediaViewerModal';
 import { LanScannerModal } from '../../components/LanScannerModal';
+import { useDriveStore } from '../../stores/useDriveStore';
 
 export default function DriveScreen() {
   const { colors } = useAppTheme();
   const { serverUrl } = useServer();
   const { sessionToken } = useAuth();
+  const {
+    displayFiles,
+    currentPath,
+    loading,
+    hasMoreChunks,
+    setFiles,
+    setCurrentPath,
+    setLoading,
+    loadMoreChunks,
+    loadFromCache,
+  } = useDriveStore();
 
-  const [files, setFiles] = useState<BackupFileItem[]>([]);
-  const [currentPath, setCurrentPath] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(true);
   const [showUploadModal, setShowUploadModal] = useState<boolean>(false);
   const [showScannerModal, setShowScannerModal] = useState<boolean>(false);
   const [previewMedia, setPreviewMedia] = useState<{
@@ -37,7 +46,13 @@ export default function DriveScreen() {
 
   const fetchFiles = useCallback(async () => {
     if (!serverUrl) return;
+
+    // Load from cache first for instant display when changing folders
+    if (displayFiles.length === 0) {
+      await loadFromCache(currentPath);
+    }
     setLoading(true);
+
     try {
       const res = await hbsApi.getFiles(serverUrl, sessionToken, currentPath, 'all');
       setFiles(res.files || []);
@@ -46,7 +61,7 @@ export default function DriveScreen() {
     } finally {
       setLoading(false);
     }
-  }, [serverUrl, sessionToken, currentPath]);
+  }, [serverUrl, sessionToken, currentPath, displayFiles.length, loadFromCache, setFiles, setLoading]);
 
   useEffect(() => {
     fetchFiles();
@@ -101,16 +116,17 @@ export default function DriveScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
-
       <DriveFileList
-        files={files}
+        files={displayFiles}
         currentPath={currentPath}
         onNavigatePath={(p) => setCurrentPath(p)}
         onOpenFile={handleOpenFile}
         onRenameFile={handleRenameFile}
         onDeleteFile={handleDeleteFile}
         onRefresh={fetchFiles}
-        refreshing={loading}
+        refreshing={loading && displayFiles.length > 0}
+        onLoadMore={loadMoreChunks}
+        hasMore={hasMoreChunks}
       />
 
       <TouchableOpacity
@@ -145,16 +161,6 @@ export default function DriveScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  topBar: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
-  },
-  screenTitle: {
-    fontSize: 26,
-    fontWeight: '800',
-    letterSpacing: -0.5,
   },
   fab: {
     position: 'absolute',
