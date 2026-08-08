@@ -161,9 +161,9 @@ export default function BackupScreen() {
 
       for (let i = 0; i < assets.length; i++) {
         const asset = assets[i];
-        const fileName =
-          asset.filename ||
-          `sync_${Date.now()}_${i}.${asset.mediaType === 'video' ? 'mp4' : 'jpg'}`;
+        const rawName = asset.filename ? asset.filename.split('/').pop() || asset.filename : '';
+        const ext = asset.mediaType === 'video' ? 'mp4' : 'jpg';
+        const fileName = rawName || `media_${asset.creationTime || Date.now()}_${i}.${ext}`;
         const mimeType = asset.mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
 
         setCurrentFileName(fileName);
@@ -175,7 +175,8 @@ export default function BackupScreen() {
           fileName,
           asset.uri,
           undefined,
-          'MobileBackup'
+          'MobileBackup',
+          asset.creationTime
         );
 
         if (dupCheck.isDuplicate) {
@@ -269,9 +270,9 @@ export default function BackupScreen() {
 
       for (let i = 0; i < result.assets.length; i++) {
         const asset = result.assets[i];
-        const fileName =
-          asset.fileName ||
-          `backup_${Date.now()}_${i}.${asset.type === 'video' ? 'mp4' : 'jpg'}`;
+        const rawName = asset.fileName ? asset.fileName.split('/').pop() || asset.fileName : '';
+        const ext = asset.type === 'video' ? 'mp4' : 'jpg';
+        const fileName = rawName || `manual_${Date.now()}_${i}.${ext}`;
         const mimeType =
           asset.mimeType || (asset.type === 'video' ? 'video/mp4' : 'image/jpeg');
 

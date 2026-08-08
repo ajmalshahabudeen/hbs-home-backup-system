@@ -88,7 +88,8 @@
 - Added progress notifications (`sendLocalSyncNotification`) with step & percentage progress updates during sync operations, and added a user toggle switch **Sync Progress Notifications** (`showSyncNotifications`) in `backup.tsx` preferences.
 - Implemented 5 curated color accent palettes (`Amber Gold`, `Ocean Blue`, `Emerald Mint`, `Violet Plum`, `Rose Amber`) in `theme.ts` with low-contrast, comfortable tones across both Light and Dark modes.
 - Added persistent palette storage (`hbs_app_color_palette` via `appStorage`) and dynamic theme state in `ThemeContext.tsx` (`paletteKey`, `setPaletteKey`).
-- Fixed white navigation bar background bug by synchronizing `SystemUI.setBackgroundColorAsync(colors.background)` and `NavigationBar.setStyle()` in `ThemeContext.tsx`, setting dynamic `backgroundColor` on `<GestureHandlerRootView>` and `contentStyle` in `_layout.tsx`, and adding `sceneStyle` in `(tabs)/_layout.tsx`.
+- Fixed false duplicate upload bug on server (`apps/server/app/api/user/upload/check/route.ts`) by targeting the exact file path (`targetPath = reqPath/fileName`) and excluding directory rows (`isDir: false`).
+- Updated `dedupe.ts` (`getFileChecksum`, `checkFileDuplicate`), `backup.tsx`, and `backgroundSync.ts` to compute unique SHA-256 digests (`fileName_fileSize_creationTime_base64Sample`), preserve original file names, and pass full file target paths (`MobileBackup/fileName`) for accurate preflight deduplication.
 - Verified TypeScript compilation across workspace (`bun run typecheck`) with zero errors.
 
 

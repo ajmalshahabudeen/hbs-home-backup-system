@@ -19,29 +19,38 @@ export async function POST(request: NextRequest) {
       return badRequest("File name or path required for duplicate check");
     }
 
-    // Try finding existing file by exact user + path or user + name + size
+    let targetPath = reqPath ? String(reqPath).trim() : "";
+    if (name && targetPath && !targetPath.endsWith(name)) {
+      targetPath = `${targetPath}/${name}`;
+    } else if (!targetPath && name) {
+      targetPath = String(name);
+    }
+
     let existing = null;
 
-    if (reqPath) {
-      existing = await prisma.backupFile.findUnique({
+    if (targetPath) {
+      existing = await prisma.backupFile.findFirst({
         where: {
-          userId_path: { userId, path: reqPath },
+          userId,
+          path: targetPath,
+          isDir: false,
         },
       });
     }
 
-    if (!existing && name && size != null) {
+    if (!existing && name && size != null && BigInt(size) > 0n) {
       existing = await prisma.backupFile.findFirst({
         where: {
           userId,
           name: String(name),
           size: BigInt(size),
+          isDir: false,
           ...(checksum ? { checksum: String(checksum) } : {}),
         },
       });
     }
 
-    if (existing) {
+    if (existing && !existing.isDir) {
       return ok({
         duplicate: true,
         file: {

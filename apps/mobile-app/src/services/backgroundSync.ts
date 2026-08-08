@@ -129,7 +129,9 @@ export async function syncPhotosNow(
 
   for (let i = 0; i < assets.length; i++) {
     const asset = assets[i];
-    const fileName = asset.filename || `auto_sync_${asset.id}.jpg`;
+    const rawName = asset.filename ? asset.filename.split('/').pop() || asset.filename : '';
+    const ext = asset.mediaType === 'video' ? 'mp4' : 'jpg';
+    const fileName = rawName || `auto_sync_${asset.creationTime || asset.id}.${ext}`;
     const mime = asset.mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
 
     try {
@@ -139,7 +141,8 @@ export async function syncPhotosNow(
         fileName,
         asset.uri,
         0,
-        'AutoSync'
+        'MobileBackup',
+        asset.creationTime
       );
 
       if (dup.isDuplicate) {

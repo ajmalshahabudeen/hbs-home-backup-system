@@ -17,26 +17,28 @@ export interface DedupeStats {
 }
 
 /**
- * Calculates a SHA-256 checksum of a local file.
- * Falls back to size + name digest if file reading fails.
+ * Calculates a SHA-256 checksum of a local file based on unique file attributes (filename + creationTime + fileSize + content sample).
  */
-export async function getFileChecksum(fileUri: string, fileSize?: number): Promise<string> {
+export async function getFileChecksum(
+  fileUri: string,
+  fileName?: string,
+  fileSize?: number,
+  creationTime?: number
+): Promise<string> {
+  const metaString = `${fileName || ''}_${fileSize || 0}_${creationTime || 0}`;
   try {
-    // If small file or file system allows, compute hash
     const base64 = await FileSystem.readAsStringAsync(fileUri, {
       encoding: FileSystem.EncodingType.Base64,
-      length: 1024 * 512, // sample first 512KB for fast hash computation
+      length: 1024 * 256, // sample 256KB for fast hashing
     });
-    const hash = await Crypto.digestStringAsync(
+    return await Crypto.digestStringAsync(
       Crypto.CryptoDigestAlgorithm.SHA256,
-      base64 + (fileSize ? `_${fileSize}` : '')
+      `${metaString}_${base64}`
     );
-    return hash;
   } catch (err) {
-    // Fallback digest based on URI and size
-    return Crypto.digestStringAsync(
+    return await Crypto.digestStringAsync(
       Crypto.CryptoDigestAlgorithm.SHA256,
-      `${fileUri}_${fileSize || 0}`
+      `${metaString}_${fileUri}`
     );
   }
 }
@@ -50,17 +52,20 @@ export async function checkFileDuplicate(
   fileName: string,
   fileUri: string,
   fileSize?: number,
-  parentPath: string = ''
+  parentPath: string = '',
+  creationTime?: number
 ): Promise<DedupeCheckResult> {
   try {
-    const hash = await getFileChecksum(fileUri, fileSize);
+    const hash = await getFileChecksum(fileUri, fileName, fileSize, creationTime);
+    const targetFilePath = parentPath ? `${parentPath}/${fileName}` : fileName;
+
     const result = await hbsApi.checkDuplicate(
       serverUrl,
       sessionToken,
       fileName,
       fileSize,
       hash,
-      parentPath
+      targetFilePath
     );
 
     return {
