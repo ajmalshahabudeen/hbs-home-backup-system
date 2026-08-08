@@ -6,6 +6,7 @@ import { safeNotifications } from '../utils/safeNotifications';
 import { safeMediaLibrary, SafeAsset } from '../utils/safeMediaLibrary';
 import { hbsApi } from './api';
 import { checkFileDuplicate } from '../utils/dedupe';
+import { syncTracker } from './syncTracker';
 
 export const BACKGROUND_SYNC_TASK = 'HBS_BACKGROUND_AUTO_SYNC';
 
@@ -123,6 +124,8 @@ export async function syncPhotosNow(
   let synced = 0;
   let skipped = 0;
 
+  await syncTracker.startSync(assets.length, 'Syncing in background...');
+
   if (config.showSyncNotifications && assets.length > 0) {
     await sendLocalSyncNotification('HBS Background Sync', `Syncing ${assets.length} items to home server...`);
   }
@@ -133,6 +136,14 @@ export async function syncPhotosNow(
     const ext = asset.mediaType === 'video' ? 'mp4' : 'jpg';
     const fileName = rawName || `auto_sync_${asset.creationTime || asset.id}.${ext}`;
     const mime = asset.mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
+
+    await syncTracker.updateProgress(
+      i + 1,
+      assets.length,
+      fileName,
+      `Uploading ${fileName} (${i + 1}/${assets.length})`,
+      skipped
+    );
 
     try {
       const dup = await checkFileDuplicate(
@@ -147,6 +158,13 @@ export async function syncPhotosNow(
 
       if (dup.isDuplicate) {
         skipped++;
+        await syncTracker.updateProgress(
+          i + 1,
+          assets.length,
+          fileName,
+          `Skipped duplicate (${i + 1}/${assets.length})`,
+          skipped
+        );
         continue;
       }
 
@@ -173,6 +191,8 @@ export async function syncPhotosNow(
       // continue next
     }
   }
+
+  await syncTracker.finishSync(synced, skipped);
 
   if (synced > 0 && config.showSyncNotifications) {
     await sendLocalSyncNotification(

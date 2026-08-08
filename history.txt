@@ -91,7 +91,8 @@
 - Fixed false duplicate upload bug on server (`apps/server/app/api/user/upload/check/route.ts`) by targeting the exact file path (`targetPath = reqPath/fileName`) and excluding directory rows (`isDir: false`).
 - Updated `dedupe.ts` (`getFileChecksum`, `checkFileDuplicate`), `backup.tsx`, and `backgroundSync.ts` to compute unique SHA-256 digests (`fileName_fileSize_creationTime_base64Sample`), preserve original file names, and pass full file target paths (`MobileBackup/fileName`) for accurate preflight deduplication.
 - Unified all mobile manual uploads and auto-sync background processes under a single parent folder `MobileBackups` across `api.ts`, `backup.tsx`, `backgroundSync.ts`, and `dedupe.ts`.
-- Enhanced `apps/server/app/api/user/upload/route.ts` to parse device `creationTime` from multipart forms/headers and set `createdAt` / `updatedAt` in Prisma as well as file modification time (`utimesSync`) on disk, ensuring backed-up photos stay in their original timeline dates.
+- Created `syncTracker.ts` persistent sync progress manager (`hbs_active_sync_state_v1`) to persist active sync state (`isSyncing`, `totalToSync`, `syncedCount`, `currentFileName`, `syncStepMessage`) across app closes, restarts, and background tasks.
+- Subscribed `backup.tsx` Hero progress UI and `backgroundSync.ts` to `syncTracker` event broadcasts, ensuring live progress bars and item progress remain visible whenever the app is re-opened without restarting sync.
 - Verified TypeScript compilation across workspace (`bun run typecheck`) with zero errors.
 
 

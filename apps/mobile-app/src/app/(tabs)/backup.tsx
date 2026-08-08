@@ -25,6 +25,7 @@ import { checkFileDuplicate } from '../../utils/dedupe';
 import { getAppPermissionsStatus } from '../../utils/permissions';
 import { sendLocalSyncNotification } from '../../utils/safeNotifications';
 import { getSyncConfig, saveSyncConfig } from '../../services/backgroundSync';
+import { syncTracker, SyncState } from '../../services/syncTracker';
 import { appStorage } from '../../utils/storage';
 
 export default function BackupScreen() {
@@ -39,18 +40,21 @@ export default function BackupScreen() {
   const [selectedAlbums, setSelectedAlbums] = useState<string[]>([]);
 
   const [backedUpCount, setBackedUpCount] = useState<number>(0);
-  const [skippedDuplicatesCount, setSkippedDuplicatesCount] = useState<number>(0);
-  const [isSyncing, setIsSyncing] = useState<boolean>(false);
-  const [syncedCount, setSyncedCount] = useState<number>(0);
-  const [totalToSync, setTotalToSync] = useState<number>(0);
-  const [currentFileName, setCurrentFileName] = useState<string>('');
-  const [syncStepMessage, setSyncStepMessage] = useState<string>('');
+  const [syncState, setSyncState] = useState<SyncState>(syncTracker.getState());
   const [folderTotalItems, setFolderTotalItems] = useState<number>(0);
 
   const [showFolderModal, setShowFolderModal] = useState<boolean>(false);
   const [showScannerModal, setShowScannerModal] = useState<boolean>(false);
   const [showPermissionModal, setShowPermissionModal] = useState<boolean>(false);
   const [permissionType, setPermissionType] = useState<'media' | 'notification' | 'background'>('media');
+
+  useEffect(() => {
+    syncTracker.getStoredState().then((st) => setSyncState(st));
+    const unsubscribe = syncTracker.subscribe((st) => {
+      setSyncState(st);
+    });
+    return unsubscribe;
+  }, []);
 
   const calculateFolderItemsCount = useCallback(async (albums: string[]) => {
     try {
@@ -139,19 +143,14 @@ export default function BackupScreen() {
       }
     }
 
-    setIsSyncing(true);
-    setSyncStepMessage('Scanning camera roll photos...');
-    setSyncedCount(0);
-
     try {
       const assets = await safeMediaLibrary.getAssetsAsync({ first: 1000 });
       if (!assets || assets.length === 0) {
         Alert.alert('No Media Found', 'No photos or videos found on your device to sync.');
-        setIsSyncing(false);
         return;
       }
 
-      setTotalToSync(assets.length);
+      await syncTracker.startSync(assets.length, 'Scanning camera roll photos...');
       let successCount = 0;
       let dupCount = 0;
 
@@ -166,8 +165,13 @@ export default function BackupScreen() {
         const fileName = rawName || `media_${asset.creationTime || Date.now()}_${i}.${ext}`;
         const mimeType = asset.mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
 
-        setCurrentFileName(fileName);
-        setSyncStepMessage(`Checking deduplication (${i + 1}/${assets.length})`);
+        await syncTracker.updateProgress(
+          i,
+          assets.length,
+          fileName,
+          `Checking deduplication (${i + 1}/${assets.length})`,
+          dupCount
+        );
 
         const dupCheck = await checkFileDuplicate(
           serverUrl,
@@ -181,12 +185,24 @@ export default function BackupScreen() {
 
         if (dupCheck.isDuplicate) {
           dupCount++;
-          setSkippedDuplicatesCount((prev) => prev + 1);
-          setSyncedCount(i + 1);
+          await syncTracker.updateProgress(
+            i + 1,
+            assets.length,
+            fileName,
+            `Skipped duplicate (${i + 1}/${assets.length})`,
+            dupCount
+          );
           continue;
         }
 
-        setSyncStepMessage(`Uploading ${fileName} (${i + 1}/${assets.length})`);
+        await syncTracker.updateProgress(
+          i + 1,
+          assets.length,
+          fileName,
+          `Uploading ${fileName} (${i + 1}/${assets.length})`,
+          dupCount
+        );
+
         try {
           await hbsApi.uploadFile(
             serverUrl,
@@ -201,7 +217,6 @@ export default function BackupScreen() {
         } catch {
           // continue next item
         }
-        setSyncedCount(i + 1);
 
         // Update notification progress every 10 items
         if (showSyncNotifications && (i + 1) % 10 === 0) {
@@ -213,6 +228,7 @@ export default function BackupScreen() {
         }
       }
 
+      await syncTracker.finishSync(successCount, dupCount);
       setBackedUpCount((prev) => prev + successCount);
       const msg = `Synced ${successCount} new items.${
         dupCount > 0 ? ` ${dupCount} duplicate items skipped.` : ''
@@ -222,11 +238,8 @@ export default function BackupScreen() {
         await sendLocalSyncNotification('HBS Photo Backup Complete', msg);
       }
     } catch (e) {
+      await syncTracker.finishSync(0, 0);
       Alert.alert('Sync Error', e instanceof Error ? e.message : 'Sync failed');
-    } finally {
-      setIsSyncing(false);
-      setCurrentFileName('');
-      setSyncStepMessage('');
     }
   };
 
@@ -258,10 +271,7 @@ export default function BackupScreen() {
         return;
       }
 
-      setIsSyncing(true);
-      setTotalToSync(result.assets.length);
-      setSyncedCount(0);
-
+      await syncTracker.startSync(result.assets.length, 'Starting manual upload...');
       let successCount = 0;
       let dupCount = 0;
 
@@ -277,8 +287,13 @@ export default function BackupScreen() {
         const mimeType =
           asset.mimeType || (asset.type === 'video' ? 'video/mp4' : 'image/jpeg');
 
-        setCurrentFileName(fileName);
-        setSyncStepMessage(`Checking deduplication (${i + 1}/${result.assets.length})`);
+        await syncTracker.updateProgress(
+          i,
+          result.assets.length,
+          fileName,
+          `Checking deduplication (${i + 1}/${result.assets.length})`,
+          dupCount
+        );
 
         const dupCheck = await checkFileDuplicate(
           serverUrl,
@@ -291,12 +306,24 @@ export default function BackupScreen() {
 
         if (dupCheck.isDuplicate) {
           dupCount++;
-          setSkippedDuplicatesCount((prev) => prev + 1);
-          setSyncedCount(i + 1);
+          await syncTracker.updateProgress(
+            i + 1,
+            result.assets.length,
+            fileName,
+            `Skipped duplicate (${i + 1}/${result.assets.length})`,
+            dupCount
+          );
           continue;
         }
 
-        setSyncStepMessage(`Uploading ${fileName} (${i + 1}/${result.assets.length})`);
+        await syncTracker.updateProgress(
+          i + 1,
+          result.assets.length,
+          fileName,
+          `Uploading ${fileName} (${i + 1}/${result.assets.length})`,
+          dupCount
+        );
+
         try {
           await hbsApi.uploadFile(
             serverUrl,
@@ -310,7 +337,6 @@ export default function BackupScreen() {
         } catch {
           // continue next item
         }
-        setSyncedCount(i + 1);
 
         if (showSyncNotifications && (i + 1) % 10 === 0) {
           const pct = Math.round(((i + 1) / result.assets.length) * 100);
@@ -321,6 +347,7 @@ export default function BackupScreen() {
         }
       }
 
+      await syncTracker.finishSync(successCount, dupCount);
       setBackedUpCount((prev) => prev + successCount);
 
       const msg = `Uploaded ${successCount} items.${
@@ -332,13 +359,17 @@ export default function BackupScreen() {
         await sendLocalSyncNotification('HBS Photo Backup Complete', msg);
       }
     } catch (e) {
+      await syncTracker.finishSync(0, 0);
       Alert.alert('Backup Error', e instanceof Error ? e.message : 'Upload failed');
-    } finally {
-      setIsSyncing(false);
-      setCurrentFileName('');
-      setSyncStepMessage('');
     }
   };
+
+  const isSyncing = syncState.isSyncing;
+  const syncedCount = syncState.syncedCount;
+  const totalToSync = syncState.totalToSync;
+  const currentFileName = syncState.currentFileName;
+  const syncStepMessage = syncState.syncStepMessage;
+  const skippedDuplicatesCount = syncState.skippedCount;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
@@ -458,117 +489,122 @@ export default function BackupScreen() {
 
         <TouchableOpacity onPress={() => setShowFolderModal(true)} activeOpacity={0.8}>
           <GlassCard style={styles.folderCard}>
-            <LinearGradient
-              colors={isDark ? ['#FACC15', '#D97706'] : ['#F59E0B', '#B45309']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.cardIconBadge}
-            >
-              <Ionicons name="folder-open" size={18} color="#FFFFFF" />
-            </LinearGradient>
-
-            <View style={{ flex: 1, justifyContent: 'center' }}>
-              <Text style={[styles.folderCardTitle, { color: colors.text }]}>
-                Auto-Sync Folders ({selectedAlbums.length} Selected)
-              </Text>
-              <Text style={[styles.folderCardSub, { color: colors.textSecondary }]}>
-                {folderTotalItems > 0
-                  ? `${folderTotalItems} total items ready across camera roll albums`
-                  : 'Select which camera roll albums auto-sync to server'}
-              </Text>
-            </View>
-
-            <View
-              style={[
-                styles.actionChevronBadge,
-                {
-                  backgroundColor: isDark
-                    ? 'rgba(255, 255, 255, 0.08)'
-                    : colors.surfaceVariant,
-                  borderColor: isDark
-                    ? 'rgba(255, 255, 255, 0.12)'
-                    : colors.border,
-                },
-              ]}
-            >
-              <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+            <View style={styles.folderCardHeader}>
+              <View style={[styles.folderIconBg, { backgroundColor: colors.primaryContainer }]}>
+                <Ionicons name="folder-open" size={24} color={colors.primary} />
+              </View>
+              <View style={styles.folderCardTitleBox}>
+                <Text style={[styles.folderCardTitle, { color: colors.text }]}>
+                  {selectedAlbums.length === 0 ? 'All Device Albums Selected' : `${selectedAlbums.length} Albums Selected`}
+                </Text>
+                <Text style={[styles.folderCardSub, { color: colors.subtext }]}>
+                  {folderTotalItems > 0 ? `${folderTotalItems} total items ready for sync` : 'Tap to customize synced folders'}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.subtext} />
             </View>
           </GlassCard>
         </TouchableOpacity>
 
-        {/* Auto Sync Settings */}
+        {/* Server Connection Card */}
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Backup Target</Text>
+
+        <GlassCard style={styles.settingCard}>
+          <View style={styles.settingRow}>
+            <View style={styles.settingTextGroup}>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>Home Backup Server</Text>
+              <Text style={[styles.settingDesc, { color: colors.subtext }]}>
+                {isConnected && serverUrl ? serverUrl : 'No server connected. Connect on home Wi-Fi.'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.connectBtn, { backgroundColor: isConnected ? colors.surfaceVariant : colors.primary }]}
+              onPress={() => setShowScannerModal(true)}
+            >
+              <Text style={[styles.connectBtnText, { color: isConnected ? colors.primary : '#FFFFFF' }]}>
+                {isConnected ? 'Change' : 'Connect'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </GlassCard>
+
+        {/* Preferences */}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Sync Preferences</Text>
 
-        <View style={[styles.settingsGroup, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <GlassCard style={styles.settingCard}>
           <View style={styles.settingRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.settingTitle, { color: colors.text }]}>Background Auto-Sync</Text>
-              <Text style={[styles.settingSub, { color: colors.subtext }]}>
-                Periodically sync new photos in the background even if app is closed
+            <View style={styles.settingTextGroup}>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>Background Auto-Sync</Text>
+              <Text style={[styles.settingDesc, { color: colors.subtext }]}>
+                Automatically upload new camera roll photos and videos
               </Text>
             </View>
             <Switch
               value={autoSyncEnabled}
               onValueChange={handleToggleAutoSync}
               trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor="#FFFFFF"
             />
           </View>
 
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
           <View style={styles.settingRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.settingTitle, { color: colors.text }]}>Sync Progress Notifications</Text>
-              <Text style={[styles.settingSub, { color: colors.subtext }]}>
-                Show background sync progress & completion notifications
+            <View style={styles.settingTextGroup}>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>Sync Progress Notifications</Text>
+              <Text style={[styles.settingDesc, { color: colors.subtext }]}>
+                Show background sync notifications & percentage progress
               </Text>
             </View>
             <Switch
               value={showSyncNotifications}
               onValueChange={handleToggleShowSyncNotifications}
               trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor="#FFFFFF"
             />
           </View>
 
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
           <View style={styles.settingRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.settingTitle, { color: colors.text }]}>Wi-Fi Only</Text>
-              <Text style={[styles.settingSub, { color: colors.subtext }]}>
-                Only sync when connected to Wi-Fi
+            <View style={styles.settingTextGroup}>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>Wi-Fi Only Sync</Text>
+              <Text style={[styles.settingDesc, { color: colors.subtext }]}>
+                Only backup when connected to Wi-Fi network
               </Text>
             </View>
             <Switch
               value={wifiOnly}
               onValueChange={handleToggleWifiOnly}
               trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor="#FFFFFF"
             />
           </View>
 
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
           <View style={styles.settingRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.settingTitle, { color: colors.text }]}>Pause on Low Battery</Text>
-              <Text style={[styles.settingSub, { color: colors.subtext }]}>
-                Pause sync when battery drops below 20%
+            <View style={styles.settingTextGroup}>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>Pause on Low Battery</Text>
+              <Text style={[styles.settingDesc, { color: colors.subtext }]}>
+                Pause background backup when battery is under 20%
               </Text>
             </View>
             <Switch
               value={batterySaverEnabled}
               onValueChange={handleToggleBatterySaver}
               trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor="#FFFFFF"
             />
           </View>
-        </View>
+        </GlassCard>
       </ScrollView>
 
       <FolderSelectorModal
         visible={showFolderModal}
         selectedAlbums={selectedAlbums}
-        onSave={handleFolderSave}
         onClose={() => setShowFolderModal(false)}
+        onSave={handleFolderSave}
       />
 
       <LanScannerModal
@@ -591,19 +627,19 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
+    paddingBottom: 40,
   },
   heroCard: {
     padding: 20,
-    borderRadius: 24,
-    marginBottom: 16,
     alignItems: 'center',
+    marginBottom: 16,
   },
   heroIconBadge: {
     width: 64,
     height: 64,
     borderRadius: 32,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 12,
   },
   heroTitle: {
@@ -622,8 +658,8 @@ const styles = StyleSheet.create({
     width: '100%',
     marginVertical: 12,
     padding: 12,
-    borderRadius: 14,
-    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.04)',
   },
   syncProgressHeader: {
     flexDirection: 'row',
@@ -633,13 +669,13 @@ const styles = StyleSheet.create({
   },
   syncStepText: {
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '600',
     flex: 1,
-    marginRight: 8,
   },
   percentBadge: {
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '700',
+    marginLeft: 8,
   },
   progressBarBg: {
     height: 8,
@@ -653,7 +689,7 @@ const styles = StyleSheet.create({
   },
   fileNameText: {
     fontSize: 11,
-    fontStyle: 'italic',
+    marginTop: 2,
   },
   actionButtonsRow: {
     flexDirection: 'row',
@@ -666,24 +702,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 20,
-    gap: 6,
+    borderRadius: 12,
+    gap: 8,
   },
   syncNowBtnText: {
     color: '#FFFFFF',
+    fontWeight: '600',
     fontSize: 14,
-    fontWeight: '700',
   },
   statsRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 10,
     marginBottom: 20,
   },
   statBox: {
     flex: 1,
     padding: 12,
-    borderRadius: 16,
     alignItems: 'center',
   },
   statNumber: {
@@ -692,78 +726,76 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   statLabel: {
-    fontSize: 10,
-    fontWeight: '600',
+    fontSize: 11,
     textAlign: 'center',
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     marginBottom: 10,
-    marginTop: 4,
+    marginTop: 8,
   },
   folderCard: {
+    padding: 14,
+    marginBottom: 16,
+  },
+  folderCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    borderRadius: 20,
-    marginBottom: 20,
     gap: 12,
   },
-  cardIconBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    justifyContent: 'center',
+  folderIconBg: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  actionChevronBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+  folderCardTitleBox: {
+    flex: 1,
   },
   folderCardTitle: {
     fontSize: 14,
     fontWeight: '600',
-    letterSpacing: -0.2,
+    marginBottom: 2,
   },
   folderCardSub: {
     fontSize: 12,
-    marginTop: 2,
   },
-  settingsGroup: {
-    borderRadius: 18,
-    borderWidth: 1,
-    paddingHorizontal: 16,
-    marginBottom: 20,
+  settingCard: {
+    padding: 14,
+    marginBottom: 16,
   },
   settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
+    justifyContent: 'space-between',
+    paddingVertical: 6,
   },
-  settingTitle: {
+  settingTextGroup: {
+    flex: 1,
+    marginRight: 12,
+  },
+  settingLabel: {
     fontSize: 14,
     fontWeight: '600',
+    marginBottom: 2,
   },
-  settingSub: {
+  settingDesc: {
     fontSize: 12,
-    marginTop: 2,
   },
   divider: {
-    height: StyleSheet.hairlineWidth,
+    height: 1,
+    marginVertical: 10,
+    opacity: 0.5,
   },
-  topBar: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
+  connectBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
   },
-  screenTitle: {
-    fontSize: 26,
-    fontWeight: '800',
-    letterSpacing: -0.5,
+  connectBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
 });
