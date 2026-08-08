@@ -26,6 +26,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@workspace/ui/components/dialog";
+import { DeleteConfirmDialog } from "@/components/delete-confirm-dialog";
 
 // Dynamically import @cyntler/react-doc-viewer to prevent SSR window/document reference issues in Next.js
 const DocViewer = dynamic(() => import("@cyntler/react-doc-viewer"), {
@@ -74,6 +75,9 @@ export function FilePreviewModal({
   const [loadingText, setLoadingText] = useState(false);
   const [copied, setCopied] = useState(false);
   const [imgError, setImgError] = useState(false);
+
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const previewUrl = file ? `/api/admin/files?preview=1&id=${encodeURIComponent(file.id)}` : "";
   const downloadUrl = file ? `/api/admin/files?download=1&id=${encodeURIComponent(file.id)}` : "";
@@ -337,11 +341,7 @@ export function FilePreviewModal({
                 <Button
                   variant="destructive"
                   size="sm"
-                  onClick={async () => {
-                    if (!confirm(`Delete ${file.name}?`)) return;
-                    await onDelete(file.id);
-                    onOpenChange(false);
-                  }}
+                  onClick={() => setConfirmDeleteOpen(true)}
                 >
                   <Trash2 className="size-4" /> Delete
                 </Button>
@@ -360,6 +360,30 @@ export function FilePreviewModal({
           </div>
         </DialogFooter>
       </DialogContent>
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmDialog
+        open={confirmDeleteOpen}
+        onOpenChange={setConfirmDeleteOpen}
+        title="Delete File"
+        description={
+          <span>
+            Are you sure you want to delete <strong className="font-semibold text-foreground">{file.name}</strong>? This action cannot be undone.
+          </span>
+        }
+        loading={deleting}
+        onConfirm={async () => {
+          if (onDelete) {
+            setDeleting(true);
+            try {
+              await onDelete(file.id);
+              onOpenChange(false);
+            } finally {
+              setDeleting(false);
+            }
+          }
+        }}
+      />
     </Dialog>
   );
 }

@@ -13,6 +13,7 @@ import {
 } from "@workspace/ui/components/card";
 import { Alert, AlertDescription } from "@workspace/ui/components/alert";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
+import { DeleteConfirmDialog } from "@/components/delete-confirm-dialog";
 import { relativeTime } from "@/lib/format";
 
 type SessionRow = {
@@ -41,6 +42,11 @@ export default function SessionsPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Dialog state
+  const [sessionToRevoke, setSessionToRevoke] = useState<SessionRow | null>(null);
+  const [revokeOthersOpen, setRevokeOthersOpen] = useState(false);
+  const [revokeLoading, setRevokeLoading] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -63,34 +69,43 @@ export default function SessionsPage() {
     return () => clearInterval(t);
   }, [load]);
 
-  async function revoke(id: string) {
-    if (!confirm("Revoke this session? The device will be signed out.")) return;
-    const res = await fetch(
-      `/api/admin/sessions?id=${encodeURIComponent(id)}`,
-      { method: "DELETE" }
-    );
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error || "Revoke failed");
-      return;
+  async function handleRevokeSession(id: string) {
+    setRevokeLoading(true);
+    try {
+      const res = await fetch(
+        `/api/admin/sessions?id=${encodeURIComponent(id)}`,
+        { method: "DELETE" }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Revoke failed");
+        return;
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Revoke failed");
+    } finally {
+      setRevokeLoading(false);
+      setSessionToRevoke(null);
     }
-    await load();
   }
 
-  async function revokeOthers() {
-    if (
-      !confirm(
-        "Revoke ALL other sessions? Your current session stays signed in."
-      )
-    )
-      return;
-    const res = await fetch("/api/admin/sessions?all=1", { method: "DELETE" });
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error || "Revoke failed");
-      return;
+  async function handleRevokeOthers() {
+    setRevokeLoading(true);
+    try {
+      const res = await fetch("/api/admin/sessions?all=1", { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Revoke failed");
+        return;
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Revoke failed");
+    } finally {
+      setRevokeLoading(false);
+      setRevokeOthersOpen(false);
     }
-    await load();
   }
 
   const columns = useMemo<DataTableColumn<SessionRow>[]>(
@@ -127,46 +142,24 @@ export default function SessionsPage() {
         header: "IP",
         sortKey: "ip",
         searchValue: (r) => r.ipAddress || "",
-        className: "font-mono text-xs",
+        className: "font-mono text-xs text-muted-foreground",
         cell: (r) => r.ipAddress || "—",
       },
       {
-        id: "type",
-        header: "Type",
-        sortKey: "type",
-        searchValue: (r) => r.deviceType,
-        cell: (r) => (
-          <Badge variant="secondary" className="capitalize">
-            {r.deviceType}
-          </Badge>
-        ),
-      },
-      {
-        id: "role",
-        header: "Role",
-        sortKey: "role",
-        searchValue: (r) => r.user.role || "user",
-        cell: (r) => (
-          <Badge variant={r.user.role === "admin" ? "default" : "outline"}>
-            {r.user.role || "user"}
-          </Badge>
-        ),
-      },
-      {
-        id: "seen",
-        header: "Last seen",
-        sortKey: "seen",
+        id: "lastActive",
+        header: "Last active",
+        sortKey: "lastActive",
         searchValue: (r) => r.updatedAt,
-        className: "text-xs text-muted-foreground whitespace-nowrap",
+        className: "whitespace-nowrap text-xs text-muted-foreground",
         cell: (r) => relativeTime(r.updatedAt),
       },
       {
-        id: "expires",
-        header: "Expires",
-        sortKey: "expires",
-        searchValue: (r) => r.expiresAt,
-        className: "text-xs text-muted-foreground whitespace-nowrap",
-        cell: (r) => new Date(r.expiresAt).toLocaleString(),
+        id: "created",
+        header: "Created",
+        sortKey: "created",
+        searchValue: (r) => r.createdAt,
+        className: "whitespace-nowrap text-xs text-muted-foreground",
+        cell: (r) => new Date(r.createdAt).toLocaleString(),
       },
       {
         id: "actions",
@@ -178,7 +171,7 @@ export default function SessionsPage() {
             size="icon-sm"
             variant="ghost"
             title="Revoke session"
-            onClick={() => revoke(r.id)}
+            onClick={() => setSessionToRevoke(r)}
           >
             <Trash2 className="size-4 text-destructive" />
           </Button>
@@ -192,9 +185,9 @@ export default function SessionsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Sessions</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Active Sessions</h1>
           <p className="text-sm text-muted-foreground">
-            Active logins — IP, device name, browser, and OS.
+            Monitor active device tokens and revoke suspicious sessions.
           </p>
         </div>
         <div className="flex gap-2">
@@ -202,7 +195,7 @@ export default function SessionsPage() {
             <RefreshCw className="size-4" />
             Refresh
           </Button>
-          <Button variant="destructive" size="sm" onClick={revokeOthers}>
+          <Button variant="destructive" size="sm" onClick={() => setRevokeOthersOpen(true)}>
             <ShieldOff className="size-4" />
             Revoke others
           </Button>
@@ -262,6 +255,40 @@ export default function SessionsPage() {
           />
         </CardContent>
       </Card>
+
+      {/* Revoke Single Session Dialog */}
+      <DeleteConfirmDialog
+        open={Boolean(sessionToRevoke)}
+        onOpenChange={(open) => {
+          if (!open) setSessionToRevoke(null);
+        }}
+        title="Revoke Session"
+        description={
+          sessionToRevoke ? (
+            <span>
+              Are you sure you want to revoke session for device <strong className="font-semibold text-foreground">{sessionToRevoke.deviceName} ({sessionToRevoke.user.email})</strong>? The device will be immediately signed out.
+            </span>
+          ) : null
+        }
+        confirmText="Revoke Session"
+        loading={revokeLoading}
+        onConfirm={async () => {
+          if (sessionToRevoke) {
+            await handleRevokeSession(sessionToRevoke.id);
+          }
+        }}
+      />
+
+      {/* Revoke All Other Sessions Dialog */}
+      <DeleteConfirmDialog
+        open={revokeOthersOpen}
+        onOpenChange={setRevokeOthersOpen}
+        title="Revoke All Other Sessions"
+        description="Are you sure you want to revoke ALL other active sessions across all devices? Your current session will remain active, but all other devices will be signed out."
+        confirmText="Revoke All Others"
+        loading={revokeLoading}
+        onConfirm={handleRevokeOthers}
+      />
     </div>
   );
 }

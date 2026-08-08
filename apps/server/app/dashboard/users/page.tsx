@@ -30,6 +30,7 @@ import {
 } from "@workspace/ui/components/select";
 import { Alert, AlertDescription } from "@workspace/ui/components/alert";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
+import { DeleteConfirmDialog } from "@/components/delete-confirm-dialog";
 
 type UserRow = {
   id: string;
@@ -128,17 +129,27 @@ export default function UsersPage() {
     await load();
   }
 
+  const [userToDelete, setUserToDelete] = useState<UserRow | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
   async function remove(id: string) {
-    if (!confirm("Delete this user and related sessions?")) return;
-    const res = await fetch(`/api/admin/users?id=${encodeURIComponent(id)}`, {
-      method: "DELETE",
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error || "Delete failed");
-      return;
+    setDeleteLoading(true);
+    try {
+      const res = await fetch(`/api/admin/users?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Delete failed");
+        return;
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setDeleteLoading(false);
+      setUserToDelete(null);
     }
-    await load();
   }
 
   const columns = useMemo<DataTableColumn<UserRow>[]>(
@@ -230,7 +241,8 @@ export default function UsersPage() {
             <Button
               size="icon-sm"
               variant="ghost"
-              onClick={() => remove(u.id)}
+              onClick={() => setUserToDelete(u)}
+              title="Delete user"
             >
               <Trash2 className="size-4 text-destructive" />
             </Button>
@@ -365,6 +377,27 @@ export default function UsersPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <DeleteConfirmDialog
+        open={Boolean(userToDelete)}
+        onOpenChange={(open) => {
+          if (!open) setUserToDelete(null);
+        }}
+        title="Delete User Account"
+        description={
+          userToDelete ? (
+            <span>
+              Are you sure you want to delete account <strong className="font-semibold text-foreground">{userToDelete.name} ({userToDelete.email})</strong> and all related sessions? This action cannot be undone.
+            </span>
+          ) : null
+        }
+        loading={deleteLoading}
+        onConfirm={async () => {
+          if (userToDelete) {
+            await remove(userToDelete.id);
+          }
+        }}
+      />
     </div>
   );
 }

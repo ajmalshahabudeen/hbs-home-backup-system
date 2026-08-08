@@ -462,3 +462,15 @@
 - Removed manual column density toggle button from `FilterSortBar.tsx`.
 - Fixed `Property splash is not allowed` schema warning in `app.json`: removed deprecated top-level `"splash"` and `"android.splash"` keys in favor of the official `"expo-splash-screen"` plugin entry inside `"plugins"`.
 - Verified workspace TypeScript compilation (`bun run typecheck`) with zero errors.
+
+## Session: 2026-08-08 (Shadcn UI AlertDialog & Bulk Selection Completed)
+- Replaced all native browser `confirm(...)` dialogs across the server dashboard (`files/page.tsx`, `file-preview-modal.tsx`, `users/page.tsx`, `sessions/page.tsx`, `logs/page.tsx`) with a reusable, accessible `DeleteConfirmDialog` component built with shadcn UI `@workspace/ui/components/alert-dialog`.
+- Added item selection and bulk select deletion to `apps/server/app/dashboard/files/page.tsx`:
+  1. `selectedIds` state tracking selected files and folders across current view.
+  2. Checkbox selection column in Table View with "Select All" / "Deselect All" header checkbox.
+  3. Checkbox overlays on Grid View cards with active selection border highlighting.
+  4. Sticky Bulk Actions toolbar displaying selected item count, "Select All", "Clear Selection", and **"Delete Selected (X)"** button.
+  5. Bulk deletion workflow with batch deletion requests and automatic state reset.
+- Verified Next.js server production build (`bun run build --filter=server`) with 100% success and zero errors.
+- Fixed TypeScript error `Type 'boolean | "indeterminate"' is not assignable to type 'boolean | undefined'` in `apps/server/app/dashboard/files/page.tsx`: updated `<Checkbox checked={allSelected}>` to pass a strict boolean value matching Base UI Checkbox prop signature.
+- Re-verified Next.js build (`bun run build --filter=server`) with 0 errors.

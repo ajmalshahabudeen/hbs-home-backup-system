@@ -20,6 +20,7 @@ import {
 } from "@workspace/ui/components/select";
 import { Alert, AlertDescription } from "@workspace/ui/components/alert";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
+import { DeleteConfirmDialog } from "@/components/delete-confirm-dialog";
 
 type LogRow = {
   id: string;
@@ -57,6 +58,10 @@ export default function LogsPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Dialog state
+  const [clearAllOpen, setClearAllOpen] = useState(false);
+  const [clearLoading, setClearLoading] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -80,15 +85,22 @@ export default function LogsPage() {
     load();
   }, [load]);
 
-  async function clearAll() {
-    if (!confirm("Delete ALL logs?")) return;
-    const res = await fetch("/api/admin/logs?all=1", { method: "DELETE" });
-    if (!res.ok) {
-      const data = await res.json();
-      setError(data.error || "Failed");
-      return;
+  async function handleClearAll() {
+    setClearLoading(true);
+    try {
+      const res = await fetch("/api/admin/logs?all=1", { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || "Failed to clear logs");
+        return;
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to clear logs");
+    } finally {
+      setClearLoading(false);
+      setClearAllOpen(false);
     }
-    await load();
   }
 
   async function remove(id: string) {
@@ -110,7 +122,7 @@ export default function LogsPage() {
         header: "Time",
         sortKey: "time",
         searchValue: (l) => l.timestamp,
-        className: "whitespace-nowrap text-xs text-muted-foreground",
+        className: "whitespace-nowrap font-mono text-xs text-muted-foreground",
         cell: (l) => new Date(l.timestamp).toLocaleString(),
       },
       {
@@ -127,6 +139,7 @@ export default function LogsPage() {
                   ? "outline"
                   : "secondary"
             }
+            className="font-mono text-[10px]"
           >
             {l.level}
           </Badge>
@@ -137,15 +150,14 @@ export default function LogsPage() {
         header: "Type",
         sortKey: "type",
         searchValue: (l) => l.type,
-        cell: (l) => <Badge variant="outline">{l.type}</Badge>,
+        cell: (l) => <Badge variant="outline" className="text-xs">{l.type}</Badge>,
       },
       {
         id: "message",
         header: "Message",
         sortKey: "message",
         searchValue: (l) => l.message,
-        className: "max-w-md truncate text-sm",
-        cell: (l) => l.message,
+        cell: (l) => <span className="font-mono text-xs">{l.message}</span>,
       },
       {
         id: "user",
@@ -172,9 +184,10 @@ export default function LogsPage() {
           <Button
             size="icon-sm"
             variant="ghost"
+            title="Delete log"
             onClick={() => remove(l.id)}
           >
-            <Trash2 className="size-4" />
+            <Trash2 className="size-4 text-destructive" />
           </Button>
         ),
       },
@@ -196,7 +209,7 @@ export default function LogsPage() {
             <RefreshCw className="size-4" />
             Refresh
           </Button>
-          <Button variant="destructive" size="sm" onClick={clearAll}>
+          <Button variant="destructive" size="sm" onClick={() => setClearAllOpen(true)}>
             Clear all
           </Button>
         </div>
@@ -260,6 +273,16 @@ export default function LogsPage() {
           />
         </CardContent>
       </Card>
+
+      <DeleteConfirmDialog
+        open={clearAllOpen}
+        onOpenChange={setClearAllOpen}
+        title="Clear All System Logs"
+        description="Are you sure you want to permanently delete ALL system audit logs? This action cannot be undone."
+        confirmText="Clear All Logs"
+        loading={clearLoading}
+        onConfirm={handleClearAll}
+      />
     </div>
   );
 }

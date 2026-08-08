@@ -18,11 +18,15 @@ import {
   Music,
   Image as ImageIcon,
   FileCode,
+  CheckSquare,
+  Square,
+  Check,
 } from "lucide-react";
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";
 import { Badge } from "@workspace/ui/components/badge";
+import { Checkbox } from "@workspace/ui/components/checkbox";
 import {
   Card,
   CardContent,
@@ -41,6 +45,8 @@ import { Alert, AlertDescription } from "@workspace/ui/components/alert";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { useFilesStore } from "@/lib/stores/use-files-store";
 import { FilePreviewModal, type FilePreviewRow } from "@/components/file-preview-modal";
+import { DeleteConfirmDialog } from "@/components/delete-confirm-dialog";
+import { cn } from "@workspace/ui/lib/utils";
 
 type UserOpt = {
   id: string;
@@ -95,13 +101,26 @@ export default function FilesPage() {
   const [folderName, setFolderName] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Selection state for bulk operations
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
   // File Preview state
   const [previewFile, setPreviewFile] = useState<FilePreviewRow | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
 
+  // Delete Confirm Dialog state
+  const [itemToDelete, setItemToDelete] = useState<FileRow | null>(null);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Clear selection whenever path or user changes
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [currentPath, selectedUserId]);
 
   const loadUsers = useCallback(async () => {
     try {
@@ -186,16 +205,54 @@ export default function FilesPage() {
     await loadFiles();
   }
 
-  async function remove(id: string) {
-    const res = await fetch(`/api/admin/files?id=${encodeURIComponent(id)}`, {
-      method: "DELETE",
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error || "Delete failed");
-      return;
+  async function removeSingleItem(id: string) {
+    setDeleteLoading(true);
+    try {
+      const res = await fetch(`/api/admin/files?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Delete failed");
+        return;
+      }
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      await loadFiles();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setDeleteLoading(false);
+      setItemToDelete(null);
     }
-    await loadFiles();
+  }
+
+  async function handleBulkDelete() {
+    if (selectedIds.size === 0) return;
+    setDeleteLoading(true);
+    setError(null);
+    try {
+      const idsArr = Array.from(selectedIds);
+      for (const id of idsArr) {
+        const res = await fetch(`/api/admin/files?id=${encodeURIComponent(id)}`, {
+          method: "DELETE",
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || `Failed to delete item ${id}`);
+        }
+      }
+      setSelectedIds(new Set());
+      await loadFiles();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Bulk delete failed");
+    } finally {
+      setDeleteLoading(false);
+      setBulkDeleteOpen(false);
+    }
   }
 
   function openDir(name: string) {
@@ -214,6 +271,32 @@ export default function FilesPage() {
     setPreviewOpen(true);
   }
 
+  // Selection handlers
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (files.length === 0) return;
+    const allSelected = files.every((f) => selectedIds.has(f.id));
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(files.map((f) => f.id)));
+    }
+  };
+
+  const allSelected = files.length > 0 && files.every((f) => selectedIds.has(f.id));
+  const someSelected = selectedIds.size > 0 && !allSelected;
+
   const crumbs = currentPath ? currentPath.split("/").filter(Boolean) : [];
 
   const userItems = Object.fromEntries(
@@ -222,6 +305,32 @@ export default function FilesPage() {
 
   const columns = useMemo<DataTableColumn<FileRow>[]>(
     () => [
+      {
+        id: "select",
+        header: (
+          <div className="flex items-center justify-center">
+            <Checkbox
+              checked={allSelected}
+              onCheckedChange={toggleSelectAll}
+              aria-label="Select all files"
+            />
+          </div>
+        ),
+        className: "w-10 text-center",
+        headerClassName: "w-10 text-center",
+        cell: (f) => (
+          <div
+            className="flex items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Checkbox
+              checked={selectedIds.has(f.id)}
+              onCheckedChange={() => toggleSelect(f.id)}
+              aria-label={`Select ${f.name}`}
+            />
+          </div>
+        ),
+      },
       {
         id: "name",
         header: "Name",
@@ -315,10 +424,7 @@ export default function FilesPage() {
               size="icon-sm"
               variant="ghost"
               title="Delete item"
-              onClick={async () => {
-                if (!confirm(`Delete ${f.name}?`)) return;
-                await remove(f.id);
-              }}
+              onClick={() => setItemToDelete(f)}
             >
               <Trash2 className="size-4 text-destructive" />
             </Button>
@@ -326,7 +432,7 @@ export default function FilesPage() {
         ),
       },
     ],
-    [openDir]
+    [openDir, selectedIds, allSelected, someSelected, files]
   );
 
   return (
@@ -360,6 +466,43 @@ export default function FilesPage() {
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
+      )}
+
+      {/* Bulk Selection Bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-muted/60 px-4 py-3 shadow-sm transition-all animate-in fade-in-50 slide-in-from-top-2">
+          <div className="flex items-center gap-3">
+            <Badge variant="default" className="gap-1.5 px-3 py-1 text-xs">
+              <CheckSquare className="size-3.5" />
+              {selectedIds.size} selected
+            </Badge>
+            <Button size="xs" variant="ghost" onClick={toggleSelectAll}>
+              {allSelected ? (
+                <>
+                  <Square className="size-3.5" /> Deselect All
+                </>
+              ) : (
+                <>
+                  <CheckSquare className="size-3.5" /> Select All ({files.length})
+                </>
+              )}
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button size="xs" variant="outline" onClick={() => setSelectedIds(new Set())}>
+              Clear selection
+            </Button>
+            <Button
+              size="xs"
+              variant="destructive"
+              onClick={() => setBulkDeleteOpen(true)}
+              className="gap-1.5 font-medium"
+            >
+              <Trash2 className="size-3.5" /> Delete Selected ({selectedIds.size})
+            </Button>
+          </div>
+        </div>
       )}
 
       {/* Main Card */}
@@ -500,59 +643,94 @@ export default function FilesPage() {
           {/* GRID VIEW */}
           {viewMode === "grid" && (
             <div className="space-y-4">
+              {files.length > 0 && (
+                <div className="flex items-center justify-between border-b pb-2">
+                  <Button size="xs" variant="ghost" onClick={toggleSelectAll} className="gap-1.5 text-xs text-muted-foreground">
+                    <Checkbox
+                      checked={allSelected}
+                      onCheckedChange={toggleSelectAll}
+                    />
+                    {allSelected ? "Deselect All" : "Select All"}
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    {files.length} item{files.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-                {files.map((f) => (
-                  <div
-                    key={f.id}
-                    className="group relative flex flex-col items-center justify-center rounded-2xl border p-4 text-center transition-all hover:border-primary/50 hover:bg-muted/30 hover:shadow-sm"
-                    onDoubleClick={() => (f.isDir ? openDir(f.name) : handlePreview(f))}
-                  >
-                    <div className="mb-2 flex size-14 items-center justify-center rounded-2xl bg-muted/40 transition-transform group-hover:scale-105">
-                      {f.isDir ? (
-                        <Folder className="size-8 text-amber-500 fill-amber-500/20" />
-                      ) : f.mimeType?.startsWith("image/") ? (
-                        <ImageIcon className="size-8 text-blue-500" />
-                      ) : f.mimeType?.startsWith("video/") ? (
-                        <Film className="size-8 text-purple-500" />
-                      ) : f.mimeType?.startsWith("audio/") ? (
-                        <Music className="size-8 text-emerald-500" />
-                      ) : f.mimeType?.startsWith("text/") || f.name.match(/\.(json|ts|tsx|js|jsx|py|sh|md)$/i) ? (
-                        <FileCode className="size-8 text-amber-600" />
-                      ) : (
-                        <FileIcon className="size-8 text-muted-foreground" />
+                {files.map((f) => {
+                  const isSelected = selectedIds.has(f.id);
+                  return (
+                    <div
+                      key={f.id}
+                      className={cn(
+                        "group relative flex flex-col items-center justify-center rounded-2xl border p-4 text-center transition-all hover:border-primary/50 hover:bg-muted/30 hover:shadow-sm cursor-pointer select-none",
+                        isSelected && "border-primary bg-primary/5 ring-2 ring-primary/20"
                       )}
-                    </div>
-                    <span className="w-full truncate text-xs font-medium">{f.name}</span>
-                    <span className="text-[10px] font-mono text-muted-foreground mt-0.5">
-                      {f.isDir ? "Directory" : formatBytes(f.size)}
-                    </span>
+                      onDoubleClick={() => (f.isDir ? openDir(f.name) : handlePreview(f))}
+                    >
+                      {/* Grid Item Selection Checkbox */}
+                      <div
+                        className={cn(
+                          "absolute top-2 start-2 z-10 transition-opacity",
+                          isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                        )}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => toggleSelect(f.id)}
+                          aria-label={`Select ${f.name}`}
+                        />
+                      </div>
 
-                    {/* Hover Actions */}
-                    <div className="absolute top-2 end-2 hidden gap-1 group-hover:flex">
-                      {!f.isDir && (
+                      <div className="mb-2 flex size-14 items-center justify-center rounded-2xl bg-muted/40 transition-transform group-hover:scale-105">
+                        {f.isDir ? (
+                          <Folder className="size-8 text-amber-500 fill-amber-500/20" />
+                        ) : f.mimeType?.startsWith("image/") ? (
+                          <ImageIcon className="size-8 text-blue-500" />
+                        ) : f.mimeType?.startsWith("video/") ? (
+                          <Film className="size-8 text-purple-500" />
+                        ) : f.mimeType?.startsWith("audio/") ? (
+                          <Music className="size-8 text-emerald-500" />
+                        ) : f.mimeType?.startsWith("text/") || f.name.match(/\.(json|ts|tsx|js|jsx|py|sh|md)$/i) ? (
+                          <FileCode className="size-8 text-amber-600" />
+                        ) : (
+                          <FileIcon className="size-8 text-muted-foreground" />
+                        )}
+                      </div>
+                      <span className="w-full truncate text-xs font-medium">{f.name}</span>
+                      <span className="text-[10px] font-mono text-muted-foreground mt-0.5">
+                        {f.isDir ? "Directory" : formatBytes(f.size)}
+                      </span>
+
+                      {/* Hover Actions */}
+                      <div
+                        className="absolute top-2 end-2 hidden gap-1 group-hover:flex"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {!f.isDir && (
+                          <Button
+                            size="icon-xs"
+                            variant="secondary"
+                            onClick={() => handlePreview(f)}
+                            title="Preview"
+                          >
+                            <Eye className="size-3" />
+                          </Button>
+                        )}
                         <Button
                           size="icon-xs"
                           variant="secondary"
-                          onClick={() => handlePreview(f)}
-                          title="Preview"
+                          onClick={() => setItemToDelete(f)}
+                          title="Delete"
                         >
-                          <Eye className="size-3" />
+                          <Trash2 className="size-3 text-destructive" />
                         </Button>
-                      )}
-                      <Button
-                        size="icon-xs"
-                        variant="secondary"
-                        onClick={async () => {
-                          if (!confirm(`Delete ${f.name}?`)) return;
-                          await remove(f.id);
-                        }}
-                        title="Delete"
-                      >
-                        <Trash2 className="size-3 text-destructive" />
-                      </Button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {!loading && files.length === 0 && (
@@ -570,7 +748,46 @@ export default function FilesPage() {
         file={previewFile}
         open={previewOpen}
         onOpenChange={setPreviewOpen}
-        onDelete={remove}
+        onDelete={async (id) => {
+          await removeSingleItem(id);
+        }}
+      />
+
+      {/* Single Item Delete Confirm Dialog */}
+      <DeleteConfirmDialog
+        open={Boolean(itemToDelete)}
+        onOpenChange={(open) => {
+          if (!open) setItemToDelete(null);
+        }}
+        title={`Delete ${itemToDelete?.isDir ? "Directory" : "File"}`}
+        description={
+          itemToDelete ? (
+            <span>
+              Are you sure you want to delete <strong className="font-semibold text-foreground">{itemToDelete.name}</strong>? This action cannot be undone.
+            </span>
+          ) : null
+        }
+        loading={deleteLoading}
+        onConfirm={async () => {
+          if (itemToDelete) {
+            await removeSingleItem(itemToDelete.id);
+          }
+        }}
+      />
+
+      {/* Bulk Delete Confirm Dialog */}
+      <DeleteConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={setBulkDeleteOpen}
+        title={`Delete ${selectedIds.size} Selected Items`}
+        description={
+          <span>
+            Are you sure you want to permanently delete <strong className="font-semibold text-foreground">{selectedIds.size}</strong> selected item(s)? This action cannot be undone.
+          </span>
+        }
+        confirmText={`Delete ${selectedIds.size} Items`}
+        loading={deleteLoading}
+        onConfirm={handleBulkDelete}
       />
     </div>
   );
