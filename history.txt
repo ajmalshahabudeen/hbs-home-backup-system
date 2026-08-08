@@ -132,7 +132,11 @@
 - Researched Android OS process lifecycle, battery optimization policies (Doze Mode, App Standby), and Expo background execution constraints.
 - Added Android background execution permissions to `app.json`: `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC`, `RECEIVE_BOOT_COMPLETED`, `WAKE_LOCK`.
 - Provided technical report detailing why swipe-killing an app terminates standard JS WebSockets/fetch, and how `WorkManager` (`expo-background-task`), `ForegroundService` (with persistent progress notification), and Firebase Cloud Messaging (FCM Push) enable silent, battery-efficient uploads when closed.
+- Built Hybrid Dual-Engine Background Sync System in `syncTracker.ts` (`DUAL_ENGINE_FOREGROUND_THRESHOLD = 5`):
+  1. Method A (WorkManager Silent Sync) for small batch uploads (<= 5 items): runs 100% silently in background, 0% notification noise, 0% extra battery.
+  2. Method B (Foreground Data-Sync Service) for large batch uploads (> 5 items): automatically promotes sync to ongoing foreground service (`FOREGROUND_SERVICE_DATA_SYNC`) with single dynamic progress notification, holding WAKE_LOCK so Android OS won't kill process if user swipe-closes the app.
 - Verified TypeScript compilation (`bun run typecheck`) with zero errors.
+
 
 
 

@@ -6,6 +6,8 @@ import {
   SYNC_NOTIFICATION_ID,
 } from '../utils/safeNotifications';
 
+export const DUAL_ENGINE_FOREGROUND_THRESHOLD = 5;
+
 export interface SyncState {
   isSyncing: boolean;
   totalToSync: number;
@@ -13,6 +15,7 @@ export interface SyncState {
   skippedCount: number;
   currentFileName: string;
   syncStepMessage: string;
+  syncEngineMode: 'workManager' | 'foregroundService';
   lastSyncTimestamp?: string;
   lastUpdatedTime?: number;
 }
@@ -26,6 +29,7 @@ const defaultState: SyncState = {
   skippedCount: 0,
   currentFileName: '',
   syncStepMessage: '',
+  syncEngineMode: 'workManager',
   lastUpdatedTime: 0,
 };
 
@@ -103,6 +107,11 @@ export const syncTracker = {
   subscribe: subscribeSyncState,
 
   startSync: async (total: number, initialMessage: string = 'Starting sync...') => {
+    const isLargeBatch = total > DUAL_ENGINE_FOREGROUND_THRESHOLD;
+    const engineMode: 'workManager' | 'foregroundService' = isLargeBatch
+      ? 'foregroundService'
+      : 'workManager';
+
     const state = await updateSyncState({
       isSyncing: true,
       totalToSync: total,
@@ -110,9 +119,10 @@ export const syncTracker = {
       skippedCount: 0,
       currentFileName: '',
       syncStepMessage: initialMessage,
+      syncEngineMode: engineMode,
     });
 
-    if (await shouldNotify()) {
+    if (isLargeBatch && (await shouldNotify())) {
       await updateSyncProgressNotification(0, total, '', initialMessage, true);
     }
     return state;
@@ -125,22 +135,30 @@ export const syncTracker = {
     stepMessage: string,
     skippedCount?: number
   ) => {
+    const isLargeBatch = totalToSync > DUAL_ENGINE_FOREGROUND_THRESHOLD;
+    const engineMode: 'workManager' | 'foregroundService' = isLargeBatch
+      ? 'foregroundService'
+      : 'workManager';
+
     const state = await updateSyncState({
       isSyncing: true,
       syncedCount,
       totalToSync,
       currentFileName,
       syncStepMessage: stepMessage,
+      syncEngineMode: engineMode,
       ...(skippedCount !== undefined ? { skippedCount } : {}),
     });
 
-    if (await shouldNotify()) {
+    if (isLargeBatch && (await shouldNotify())) {
       await updateSyncProgressNotification(syncedCount, totalToSync, currentFileName, stepMessage);
     }
     return state;
   },
 
   finishSync: async (successCount: number, skippedCount: number) => {
+    const wasLargeBatch = memoryState.totalToSync > DUAL_ENGINE_FOREGROUND_THRESHOLD;
+
     const state = await updateSyncState({
       isSyncing: false,
       syncedCount: successCount,
@@ -156,7 +174,7 @@ export const syncTracker = {
           skippedCount > 0 ? ` (${skippedCount} duplicate skipped)` : ''
         }`;
         await finishSyncNotification('HBS Photo Backup Complete', msg);
-      } else {
+      } else if (wasLargeBatch) {
         await safeNotifications.dismissNotificationAsync(SYNC_NOTIFICATION_ID);
       }
     } else {
