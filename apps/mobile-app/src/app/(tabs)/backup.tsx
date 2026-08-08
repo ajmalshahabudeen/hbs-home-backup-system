@@ -22,6 +22,7 @@ import { LanScannerModal } from '../../components/LanScannerModal';
 import { FolderSelectorModal } from '../../components/FolderSelectorModal';
 import { PermissionModal } from '../../components/PermissionModal';
 import { checkFileDuplicate } from '../../utils/dedupe';
+import { runParallelUploadQueue } from '../../utils/parallelUploadQueue';
 import { getAppPermissionsStatus } from '../../utils/permissions';
 import { sendLocalSyncNotification } from '../../utils/safeNotifications';
 import { getSyncConfig, saveSyncConfig } from '../../services/backgroundSync';
@@ -151,73 +152,28 @@ export default function BackupScreen() {
       }
 
       await syncTracker.startSync(assets.length, 'Scanning camera roll photos...');
-      let successCount = 0;
-      let dupCount = 0;
 
-      for (let i = 0; i < assets.length; i++) {
-        const asset = assets[i];
-        const rawName = asset.filename ? asset.filename.split('/').pop() || asset.filename : '';
-        const ext = asset.mediaType === 'video' ? 'mp4' : 'jpg';
-        const fileName = rawName || `media_${asset.creationTime || Date.now()}_${i}.${ext}`;
-        const mimeType = asset.mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
-
-        await syncTracker.updateProgress(
-          i,
-          assets.length,
-          fileName,
-          `Checking deduplication (${i + 1}/${assets.length})`,
-          dupCount
-        );
-
-        const dupCheck = await checkFileDuplicate(
-          serverUrl,
-          sessionToken,
-          fileName,
-          asset.uri,
-          undefined,
-          'MobileBackups',
-          asset.creationTime
-        );
-
-        if (dupCheck.isDuplicate) {
-          dupCount++;
-          await syncTracker.updateProgress(
-            i + 1,
-            assets.length,
-            fileName,
-            `Skipped duplicate (${i + 1}/${assets.length})`,
-            dupCount
+      const result = await runParallelUploadQueue(
+        serverUrl,
+        sessionToken,
+        assets,
+        4,
+        'MobileBackups',
+        (progress) => {
+          syncTracker.updateProgress(
+            progress.completed,
+            progress.total,
+            progress.currentFileName || 'Processing...',
+            `Uploading ${progress.completed}/${progress.total} (${progress.syncedCount} new, ${progress.skippedCount} skipped)`,
+            progress.skippedCount
           );
-          continue;
         }
+      );
 
-        await syncTracker.updateProgress(
-          i + 1,
-          assets.length,
-          fileName,
-          `Uploading ${fileName} (${i + 1}/${assets.length})`,
-          dupCount
-        );
-
-        try {
-          await hbsApi.uploadFile(
-            serverUrl,
-            sessionToken,
-            asset.uri,
-            fileName,
-            mimeType,
-            'MobileBackups'
-          );
-          successCount++;
-        } catch {
-          // continue next item
-        }
-      }
-
-      await syncTracker.finishSync(successCount, dupCount);
-      setBackedUpCount((prev) => prev + successCount);
-      const msg = `Synced ${successCount} new items.${
-        dupCount > 0 ? ` ${dupCount} duplicate items skipped.` : ''
+      await syncTracker.finishSync(result.syncedCount, result.skippedCount);
+      setBackedUpCount((prev) => prev + result.syncedCount);
+      const msg = `Synced ${result.syncedCount} new items.${
+        result.skippedCount > 0 ? ` ${result.skippedCount} duplicate items skipped via fast SQLite index.` : ''
       }`;
       Alert.alert('Auto-Sync Complete', msg);
     } catch (e) {

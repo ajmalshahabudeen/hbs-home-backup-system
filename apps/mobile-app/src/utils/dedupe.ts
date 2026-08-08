@@ -1,6 +1,7 @@
 import * as Crypto from 'expo-crypto';
 import { File } from 'expo-file-system';
 import { hbsApi, BackupFileItem } from '../services/api';
+import { backupIndexDb } from './backupIndexDb';
 
 export interface DedupeCheckResult {
   isDuplicate: boolean;
@@ -48,6 +49,7 @@ export async function getFileChecksum(
 
 /**
  * Preflight check to determine if a local file is already backed up on HBS server.
+ * Uses fast local SQLite index first before attempting network roundtrips.
  */
 export async function checkFileDuplicate(
   serverUrl: string,
@@ -58,10 +60,30 @@ export async function checkFileDuplicate(
   parentPath: string = 'MobileBackups',
   creationTime?: number
 ): Promise<DedupeCheckResult> {
-  try {
-    const hash = await getFileChecksum(fileUri, fileName, fileSize, creationTime);
-    const targetFilePath = parentPath ? `${parentPath}/${fileName}` : fileName;
+  // 1. Fast local SQLite index preflight check (0ms network cost)
+  const isLocalMatch = backupIndexDb.isLocallyUploaded(fileUri, undefined, fileName, fileSize);
+  if (isLocalMatch) {
+    return {
+      isDuplicate: true,
+      reason: 'Identical file indexed in local SQLite database',
+    };
+  }
 
+  // 2. Compute file hash
+  const hash = await getFileChecksum(fileUri, fileName, fileSize, creationTime);
+
+  // Check SQLite with computed hash
+  if (backupIndexDb.isLocallyUploaded(fileUri, hash, fileName, fileSize)) {
+    return {
+      isDuplicate: true,
+      fileHash: hash,
+      reason: 'Identical file hash indexed in local SQLite database',
+    };
+  }
+
+  // 3. Fallback to server duplicate API
+  try {
+    const targetFilePath = parentPath ? `${parentPath}/${fileName}` : fileName;
     const result = await hbsApi.checkDuplicate(
       serverUrl,
       sessionToken,
@@ -71,6 +93,11 @@ export async function checkFileDuplicate(
       targetFilePath
     );
 
+    if (result.isDuplicate) {
+      // Mark in SQLite so subsequent checks skip network
+      backupIndexDb.markAsUploaded(fileUri, fileName, hash, fileSize || 0, creationTime || 0, targetFilePath);
+    }
+
     return {
       isDuplicate: result.isDuplicate,
       fileHash: hash,
@@ -78,7 +105,6 @@ export async function checkFileDuplicate(
       reason: result.isDuplicate ? 'Identical file already backed up on server' : undefined,
     };
   } catch (err) {
-    // If preflight check fails (e.g. network issue), default to not duplicate so backup proceeds
     return {
       isDuplicate: false,
       reason: 'Preflight check bypassed due to network error',

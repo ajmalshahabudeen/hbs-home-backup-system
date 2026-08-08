@@ -26,6 +26,9 @@ import {
   PermissionStatusSummary,
 } from '../../utils/permissions';
 import { appStorage } from '../../utils/storage';
+import { backupIndexDb } from '../../utils/backupIndexDb';
+import { expoCache } from '../../utils/expoCache';
+import { runSilentIndexReconciliation } from '../../services/backgroundIndexReconciler';
 
 export default function SettingsScreen() {
   const { colors, isDark, themeMode, setThemeMode, paletteKey, setPaletteKey } = useAppTheme();
@@ -277,6 +280,47 @@ export default function SettingsScreen() {
             );
           })}
         </ScrollView>
+
+        {/* Database & Cache Management */}
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Database & Cache Management</Text>
+
+        <GlassCard style={styles.permCard} borderRadius={20}>
+          <TouchableOpacity
+            style={styles.permRow}
+            onPress={() => {
+              Alert.alert(
+                'Purge & Rebuild Cache & Index',
+                'This will clear all local disk caches, reset your SQLite backup index, and silently rebuild the database index with your home server. Continue?',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Purge & Rebuild',
+                    style: 'destructive',
+                    onPress: async () => {
+                      backupIndexDb.purgeAllIndex();
+                      await expoCache.clearAll();
+                      if (serverUrl) {
+                        const res = await runSilentIndexReconciliation(serverUrl, sessionToken);
+                        Alert.alert('Rebuild Complete', `Index purged and rebuilt with ${res.count} items from server.`);
+                      } else {
+                        Alert.alert('Purge Complete', 'Local cache and SQLite index cleared.');
+                      }
+                    },
+                  },
+                ]
+              );
+            }}
+          >
+            <Ionicons name="trash-bin-outline" size={20} color={colors.error} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.permTitle, { color: colors.text }]}>Purge & Rebuild Cache & Index</Text>
+              <Text style={[styles.permSub, { color: colors.textSecondary }]}>
+                Clear SQLite index, reset caches, and re-sync database with server
+              </Text>
+            </View>
+            <Ionicons name="refresh-outline" size={18} color={colors.error} />
+          </TouchableOpacity>
+        </GlassCard>
 
         {/* Server Connection Card */}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Server Connection</Text>
