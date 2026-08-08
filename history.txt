@@ -460,5 +460,5 @@
 - Transformed `PhotoGrid.tsx` into an edge-to-edge media wall with zero side screen padding (`paddingHorizontal: 0`) and minimal 1px hairline tile spacing (`gap: 1`).
 - Built `useTabBarStore` Zustand store and integrated smooth translateY auto-hiding animation into `CustomTabBar.tsx` (`tabBarTranslateY = 120`) when scrolling down, restoring on scroll up or after 3s of scroll inactivity.
 - Removed manual column density toggle button from `FilterSortBar.tsx`.
-- Fixed grid wrapping bug in `PhotoGrid.tsx`: applied `Math.floor((windowWidth - (columns - 1) * GAP) / columns)` to item size calculation, preventing fractional pixel rounding overflow that caused the 3rd column photo tile to wrap early onto the next line.
+- Fixed `Property splash is not allowed` schema warning in `app.json`: removed deprecated top-level `"splash"` and `"android.splash"` keys in favor of the official `"expo-splash-screen"` plugin entry inside `"plugins"`.
 - Verified workspace TypeScript compilation (`bun run typecheck`) with zero errors.
