@@ -85,6 +85,13 @@ export default function SettingsScreen() {
   };
 
   const formattedUsedStorage = stats ? formatStorage(stats.totalBytes) : '0.00 MB';
+  const formattedFreeStorage = stats?.diskFreeBytes ? formatStorage(stats.diskFreeBytes) : 'Calculating...';
+  const formattedTotalStorage = stats?.diskTotalBytes ? formatStorage(stats.diskTotalBytes) : '';
+
+  const usedPercentage =
+    stats?.diskTotalBytes && stats.diskTotalBytes > 0
+      ? Math.min(100, Math.max(2, Math.round((stats.totalBytes / stats.diskTotalBytes) * 100)))
+      : 15;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
@@ -110,19 +117,30 @@ export default function SettingsScreen() {
         )}
 
         {/* Cloud Storage Usage */}
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Cloud Storage Usage</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>
+          {stats?.driveName ? `Cloud Storage Usage (${stats.driveName})` : 'Cloud Storage Usage'}
+        </Text>
 
         <GlassCard style={styles.quotaCard} borderRadius={20}>
           <View style={styles.quotaHeader}>
-            <Text style={[styles.quotaTitle, { color: colors.text }]}>Storage Used</Text>
-            <Text style={[styles.quotaValue, { color: colors.primary }]}>{formattedUsedStorage}</Text>
+            <View>
+              <Text style={[styles.quotaTitle, { color: colors.text }]}>Your Storage Used</Text>
+              <Text style={[styles.quotaValue, { color: colors.primary }]}>{formattedUsedStorage}</Text>
+            </View>
+
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={[styles.quotaTitle, { color: colors.text }]}>Server Space Free</Text>
+              <Text style={[styles.quotaValue, { color: colors.success || '#34A853' }]}>
+                {formattedFreeStorage} {formattedTotalStorage ? `of ${formattedTotalStorage}` : ''}
+              </Text>
+            </View>
           </View>
 
           <View style={[styles.quotaBarBg, { backgroundColor: colors.border }]}>
             <View
               style={[
                 styles.quotaBarFill,
-                { width: '25%', backgroundColor: colors.primary },
+                { width: `${usedPercentage}%`, backgroundColor: colors.primary },
               ]}
             />
           </View>

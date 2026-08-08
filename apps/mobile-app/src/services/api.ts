@@ -40,6 +40,9 @@ export interface UserStats {
   videoCount: number;
   docCount: number;
   otherCount: number;
+  diskTotalBytes?: number;
+  diskFreeBytes?: number;
+  driveName?: string;
 }
 
 async function getValidToken(sessionToken: string | null): Promise<string | null> {

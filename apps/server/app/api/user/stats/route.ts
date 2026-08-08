@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@workspace/db";
 import { requireSession, ok } from "@/lib/auth-guard";
+import { getStorageInfo } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -45,6 +46,12 @@ export async function GET(request: NextRequest) {
     else otherCount++;
   }
 
+  // Use authoritative HBS storage engine to query exact external hard drive metrics
+  const storageInfo = getStorageInfo();
+  const diskTotalBytes = storageInfo.disk.totalBytes || 0;
+  const diskFreeBytes = storageInfo.disk.freeBytes || 0;
+  const driveName = storageInfo.name || "Backup Drive";
+
   return ok({
     totalBytes,
     fileCount: files.length,
@@ -52,5 +59,8 @@ export async function GET(request: NextRequest) {
     videoCount,
     docCount,
     otherCount,
+    diskTotalBytes,
+    diskFreeBytes,
+    driveName,
   });
 }

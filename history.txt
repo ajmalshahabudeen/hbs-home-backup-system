@@ -208,6 +208,15 @@
 - Verified server build (`bun run build --filter=server`) with 100% success.
 - Installed `await-lock@3.0.0` to resolve Metro bundler resolution error for `expo-sqlite` devtools client.
 
+## Session: 2026-08-08 (Server Free Disk Space Calculation & Settings UI)
+- Refactored server `app/api/user/stats/route.ts` to call `getStorageInfo()` from `@/lib/storage`, querying the exact configured external hard drive volume (e.g. `D:` drive or external mount) instead of default root path.
+- Updated `UserStats` interface in `api.ts` with `driveName`, `diskTotalBytes`, and `diskFreeBytes`.
+- Updated `settings.tsx` Cloud Storage Usage card header to display drive name (e.g., `Cloud Storage Usage (D: Drive)`), user usage, and remaining external hard drive space.
+- Verified TypeScript compilation (`bun run typecheck`) across workspace with 0 errors.
+- Verified server build (`bun run build --filter=server`) with 100% success.
+
+
+
 
 
 
