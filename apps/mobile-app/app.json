@@ -24,7 +24,14 @@
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_DATA_SYNC",
         "RECEIVE_BOOT_COMPLETED",
-        "WAKE_LOCK"
+        "WAKE_LOCK",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.ACCESS_MEDIA_LOCATION",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#121212",
@@ -75,7 +82,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "8b9c39f0-630b-4102-858c-e31d0bef4918"
+        "projectId": "05a55e81-7cfc-42ce-8424-59b814ba0dce"
       }
     }
   }

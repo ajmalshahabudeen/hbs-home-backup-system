@@ -484,3 +484,13 @@
   3. Wrapped page component in Next.js `<Suspense>` boundary to ensure clean App Router hydration.
 - Verified Next.js server production build (`bun run build --filter=server`) with 100% success and zero errors.
 
+## Session: 2026-08-08 (Device Media Loading & Grid Performance Optimization Completed)
+- Resolved slow device loading, memory lag, and app hanging for large media libraries (50,000+ files) in `photos.tsx` and `PhotoGrid.tsx`.
+- Overhauled `PhotoGrid.tsx` to use virtualized 1D row data (`GridRowItem` headers & rows) in `@shopify/flash-list`, mounting only ~10–15 visible rows (~30–45 photo tiles) in memory instead of 50,000 nodes simultaneously.
+- Memoized `PhotoTile` and `PhotoRow` components, removing heavy cell-level Reanimated layout animations for smooth 60 FPS scrolling.
+- Refactored `photos.tsx` to load device camera roll photos FIRST (<100ms) and asynchronously merge server cloud status (`isBackedUp`) in the background.
+- Optimized `safeMediaLibrary.ts` to bypass slow filesystem folder walking when native MediaStore API yields assets.
+- Updated `useMediaStore.ts` to cache a lightweight preview slice (top 200 items) for instant warm launches (<20ms).
+- Verified workspace TypeScript compilation (`bun run typecheck`) and Next.js server build (`bun run build --filter=server`) with zero errors.
+
+

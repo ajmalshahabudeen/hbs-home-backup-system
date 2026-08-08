@@ -232,21 +232,22 @@ export const safeMediaLibrary = {
       }
     }
 
-    // Engine 2: Deep scan internal and external storage directories via FileSystem
-    await yieldToUI();
-    try {
-      const storageAssets = await scanDeviceStorageForMedia(maxAssetsLimit);
-      for (const item of storageAssets) {
-        if (!combinedMap.has(item.uri.toLowerCase())) {
-          combinedMap.set(item.uri.toLowerCase(), item);
+    // Engine 2: Deep scan storage directories via FileSystem ONLY if native MediaStore returned 0 assets
+    if (combinedMap.size === 0) {
+      await yieldToUI();
+      try {
+        const storageAssets = await scanDeviceStorageForMedia(maxAssetsLimit);
+        for (const item of storageAssets) {
+          if (!combinedMap.has(item.uri.toLowerCase())) {
+            combinedMap.set(item.uri.toLowerCase(), item);
+          }
         }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
     }
 
     // Engine 3: Load user-imported device gallery assets stored in appStorage
-    await yieldToUI();
     try {
       const imported = await getImportedGalleryAssets();
       for (const item of imported) {
@@ -258,7 +259,6 @@ export const safeMediaLibrary = {
       // ignore
     }
 
-    await yieldToUI();
     const result = Array.from(combinedMap.values());
     result.sort((a, b) => b.creationTime - a.creationTime);
     return result;

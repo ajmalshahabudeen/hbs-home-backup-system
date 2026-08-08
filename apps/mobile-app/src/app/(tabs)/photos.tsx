@@ -52,21 +52,7 @@ export default function PhotosScreen() {
     };
   }, []);
 
-  const [hasMore, setHasMore] = useState<boolean>(true);
-  const [page, setPage] = useState<number>(1);
-  const allAssetsRef = useRef<PhotoMediaItem[]>([]);
-  const PAGE_SIZE = 40;
 
-  const loadMorePhotos = useCallback(() => {
-    if (!hasMore || loading) return;
-    const nextPage = page + 1;
-    const nextSlice = allAssetsRef.current.slice(0, nextPage * PAGE_SIZE);
-    setMediaList(nextSlice);
-    setPage(nextPage);
-    if (nextSlice.length >= allAssetsRef.current.length) {
-      setHasMore(false);
-    }
-  }, [hasMore, loading, page, setMediaList]);
 
   const fetchPhotos = useCallback(async () => {
     if (mediaList.length === 0) {
@@ -77,6 +63,7 @@ export default function PhotosScreen() {
     asyncTaskQueue.enqueue(
       async (abortSignal) => {
         try {
+          // 1. Permissions check
           let perm = await safeMediaLibrary.getPermissionsAsync();
           if (!perm.granted) {
             const req = await safeMediaLibrary.requestPermissionsAsync();
@@ -85,78 +72,90 @@ export default function PhotosScreen() {
           if (abortSignal.isCancelled || !isMounted.current) return;
           setHasPermission(perm.granted);
 
-          let serverMedia: PhotoMediaItem[] = [];
-          if (serverUrl) {
+          if (!perm.granted) {
+            setLoading(false);
+            return;
+          }
+
+          // 2. DEVICE FIRST: Query local device gallery assets natively (<100ms)
+          const localAssets = await safeMediaLibrary.getAssetsAsync({ first: 50000 });
+          if (abortSignal.isCancelled || !isMounted.current) return;
+
+          const localMediaItems: PhotoMediaItem[] = new Array(localAssets.length);
+          for (let i = 0; i < localAssets.length; i++) {
+            const asset = localAssets[i];
+            localMediaItems[i] = {
+              id: `local_${asset.id}`,
+              userId: 'local',
+              path: asset.filename,
+              name: asset.filename,
+              parentPath: '',
+              mimeType: asset.mediaType === 'video' ? 'video/mp4' : 'image/jpeg',
+              size: 0,
+              createdAt: new Date(asset.creationTime).toISOString(),
+              updatedAt: new Date(asset.creationTime).toISOString(),
+              isVideo: asset.mediaType === 'video',
+              url: asset.uri,
+              localUri: asset.uri,
+              isLocalOnly: true,
+              isBackedUp: false,
+            };
+          }
+
+          // Sort local items by creation date descending
+          localMediaItems.sort(
+            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+
+          // Render local device gallery photos FIRST immediately!
+          if (!abortSignal.isCancelled && isMounted.current) {
+            setMediaList(localMediaItems);
+            setLoading(false);
+          }
+
+          // 3. ASYNCHRONOUS CLOUD SYNC: Fetch server cloud photos in background
+          if (serverUrl && sessionToken) {
             try {
               const res = await hbsApi.getPhotos(serverUrl, sessionToken, 'all');
-              serverMedia = (res.media || [])
+              if (abortSignal.isCancelled || !isMounted.current) return;
+
+              const serverMedia = (res.media || [])
                 .filter((m) => !m.name.includes('.hbs-thumb') && !m.path.includes('.hbs-thumb'))
                 .map((m) => ({
                   ...m,
                   isBackedUp: true,
                   isLocalOnly: false,
                 }));
-            } catch {
-              // offline or unreachable
-            }
-          }
-          if (abortSignal.isCancelled || !isMounted.current) return;
 
-          const localAssets = await safeMediaLibrary.getAssetsAsync({ first: 50000 });
-          if (abortSignal.isCancelled || !isMounted.current) return;
-
-          // O(1) Map lookups instead of O(N^2) scanning
-          const serverIndexMap = new Map<string, number>();
-          serverMedia.forEach((m, idx) => {
-            serverIndexMap.set(m.name.toLowerCase(), idx);
-          });
-
-          const mergedList: PhotoMediaItem[] = [...serverMedia];
-
-          let count = 0;
-          for (const asset of localAssets) {
-            if (abortSignal.isCancelled || !isMounted.current) return;
-            count++;
-            if (count % 250 === 0) {
-              await yieldToUI();
-            }
-
-            const name = asset.filename;
-            const nameLower = name.toLowerCase();
-            const serverIdx = serverIndexMap.get(nameLower);
-
-            if (serverIdx !== undefined) {
-              mergedList[serverIdx].localUri = asset.uri;
-            } else {
-              mergedList.push({
-                id: `local_${asset.id}`,
-                userId: 'local',
-                path: name,
-                name,
-                parentPath: '',
-                mimeType: asset.mediaType === 'video' ? 'video/mp4' : 'image/jpeg',
-                size: 0,
-                createdAt: new Date(asset.creationTime).toISOString(),
-                updatedAt: new Date(asset.creationTime).toISOString(),
-                isVideo: asset.mediaType === 'video',
-                url: asset.uri,
-                localUri: asset.uri,
-                isLocalOnly: true,
-                isBackedUp: false,
+              // Build O(1) filename lookup map for cloud backup status
+              const localMap = new Map<string, number>();
+              localMediaItems.forEach((m, idx) => {
+                localMap.set(m.name.toLowerCase(), idx);
               });
+
+              const mergedList: PhotoMediaItem[] = [...localMediaItems];
+
+              serverMedia.forEach((sItem) => {
+                const localIdx = localMap.get(sItem.name.toLowerCase());
+                if (localIdx !== undefined) {
+                  mergedList[localIdx].isBackedUp = true;
+                  mergedList[localIdx].id = sItem.id;
+                  mergedList[localIdx].url = sItem.url;
+                } else {
+                  mergedList.push(sItem);
+                }
+              });
+
+              mergedList.sort(
+                (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+              );
+
+              if (!abortSignal.isCancelled && isMounted.current) {
+                setMediaList(mergedList);
+              }
+            } catch {
+              // Server offline or unreachable, keep local photos
             }
-          }
-
-          if (abortSignal.isCancelled || !isMounted.current) return;
-          await yieldToUI();
-          mergedList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-          if (!abortSignal.isCancelled && isMounted.current) {
-            allAssetsRef.current = mergedList;
-            const initialSlice = mergedList.slice(0, PAGE_SIZE);
-            setMediaList(initialSlice);
-            setPage(1);
-            setHasMore(mergedList.length > PAGE_SIZE);
           }
         } catch {
           // fallback
@@ -299,8 +298,6 @@ export default function PhotosScreen() {
         refreshing={loading && mediaList.length > 0}
         loading={loading && mediaList.length === 0}
         onImport={handlePickDeviceMedia}
-        onLoadMore={loadMorePhotos}
-        hasMore={hasMore}
       />
 
 

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, memo } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,6 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
-  FadeInUp,
   useSharedValue,
   useAnimatedStyle,
   withTiming,
@@ -44,13 +43,105 @@ interface PhotoGridProps {
   hasMore?: boolean;
 }
 
-interface MediaGroup {
-  title: string;
-  data: PhotoMediaItem[];
-}
+export type GridRowItem =
+  | { type: 'header'; id: string; title: string }
+  | { type: 'row'; id: string; items: PhotoMediaItem[]; itemSize: number };
 
 const windowWidth = Dimensions.get('window').width;
 const GAP = 1;
+
+// Memoized individual Photo Tile cell for maximum 60 FPS performance
+const PhotoTile = memo(
+  ({
+    item,
+    itemSize,
+    colors,
+    onPress,
+  }: {
+    item: PhotoMediaItem;
+    itemSize: number;
+    colors: any;
+    onPress: (item: PhotoMediaItem) => void;
+  }) => {
+    return (
+      <TouchableOpacity
+        style={[
+          styles.photoCard,
+          {
+            width: itemSize,
+            height: itemSize,
+            backgroundColor: colors.surfaceVariant,
+          },
+        ]}
+        activeOpacity={0.85}
+        onPress={() => onPress(item)}
+      >
+        <Image
+          source={{ uri: item.localUri || item.thumbUrl || item.url }}
+          style={styles.thumbnailImage}
+          contentFit="cover"
+          transition={100}
+          cachePolicy="memory-disk"
+          recyclingKey={item.id}
+          placeholder={null}
+        />
+
+        {item.isBackedUp && (
+          <View style={[styles.cloudBadge, { backgroundColor: colors.primary }]}>
+            <Ionicons name="cloud-done" size={11} color="#FFFFFF" />
+          </View>
+        )}
+
+        {item.isVideo && (
+          <View style={styles.videoBadge}>
+            <Ionicons name="play" size={10} color="#FFFFFF" />
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  }
+);
+PhotoTile.displayName = 'PhotoTile';
+
+// Memoized virtualized row component rendering 'columns' tiles per row
+const PhotoRow = memo(
+  ({
+    items,
+    columns,
+    itemSize,
+    colors,
+    onSelectMedia,
+  }: {
+    items: PhotoMediaItem[];
+    columns: number;
+    itemSize: number;
+    colors: any;
+    onSelectMedia: (item: PhotoMediaItem) => void;
+  }) => {
+    return (
+      <View style={styles.gridRow}>
+        {items.map((item) => (
+          <PhotoTile
+            key={item.id}
+            item={item}
+            itemSize={itemSize}
+            colors={colors}
+            onPress={onSelectMedia}
+          />
+        ))}
+        {/* Render empty placeholders if last row of a group has fewer than 'columns' items */}
+        {items.length < columns &&
+          Array.from({ length: columns - items.length }).map((_, idx) => (
+            <View
+              key={`empty_${idx}`}
+              style={{ width: itemSize, height: itemSize }}
+            />
+          ))}
+      </View>
+    );
+  }
+);
+PhotoRow.displayName = 'PhotoRow';
 
 export const PhotoGrid: React.FC<PhotoGridProps> = ({
   media,
@@ -79,13 +170,12 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
   const lastScrollY = useRef<number>(0);
   const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 2-Finger Pinch Gesture for column count changing (without visual scale transforms)
+  // 2-Finger Pinch Gesture for column count changing
   const isPinchingRef = useRef<boolean>(false);
   const lastPinchTimeRef = useRef<number>(0);
 
   const handlePressMedia = useCallback(
     (item: PhotoMediaItem) => {
-      // Ignore click if a 2-finger pinch gesture is active or finished within the last 500ms
       if (isPinchingRef.current || Date.now() - lastPinchTimeRef.current < 500) {
         return;
       }
@@ -95,12 +185,10 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
   );
 
   const handleZoomIn = useCallback(() => {
-    // Pinch OUT -> decrease columns (larger photo tile size)
     setColumns((prev) => Math.max(1, prev - 1));
   }, []);
 
   const handleZoomOut = useCallback(() => {
-    // Pinch IN -> increase columns (smaller photo tile size)
     setColumns((prev) => Math.min(5, prev + 1));
   }, []);
 
@@ -109,7 +197,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
       isPinchingRef.current = true;
       lastPinchTimeRef.current = Date.now();
     })
-    .onUpdate((event: any) => {
+    .onUpdate(() => {
       isPinchingRef.current = true;
       lastPinchTimeRef.current = Date.now();
     })
@@ -140,7 +228,6 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
     const currentY = event.nativeEvent.contentOffset.y;
     const dy = currentY - lastScrollY.current;
 
-    // Show header when near the very top of scroll
     if (currentY <= 10) {
       headerTranslateY.value = withTiming(0, { duration: 200 });
       setTabBarVisible(true);
@@ -149,12 +236,10 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
     }
 
     if (dy > 6) {
-      // User scrolling DOWN -> hide header & hide tab bar
       headerTranslateY.value = withTiming(-65, { duration: 250 });
       setTabBarVisible(false);
       startStopTimer();
     } else if (dy < -6) {
-      // User scrolling UP -> restore header & restore tab bar immediately
       if (stopTimerRef.current) {
         clearTimeout(stopTimerRef.current);
       }
@@ -207,14 +292,26 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
     return sortOrder === 'desc' ? cmp : -cmp;
   });
 
-  // Group media according to groupBy option
-  const groupMedia = (items: PhotoMediaItem[]): MediaGroup[] => {
+  // Calculate edge-to-edge item tile size
+  const itemSize = Math.floor((windowWidth - (columns - 1) * GAP) / columns);
+
+  // Group media into section headers & row chunks
+  const groupMediaToGridRows = (items: PhotoMediaItem[]): GridRowItem[] => {
     if (groupBy === 'none') {
-      return [{ title: '', data: items }];
+      const rows: GridRowItem[] = [];
+      for (let i = 0; i < items.length; i += columns) {
+        const chunk = items.slice(i, i + columns);
+        rows.push({
+          type: 'row',
+          id: `row_none_${chunk[0]?.id || i}`,
+          items: chunk,
+          itemSize,
+        });
+      }
+      return rows;
     }
 
     const groups: Record<string, PhotoMediaItem[]> = {};
-
     const todayStr = new Date().toDateString();
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
@@ -231,7 +328,6 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
       } else if (groupBy === 'month') {
         groupKey = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
       } else {
-        // day grouping default
         if (d.toDateString() === todayStr) {
           groupKey = 'Today';
         } else if (d.toDateString() === yesterdayStr) {
@@ -249,17 +345,30 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
       groups[groupKey].push(item);
     });
 
-    return Object.keys(groups).map((title) => ({
-      title,
-      data: groups[title],
-    }));
+    const gridRows: GridRowItem[] = [];
+    Object.keys(groups).forEach((title, groupIdx) => {
+      gridRows.push({
+        type: 'header',
+        id: `header_${groupIdx}_${title}`,
+        title,
+      });
+
+      const groupData = groups[title];
+      for (let i = 0; i < groupData.length; i += columns) {
+        const chunk = groupData.slice(i, i + columns);
+        gridRows.push({
+          type: 'row',
+          id: `row_${groupIdx}_${chunk[0]?.id || i}`,
+          items: chunk,
+          itemSize,
+        });
+      }
+    });
+
+    return gridRows;
   };
 
-  const mediaGroups = groupMedia(sortedMedia);
-  // Edge-to-edge layout width calculation with 1px hairline spacing (Math.floor prevents subpixel wrapping)
-  const itemSize = Math.floor((windowWidth - (columns - 1) * GAP) / columns);
-
-
+  const gridRows = groupMediaToGridRows(sortedMedia);
 
   // Render skeleton while initial fetch is loading and media is empty
   if (loading && media.length === 0) {
@@ -307,9 +416,9 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
         <GestureDetector gesture={pinchGesture}>
           <View style={{ flex: 1 }}>
             <FlashList
-              data={mediaGroups}
-              keyExtractor={(item, idx) => item.title || `group_${idx}`}
-
+              data={gridRows}
+              keyExtractor={(item) => item.id}
+              getItemType={(item) => item.type}
               refreshControl={
                 <RefreshControl
                   refreshing={isPinchingRef.current ? false : refreshing}
@@ -329,65 +438,25 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
               contentContainerStyle={{ paddingTop: 48, paddingBottom: 110 }}
               onEndReached={onLoadMore}
               onEndReachedThreshold={0.5}
-              renderItem={({ item: group }) => (
-                <View style={styles.groupSection}>
-                  {group.title ? (
+              renderItem={({ item }) => {
+                if (item.type === 'header') {
+                  return (
                     <Text style={[styles.groupTitle, { color: colors.text }]}>
-                      {group.title}
+                      {item.title}
                     </Text>
-                  ) : null}
+                  );
+                }
 
-                  <View style={styles.gridContainer}>
-                    {group.data.map((item, index) => (
-                      <Animated.View
-                        key={item.id}
-                        entering={FadeInUp.delay(Math.min(index * 20, 250)).duration(250)}
-                      >
-                        <TouchableOpacity
-                          style={[
-                            styles.photoCard,
-                            {
-                              width: itemSize,
-                              height: itemSize,
-                              backgroundColor: colors.surfaceVariant,
-                            },
-                          ]}
-                          activeOpacity={0.85}
-                          onPress={() => handlePressMedia(item)}
-                        >
-                          <Image
-                            source={{
-                              uri: item.localUri || item.thumbUrl || item.url,
-                              headers:
-                                !item.localUri && item.url?.startsWith('http')
-                                  ? undefined
-                                  : undefined,
-                            }}
-                            style={styles.thumbnailImage}
-                            contentFit="cover"
-                            transition={150}
-                            cachePolicy="memory-disk"
-                            recyclingKey={item.id}
-                            placeholder={null}
-                          />
-
-                          {item.isBackedUp && (
-                            <View style={[styles.cloudBadge, { backgroundColor: colors.primary }]}>
-                              <Ionicons name="cloud-done" size={12} color="#FFFFFF" />
-                            </View>
-                          )}
-
-                          {item.isVideo && (
-                            <View style={styles.videoBadge}>
-                              <Ionicons name="play" size={11} color="#FFFFFF" />
-                            </View>
-                          )}
-                        </TouchableOpacity>
-                      </Animated.View>
-                    ))}
-                  </View>
-                </View>
-              )}
+                return (
+                  <PhotoRow
+                    items={item.items}
+                    columns={columns}
+                    itemSize={item.itemSize}
+                    colors={colors}
+                    onSelectMedia={handlePressMedia}
+                  />
+                );
+              }}
             />
           </View>
         </GestureDetector>
@@ -408,25 +477,24 @@ const styles = StyleSheet.create({
     zIndex: 20,
     elevation: 4,
   },
-  groupSection: {
-    paddingHorizontal: 0,
-    marginBottom: 8,
-  },
   groupTitle: {
     fontSize: 14,
     fontWeight: '700',
     paddingHorizontal: 12,
-    marginVertical: 6,
+    marginTop: 12,
+    marginBottom: 6,
   },
-  gridContainer: {
+  gridRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: GAP,
+    alignItems: 'center',
+    marginBottom: GAP,
+    justifyContent: 'flex-start',
   },
   photoCard: {
     borderRadius: 0,
     overflow: 'hidden',
     position: 'relative',
+    marginRight: GAP,
   },
   thumbnailImage: {
     width: '100%',
@@ -434,21 +502,21 @@ const styles = StyleSheet.create({
   },
   cloudBadge: {
     position: 'absolute',
-    top: 5,
-    right: 5,
+    top: 4,
+    right: 4,
     backgroundColor: '#1A73E8',
     borderRadius: 10,
-    padding: 2.5,
+    padding: 2,
     justifyContent: 'center',
     alignItems: 'center',
   },
   videoBadge: {
     position: 'absolute',
-    bottom: 5,
-    right: 5,
+    bottom: 4,
+    right: 4,
     backgroundColor: 'rgba(0,0,0,0.65)',
-    borderRadius: 9,
-    padding: 3,
+    borderRadius: 8,
+    padding: 2.5,
     flexDirection: 'row',
     alignItems: 'center',
   },

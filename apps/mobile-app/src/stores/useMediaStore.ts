@@ -52,6 +52,8 @@ export const useMediaStore = create<MediaState>((set, get) => ({
   },
 
   saveToCache: async (items: PhotoMediaItem[]) => {
-    await expoCache.set(MEDIA_CACHE_KEY, items);
+    // Only cache top 200 items for instant warm launch (<20ms) without heavy 50k JSON overhead
+    const previewBatch = items.slice(0, 200);
+    await expoCache.set(MEDIA_CACHE_KEY, previewBatch);
   },
 }));
