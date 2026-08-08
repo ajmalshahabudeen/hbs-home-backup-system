@@ -45,20 +45,26 @@ export async function GET(request: NextRequest) {
   const userId = searchParams.get("userId");
   const parentPath = toPosixRel(searchParams.get("path") || "");
   const download = searchParams.get("download");
+  const preview = searchParams.get("preview");
   const fileId = searchParams.get("id");
 
-  // Download a file by id
-  if (download === "1" && fileId) {
+  // Download or Preview a file by id
+  if ((download === "1" || preview === "1") && fileId) {
     const row = await prisma.backupFile.findUnique({ where: { id: fileId } });
     if (!row || row.isDir) return badRequest("File not found");
     try {
       const abs = resolveUserPath(row.userId, row.path);
       if (!fs.existsSync(abs)) return badRequest("File missing on disk");
       const buf = fs.readFileSync(abs);
+      const mime = row.mimeType || guessMime(row.name) || "application/octet-stream";
+      const disposition =
+        preview === "1"
+          ? "inline"
+          : `attachment; filename="${encodeURIComponent(row.name)}"`;
       return new Response(buf, {
         headers: {
-          "Content-Type": row.mimeType || "application/octet-stream",
-          "Content-Disposition": `attachment; filename="${encodeURIComponent(row.name)}"`,
+          "Content-Type": mime,
+          "Content-Disposition": disposition,
           "Content-Length": String(buf.length),
         },
       });
@@ -405,16 +411,40 @@ function guessMime(name: string): string | null {
     png: "image/png",
     gif: "image/gif",
     webp: "image/webp",
+    svg: "image/svg+xml",
     heic: "image/heic",
+    bmp: "image/bmp",
     mp4: "video/mp4",
+    webm: "video/webm",
     mov: "video/quicktime",
     mkv: "video/x-matroska",
     mp3: "audio/mpeg",
     wav: "audio/wav",
+    ogg: "audio/ogg",
+    m4a: "audio/mp4",
+    flac: "audio/flac",
+    aac: "audio/aac",
     pdf: "application/pdf",
     txt: "text/plain",
     json: "application/json",
+    csv: "text/csv",
+    html: "text/html",
+    css: "text/css",
+    js: "text/javascript",
+    ts: "text/typescript",
+    tsx: "text/typescript",
+    jsx: "text/javascript",
+    md: "text/markdown",
+    xml: "application/xml",
+    yml: "text/yaml",
+    yaml: "text/yaml",
+    log: "text/plain",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     zip: "application/zip",
+    tar: "application/x-tar",
+    gz: "application/gzip",
   };
   return ext && map[ext] ? map[ext] : null;
 }

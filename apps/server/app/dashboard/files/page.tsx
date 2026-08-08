@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Folder,
   FileIcon,
@@ -10,10 +10,19 @@ import {
   ChevronRight,
   RefreshCw,
   Home,
+  Eye,
+  LayoutGrid,
+  Table as TableIcon,
+  RotateCcw,
+  Film,
+  Music,
+  Image as ImageIcon,
+  FileCode,
 } from "lucide-react";
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";
+import { Badge } from "@workspace/ui/components/badge";
 import {
   Card,
   CardContent,
@@ -28,15 +37,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@workspace/ui/components/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@workspace/ui/components/table";
 import { Alert, AlertDescription } from "@workspace/ui/components/alert";
+import { DataTable, type DataTableColumn } from "@/components/data-table";
+import { useFilesStore } from "@/lib/stores/use-files-store";
+import { FilePreviewModal, type FilePreviewRow } from "@/components/file-preview-modal";
 
 type UserOpt = {
   id: string;
@@ -68,31 +72,59 @@ function formatBytes(n: number) {
 }
 
 export default function FilesPage() {
+  const {
+    selectedUserId,
+    currentPath,
+    pageSize,
+    viewMode,
+    sortKey,
+    sortDir,
+    setSelectedUserId,
+    setCurrentPath,
+    setPageSize,
+    setViewMode,
+    setSort,
+    resetPreferences,
+  } = useFilesStore();
+
+  const [mounted, setMounted] = useState(false);
   const [users, setUsers] = useState<UserOpt[]>([]);
-  const [userId, setUserId] = useState<string>("");
-  const [path, setPath] = useState("");
   const [files, setFiles] = useState<FileRow[]>([]);
   const [storageRoot, setStorageRoot] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [folderName, setFolderName] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // File Preview state
+  const [previewFile, setPreviewFile] = useState<FilePreviewRow | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const loadUsers = useCallback(async () => {
-    const res = await fetch("/api/admin/files");
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed");
-    setUsers(data.users || []);
-    setStorageRoot(data.storageRoot || "");
-    if (!userId && data.users?.[0]?.id) setUserId(data.users[0].id);
-  }, [userId]);
+    try {
+      const res = await fetch("/api/admin/files");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      setUsers(data.users || []);
+      setStorageRoot(data.storageRoot || "");
+      if (!selectedUserId && data.users?.[0]?.id) {
+        setSelectedUserId(data.users[0].id);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load users");
+    }
+  }, [selectedUserId, setSelectedUserId]);
 
   const loadFiles = useCallback(async () => {
-    if (!userId) return;
+    if (!selectedUserId) return;
     setLoading(true);
     setError(null);
     try {
       const res = await fetch(
-        `/api/admin/files?userId=${encodeURIComponent(userId)}&path=${encodeURIComponent(path)}`
+        `/api/admin/files?userId=${encodeURIComponent(selectedUserId)}&path=${encodeURIComponent(currentPath)}`
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to list files");
@@ -103,25 +135,27 @@ export default function FilesPage() {
     } finally {
       setLoading(false);
     }
-  }, [userId, path]);
+  }, [selectedUserId, currentPath]);
 
   useEffect(() => {
-    loadUsers().catch((e) => setError(e.message));
+    loadUsers();
   }, [loadUsers]);
 
   useEffect(() => {
-    loadFiles();
-  }, [loadFiles]);
+    if (mounted && selectedUserId) {
+      loadFiles();
+    }
+  }, [mounted, selectedUserId, currentPath, loadFiles]);
 
   async function createFolder(e: React.FormEvent) {
     e.preventDefault();
-    if (!folderName.trim() || !userId) return;
+    if (!folderName.trim() || !selectedUserId) return;
     const res = await fetch("/api/admin/files", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        userId,
-        path,
+        userId: selectedUserId,
+        path: currentPath,
         name: folderName.trim(),
         isDir: true,
       }),
@@ -136,11 +170,11 @@ export default function FilesPage() {
   }
 
   async function onUpload(fileList: FileList | null) {
-    if (!fileList?.length || !userId) return;
+    if (!fileList?.length || !selectedUserId) return;
     for (const file of Array.from(fileList)) {
       const fd = new FormData();
-      fd.set("userId", userId);
-      fd.set("path", path);
+      fd.set("userId", selectedUserId);
+      fd.set("path", currentPath);
       fd.set("file", file);
       const res = await fetch("/api/admin/files", { method: "POST", body: fd });
       const data = await res.json();
@@ -153,7 +187,6 @@ export default function FilesPage() {
   }
 
   async function remove(id: string) {
-    if (!confirm("Delete this item?")) return;
     const res = await fetch(`/api/admin/files?id=${encodeURIComponent(id)}`, {
       method: "DELETE",
     });
@@ -166,35 +199,161 @@ export default function FilesPage() {
   }
 
   function openDir(name: string) {
-    setPath(path ? `${path}/${name}` : name);
+    setCurrentPath(currentPath ? `${currentPath}/${name}` : name);
   }
 
   function goUp() {
-    if (!path) return;
-    const parts = path.split("/").filter(Boolean);
+    if (!currentPath) return;
+    const parts = currentPath.split("/").filter(Boolean);
     parts.pop();
-    setPath(parts.join("/"));
+    setCurrentPath(parts.join("/"));
   }
 
-  const crumbs = path ? path.split("/").filter(Boolean) : [];
+  function handlePreview(file: FileRow) {
+    setPreviewFile(file);
+    setPreviewOpen(true);
+  }
+
+  const crumbs = currentPath ? currentPath.split("/").filter(Boolean) : [];
 
   const userItems = Object.fromEntries(
     users.map((u) => [u.id, `${u.name} · ${u.email}`])
   );
 
+  const columns = useMemo<DataTableColumn<FileRow>[]>(
+    () => [
+      {
+        id: "name",
+        header: "Name",
+        sortKey: "name",
+        searchValue: (f) => f.name,
+        cell: (f) => (
+          <button
+            type="button"
+            className="flex items-center gap-2.5 text-start hover:underline font-medium"
+            onClick={() => (f.isDir ? openDir(f.name) : handlePreview(f))}
+          >
+            {f.isDir ? (
+              <Folder className="size-4 text-amber-500 fill-amber-500/20" />
+            ) : f.mimeType?.startsWith("image/") ? (
+              <ImageIcon className="size-4 text-blue-500" />
+            ) : f.mimeType?.startsWith("video/") ? (
+              <Film className="size-4 text-purple-500" />
+            ) : f.mimeType?.startsWith("audio/") ? (
+              <Music className="size-4 text-emerald-500" />
+            ) : f.mimeType?.startsWith("text/") || f.name.match(/\.(json|ts|tsx|js|jsx|py|sh|md|html|css)$/i) ? (
+              <FileCode className="size-4 text-amber-600" />
+            ) : (
+              <FileIcon className="size-4 text-muted-foreground" />
+            )}
+            <span className="truncate max-w-xs">{f.name}</span>
+          </button>
+        ),
+      },
+      {
+        id: "type",
+        header: "Type",
+        sortKey: "type",
+        searchValue: (f) => (f.isDir ? "Folder" : f.mimeType || f.name.split(".").pop() || "File"),
+        cell: (f) => (
+          <Badge variant={f.isDir ? "secondary" : "outline"} className="text-[11px] font-mono">
+            {f.isDir
+              ? "Folder"
+              : f.name.split(".").pop()?.toUpperCase() || f.mimeType?.split("/")[1] || "FILE"}
+          </Badge>
+        ),
+      },
+      {
+        id: "size",
+        header: "Size",
+        sortKey: "size",
+        searchValue: (f) => String(f.size),
+        className: "font-mono text-xs text-muted-foreground",
+        cell: (f) => (f.isDir ? "—" : formatBytes(f.size)),
+      },
+      {
+        id: "updatedAt",
+        header: "Updated",
+        sortKey: "updatedAt",
+        searchValue: (f) => f.updatedAt,
+        className: "whitespace-nowrap text-xs text-muted-foreground",
+        cell: (f) => new Date(f.updatedAt).toLocaleString(),
+      },
+      {
+        id: "actions",
+        header: "",
+        headerClassName: "text-end",
+        className: "text-end",
+        cell: (f) => (
+          <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+            {!f.isDir && (
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                title="Preview file"
+                onClick={() => handlePreview(f)}
+              >
+                <Eye className="size-4 text-blue-500" />
+              </Button>
+            )}
+            {!f.isDir && (
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                title="Download file"
+                render={
+                  <a
+                    href={`/api/admin/files?download=1&id=${encodeURIComponent(f.id)}`}
+                    download={f.name}
+                  />
+                }
+              >
+                <Download className="size-4" />
+              </Button>
+            )}
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              title="Delete item"
+              onClick={async () => {
+                if (!confirm(`Delete ${f.name}?`)) return;
+                await remove(f.id);
+              }}
+            >
+              <Trash2 className="size-4 text-destructive" />
+            </Button>
+          </div>
+        ),
+      },
+    ],
+    [openDir]
+  );
+
   return (
     <div className="space-y-6">
+      {/* Header Bar */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Files</h1>
           <p className="text-sm text-muted-foreground">
-            CRUD every user&apos;s backup tree on the mounted hard drive.
+            Manage, search, preview, and CRUD user backup files on hard drive.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={loadFiles}>
-          <RefreshCw className="size-4" />
-          Refresh
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={loadFiles}>
+            <RefreshCw className="size-4" />
+            Refresh
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={resetPreferences}
+            title="Reset dropdown & table preferences"
+          >
+            <RotateCcw className="size-3.5" />
+            Reset prefs
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -203,21 +362,47 @@ export default function FilesPage() {
         </Alert>
       )}
 
+      {/* Main Card */}
       <Card>
-        <CardHeader className="gap-3">
-          <CardTitle>Browser</CardTitle>
-          <CardDescription className="truncate font-mono text-xs">
-            Storage root: {storageRoot || "…"}
-          </CardDescription>
-          <div className="flex flex-wrap items-end gap-3">
+        <CardHeader className="gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <CardTitle>Browser</CardTitle>
+              <CardDescription className="truncate font-mono text-xs mt-1">
+                Storage root: {storageRoot || "…"}
+              </CardDescription>
+            </div>
+            {/* View Mode Toggle */}
+            <div className="flex items-center gap-1 rounded-lg border p-1 bg-muted/30">
+              <Button
+                size="xs"
+                variant={viewMode === "table" ? "secondary" : "ghost"}
+                onClick={() => setViewMode("table")}
+                title="Table View"
+              >
+                <TableIcon className="size-3.5" /> Table
+              </Button>
+              <Button
+                size="xs"
+                variant={viewMode === "grid" ? "secondary" : "ghost"}
+                onClick={() => setViewMode("grid")}
+                title="Grid View"
+              >
+                <LayoutGrid className="size-3.5" /> Grid
+              </Button>
+            </div>
+          </div>
+
+          {/* Form controls */}
+          <div className="flex flex-wrap items-end gap-3 border-y py-3">
             <div className="space-y-1.5">
               <Label>User</Label>
               <Select
-                value={userId || undefined}
+                value={selectedUserId || undefined}
                 onValueChange={(v) => {
                   if (v) {
-                    setUserId(v);
-                    setPath("");
+                    setSelectedUserId(v);
+                    setCurrentPath("");
                   }
                 }}
                 items={userItems}
@@ -234,6 +419,7 @@ export default function FilesPage() {
                 </SelectContent>
               </Select>
             </div>
+
             <form onSubmit={createFolder} className="flex items-end gap-2">
               <div className="space-y-1.5">
                 <Label htmlFor="folder">New folder</Label>
@@ -242,7 +428,7 @@ export default function FilesPage() {
                   value={folderName}
                   onChange={(e) => setFolderName(e.target.value)}
                   placeholder="Photos"
-                  className="w-40"
+                  className="w-36"
                 />
               </div>
               <Button type="submit" variant="outline">
@@ -250,23 +436,26 @@ export default function FilesPage() {
                 Create
               </Button>
             </form>
+
             <div className="space-y-1.5">
-              <Label htmlFor="up">Upload</Label>
+              <Label htmlFor="up">Upload files</Label>
               <Input
                 id="up"
                 type="file"
                 multiple
                 onChange={(e) => onUpload(e.target.files)}
+                className="w-56 cursor-pointer"
               />
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
+          {/* Breadcrumb Navigation */}
+          <div className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground pt-1">
             <Button
               size="icon-xs"
               variant="ghost"
-              onClick={() => setPath("")}
-              title="Root"
+              onClick={() => setCurrentPath("")}
+              title="Root directory"
             >
               <Home className="size-3.5" />
             </Button>
@@ -275,96 +464,114 @@ export default function FilesPage() {
                 <ChevronRight className="size-3.5" />
                 <button
                   type="button"
-                  className="hover:text-foreground hover:underline"
-                  onClick={() =>
-                    setPath(crumbs.slice(0, i + 1).join("/"))
-                  }
+                  className="hover:text-foreground hover:underline font-medium text-foreground/80"
+                  onClick={() => setCurrentPath(crumbs.slice(0, i + 1).join("/"))}
                 >
                   {c}
                 </button>
               </span>
             ))}
-            {path && (
-              <Button size="sm" variant="ghost" className="ms-2" onClick={goUp}>
-                Up
+            {currentPath && (
+              <Button size="xs" variant="ghost" className="ms-2" onClick={goUp}>
+                Up level
               </Button>
             )}
           </div>
         </CardHeader>
+
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Size</TableHead>
-                <TableHead>Updated</TableHead>
-                <TableHead className="text-end">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {files.map((f) => (
-                <TableRow key={f.id}>
-                  <TableCell>
-                    <button
-                      type="button"
-                      className="flex items-center gap-2 text-start hover:underline"
-                      onClick={() => (f.isDir ? openDir(f.name) : undefined)}
-                      disabled={!f.isDir}
-                    >
+          {/* TABLE VIEW */}
+          {viewMode === "table" && (
+            <DataTable
+              rows={files}
+              columns={columns}
+              rowKey={(f) => f.id}
+              searchPlaceholder="Search files / mime type…"
+              empty={loading ? "Loading files…" : "Empty folder — upload files or create a directory"}
+              defaultPageSize={pageSize}
+              initialSortKey={sortKey}
+              initialSortDir={sortDir}
+              onPageSizeChange={setPageSize}
+              onSortChange={(key, dir) => setSort(key, dir)}
+              onRowDoubleClick={(f) => (f.isDir ? openDir(f.name) : handlePreview(f))}
+            />
+          )}
+
+          {/* GRID VIEW */}
+          {viewMode === "grid" && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+                {files.map((f) => (
+                  <div
+                    key={f.id}
+                    className="group relative flex flex-col items-center justify-center rounded-2xl border p-4 text-center transition-all hover:border-primary/50 hover:bg-muted/30 hover:shadow-sm"
+                    onDoubleClick={() => (f.isDir ? openDir(f.name) : handlePreview(f))}
+                  >
+                    <div className="mb-2 flex size-14 items-center justify-center rounded-2xl bg-muted/40 transition-transform group-hover:scale-105">
                       {f.isDir ? (
-                        <Folder className="size-4 text-primary" />
+                        <Folder className="size-8 text-amber-500 fill-amber-500/20" />
+                      ) : f.mimeType?.startsWith("image/") ? (
+                        <ImageIcon className="size-8 text-blue-500" />
+                      ) : f.mimeType?.startsWith("video/") ? (
+                        <Film className="size-8 text-purple-500" />
+                      ) : f.mimeType?.startsWith("audio/") ? (
+                        <Music className="size-8 text-emerald-500" />
+                      ) : f.mimeType?.startsWith("text/") || f.name.match(/\.(json|ts|tsx|js|jsx|py|sh|md)$/i) ? (
+                        <FileCode className="size-8 text-amber-600" />
                       ) : (
-                        <FileIcon className="size-4 text-muted-foreground" />
+                        <FileIcon className="size-8 text-muted-foreground" />
                       )}
-                      {f.name}
-                    </button>
-                  </TableCell>
-                  <TableCell>
-                    {f.isDir ? "—" : formatBytes(f.size)}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {new Date(f.updatedAt).toLocaleString()}
-                  </TableCell>
-                  <TableCell className="text-end">
-                    <div className="flex justify-end gap-1">
+                    </div>
+                    <span className="w-full truncate text-xs font-medium">{f.name}</span>
+                    <span className="text-[10px] font-mono text-muted-foreground mt-0.5">
+                      {f.isDir ? "Directory" : formatBytes(f.size)}
+                    </span>
+
+                    {/* Hover Actions */}
+                    <div className="absolute top-2 end-2 hidden gap-1 group-hover:flex">
                       {!f.isDir && (
                         <Button
-                          size="icon-sm"
-                          variant="ghost"
-                          render={
-                            <a
-                              href={`/api/admin/files?download=1&id=${encodeURIComponent(f.id)}`}
-                            />
-                          }
+                          size="icon-xs"
+                          variant="secondary"
+                          onClick={() => handlePreview(f)}
+                          title="Preview"
                         >
-                          <Download className="size-4" />
+                          <Eye className="size-3" />
                         </Button>
                       )}
                       <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        onClick={() => remove(f.id)}
+                        size="icon-xs"
+                        variant="secondary"
+                        onClick={async () => {
+                          if (!confirm(`Delete ${f.name}?`)) return;
+                          await remove(f.id);
+                        }}
+                        title="Delete"
                       >
-                        <Trash2 className="size-4 text-destructive" />
+                        <Trash2 className="size-3 text-destructive" />
                       </Button>
                     </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                  </div>
+                ))}
+              </div>
+
               {!loading && files.length === 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={4}
-                    className="text-center text-muted-foreground"
-                  >
-                    Empty folder — upload files or create a directory
-                  </TableCell>
-                </TableRow>
+                <div className="flex h-32 flex-col items-center justify-center text-sm text-muted-foreground">
+                  Empty folder — upload files or create a directory
+                </div>
               )}
-            </TableBody>
-          </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      {/* File Preview Modal */}
+      <FilePreviewModal
+        file={previewFile}
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        onDelete={remove}
+      />
     </div>
   );
 }

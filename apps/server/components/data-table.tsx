@@ -43,6 +43,12 @@ export function DataTable<T>({
   empty = "No results",
   pageSizeOptions = [10, 25, 50, 100],
   defaultPageSize = 10,
+  initialSortKey,
+  initialSortDir,
+  onPageSizeChange,
+  onSortChange,
+  onRowClick,
+  onRowDoubleClick,
   toolbar,
   className,
 }: {
@@ -53,14 +59,32 @@ export function DataTable<T>({
   empty?: React.ReactNode;
   pageSizeOptions?: number[];
   defaultPageSize?: number;
+  initialSortKey?: string | null;
+  initialSortDir?: SortDir;
+  onPageSizeChange?: (size: number) => void;
+  onSortChange?: (key: string | null, dir: SortDir) => void;
+  onRowClick?: (row: T) => void;
+  onRowDoubleClick?: (row: T) => void;
   toolbar?: React.ReactNode;
   className?: string;
 }) {
   const [q, setQ] = React.useState("");
-  const [sortKey, setSortKey] = React.useState<string | null>(null);
-  const [sortDir, setSortDir] = React.useState<SortDir>("asc");
+  const [internalSortKey, setInternalSortKey] = React.useState<string | null>(initialSortKey ?? null);
+  const [internalSortDir, setInternalSortDir] = React.useState<SortDir>(initialSortDir ?? "asc");
   const [page, setPage] = React.useState(0);
-  const [pageSize, setPageSize] = React.useState(defaultPageSize);
+  const [internalPageSize, setInternalPageSize] = React.useState(defaultPageSize);
+
+  const sortKey = initialSortKey !== undefined ? initialSortKey : internalSortKey;
+  const sortDir = initialSortDir !== undefined ? initialSortDir : internalSortDir;
+  const pageSize = defaultPageSize !== 10 ? defaultPageSize : internalPageSize;
+
+  React.useEffect(() => {
+    if (initialSortKey !== undefined) setInternalSortKey(initialSortKey);
+  }, [initialSortKey]);
+
+  React.useEffect(() => {
+    if (initialSortDir !== undefined) setInternalSortDir(initialSortDir);
+  }, [initialSortDir]);
 
   const filtered = React.useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -113,12 +137,20 @@ export function DataTable<T>({
   }, [q, pageSize, rows]);
 
   function toggleSort(key: string) {
+    let nextDir: SortDir = "asc";
     if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir("asc");
+      nextDir = sortDir === "asc" ? "desc" : "asc";
     }
+    setInternalSortKey(key);
+    setInternalSortDir(nextDir);
+    onSortChange?.(key, nextDir);
+  }
+
+  function handlePageSizeChange(v: string | null) {
+    if (!v) return;
+    const num = Number(v);
+    setInternalPageSize(num);
+    onPageSizeChange?.(num);
   }
 
   const pageSizeItems = Object.fromEntries(
@@ -141,7 +173,7 @@ export function DataTable<T>({
           </span>
           <Select
             value={String(pageSize)}
-            onValueChange={(v) => v && setPageSize(Number(v))}
+            onValueChange={handlePageSizeChange}
             items={pageSizeItems}
           >
             <SelectTrigger className="h-8 w-[7.5rem]">
@@ -195,7 +227,14 @@ export function DataTable<T>({
           </TableHeader>
           <TableBody>
             {pageRows.map((row) => (
-              <TableRow key={rowKey(row)}>
+              <TableRow
+                key={rowKey(row)}
+                className={cn(
+                  (onRowClick || onRowDoubleClick) && "cursor-pointer hover:bg-muted/50"
+                )}
+                onClick={() => onRowClick?.(row)}
+                onDoubleClick={() => onRowDoubleClick?.(row)}
+              >
                 {columns.map((col) => (
                   <TableCell key={col.id} className={col.className}>
                     {col.cell(row)}

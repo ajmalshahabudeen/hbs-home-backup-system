@@ -95,6 +95,15 @@
 - Subscribed `backup.tsx` Hero progress UI and `backgroundSync.ts` to `syncTracker` event broadcasts, ensuring live progress bars and item progress remain visible whenever the app is re-opened without restarting sync.
 - Verified TypeScript compilation across workspace (`bun run typecheck`) with zero errors.
 
+## Session: 2026-08-08 (Server Files Dashboard Overhaul)
+- Added `zustand` and `@cyntler/react-doc-viewer` to `apps/server/package.json` dependencies and updated `bun.lock`.
+- Added `preview=1` query parameter support in `apps/server/app/api/admin/files/route.ts` with `Content-Disposition: inline` and expanded MIME type resolution.
+- Built persistent Zustand store `apps/server/lib/stores/use-files-store.ts` to save user dropdown selection, path navigation, table page size, sort state, and view mode (table vs grid).
+- Enhanced `apps/server/components/data-table.tsx` with controlled sort, page size, and row interaction callbacks while maintaining full backward compatibility.
+- Built interactive multi-format `FilePreviewModal` (`apps/server/components/file-preview-modal.tsx`) supporting images, videos, audio, text/code (with copy button and line stats), PDFs, and documents (`@cyntler/react-doc-viewer`).
+- Refactored `apps/server/app/dashboard/files/page.tsx` with `DataTable` (matching `logs` implementation), Grid View switcher, Reset preferences action, and File Preview modal.
+- Verified local and Docker Next.js builds (`bun run build --filter=server`) with 100% success and zero errors.
+
 
 
 
