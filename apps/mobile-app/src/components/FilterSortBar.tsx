@@ -127,26 +127,6 @@ export const FilterSortBar: React.FC<FilterSortBarProps> = ({
           <Ionicons name="chevron-down" size={12} color={colors.textSecondary} />
         </TouchableOpacity>
 
-        {/* Grid Column Toggle Button (for PhotoGrid) */}
-        {columns !== undefined && onColumnsChange && (
-          <TouchableOpacity
-            style={[
-              styles.iconPill,
-              {
-                backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : colors.surfaceVariant,
-                borderColor: isDark ? 'rgba(255,255,255,0.12)' : colors.border,
-              },
-            ]}
-            onPress={() => {
-              const next = columns === 2 ? 3 : columns === 3 ? 4 : 2;
-              onColumnsChange(next);
-            }}
-            activeOpacity={0.75}
-          >
-            <Text style={[styles.columnPillText, { color: colors.primary }]}>{columns}x</Text>
-          </TouchableOpacity>
-        )}
-
         {/* View Mode Toggle (for DriveFileList) */}
         {viewMode !== undefined && onViewModeChange && (
           <TouchableOpacity

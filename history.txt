@@ -459,5 +459,6 @@
 - Overhauled `PhotoGrid.tsx` with collapsible top header on scroll down (`headerTranslateY` Reanimated offset), immediate restore on scroll up, and 3-second auto-restore timer when scrolling stops.
 - Transformed `PhotoGrid.tsx` into an edge-to-edge media wall with zero side screen padding (`paddingHorizontal: 0`) and minimal 1px hairline tile spacing (`gap: 1`).
 - Built `useTabBarStore` Zustand store and integrated smooth translateY auto-hiding animation into `CustomTabBar.tsx` (`tabBarTranslateY = 120`) when scrolling down, restoring on scroll up or after 3s of scroll inactivity.
-- Integrated scroll direction tracking into `backup.tsx` and `settings.tsx` `<ScrollView>` containers to hide `CustomTabBar.tsx` on scroll down and restore it on scroll up / 3s scroll inactivity across all 4 tab screens.
+- Removed manual column density toggle button from `FilterSortBar.tsx`.
+- Completely removed scaling animations, `pinchScale`, and `transform: [{ scale }]` matrix transforms from `PhotoGrid.tsx`: pinch gesture strictly triggers a clean single column density update (`setColumns`) upon finger release (`onFinalize`).
 - Verified workspace TypeScript compilation (`bun run typecheck`) with zero errors.

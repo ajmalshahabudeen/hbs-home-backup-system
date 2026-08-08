@@ -10,12 +10,15 @@ import {
   NativeScrollEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   FadeInUp,
   useSharedValue,
   useAnimatedStyle,
   withTiming,
+  withSpring,
   interpolate,
+  runOnJS,
 } from 'react-native-reanimated';
 import { Image } from 'expo-image';
 import { useAppTheme } from '../context/ThemeContext';
@@ -72,6 +75,57 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
   const lastScrollY = useRef<number>(0);
   const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 2-Finger Pinch Gesture for column count changing (without any visual scale transforms)
+  const isPinchingRef = useRef<boolean>(false);
+  const lastPinchTimeRef = useRef<number>(0);
+
+  const handlePressMedia = useCallback(
+    (item: PhotoMediaItem) => {
+      // Ignore click if a 2-finger pinch gesture is active or finished within the last 500ms
+      if (isPinchingRef.current || Date.now() - lastPinchTimeRef.current < 500) {
+        return;
+      }
+      onSelectMedia(item);
+    },
+    [onSelectMedia]
+  );
+
+  const handleZoomIn = useCallback(() => {
+    // Pinch OUT -> decrease columns (larger photo tile size)
+    setColumns((prev) => Math.max(1, prev - 1));
+  }, []);
+
+  const handleZoomOut = useCallback(() => {
+    // Pinch IN -> increase columns (smaller photo tile size)
+    setColumns((prev) => Math.min(5, prev + 1));
+  }, []);
+
+  const pinchGesture = Gesture.Pinch()
+    .onStart(() => {
+      isPinchingRef.current = true;
+      lastPinchTimeRef.current = Date.now();
+    })
+    .onUpdate((event: any) => {
+      isPinchingRef.current = true;
+      lastPinchTimeRef.current = Date.now();
+    })
+    .onFinalize((event: any) => {
+      isPinchingRef.current = false;
+      lastPinchTimeRef.current = Date.now();
+
+      if (event && typeof event.scale === 'number') {
+        if (event.scale > 1.18) {
+          runOnJS(handleZoomIn)();
+        } else if (event.scale < 0.85) {
+          runOnJS(handleZoomOut)();
+        }
+      }
+    });
+
+
+
+
+
   const startStopTimer = useCallback(() => {
     if (stopTimerRef.current) {
       clearTimeout(stopTimerRef.current);
@@ -110,7 +164,6 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
 
     lastScrollY.current = currentY;
   };
-
 
   const handleScrollEnd = () => {
     startStopTimer();
@@ -228,8 +281,6 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
           }}
           groupBy={groupBy}
           onGroupByChange={setGroupBy}
-          columns={columns}
-          onColumnsChange={setColumns}
           onImport={onImport}
           totalCount={sortedMedia.length}
           categories={[
@@ -251,79 +302,91 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
           </Text>
         </View>
       ) : (
-        <FlatList
-          data={mediaGroups}
-          keyExtractor={(item, idx) => item.title || `group_${idx}`}
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          onScroll={handleScroll}
-          onScrollBeginDrag={() => {
-            if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
-          }}
-          onScrollEndDrag={handleScrollEnd}
-          onMomentumScrollEnd={handleScrollEnd}
-          scrollEventThrottle={16}
-          contentContainerStyle={{ paddingTop: 48, paddingBottom: 110 }}
-          renderItem={({ item: group }) => (
-            <View style={styles.groupSection}>
-              {group.title ? (
-                <Text style={[styles.groupTitle, { color: colors.text }]}>
-                  {group.title}
-                </Text>
-              ) : null}
+        <GestureDetector gesture={pinchGesture}>
+          <View style={{ flex: 1 }}>
 
-              <View style={styles.gridContainer}>
-                {group.data.map((item, index) => (
-                  <Animated.View
-                    key={item.id}
-                    entering={FadeInUp.delay(Math.min(index * 20, 250)).duration(250)}
-                  >
-                    <TouchableOpacity
-                      style={[
-                        styles.photoCard,
-                        {
-                          width: itemSize,
-                          height: itemSize,
-                          backgroundColor: colors.surfaceVariant,
-                        },
-                      ]}
-                      activeOpacity={0.85}
-                      onPress={() => onSelectMedia(item)}
-                    >
-                      <Image
-                        source={{
-                          uri: item.localUri || item.thumbUrl || item.url,
-                          headers:
-                            !item.localUri && item.url?.startsWith('http')
-                              ? undefined
-                              : undefined,
-                        }}
-                        style={styles.thumbnailImage}
-                        contentFit="cover"
-                        transition={150}
-                        cachePolicy="memory-disk"
-                        recyclingKey={item.id}
-                        placeholder={null}
-                      />
 
-                      {item.isBackedUp && (
-                        <View style={[styles.cloudBadge, { backgroundColor: colors.primary }]}>
-                          <Ionicons name="cloud-done" size={12} color="#FFFFFF" />
-                        </View>
-                      )}
 
-                      {item.isVideo && (
-                        <View style={styles.videoBadge}>
-                          <Ionicons name="play" size={11} color="#FFFFFF" />
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  </Animated.View>
-                ))}
-              </View>
-            </View>
-          )}
-        />
+            <FlatList
+              data={mediaGroups}
+              keyExtractor={(item, idx) => item.title || `group_${idx}`}
+              refreshing={isPinchingRef.current ? false : refreshing}
+              onRefresh={isPinchingRef.current ? undefined : onRefresh}
+
+              onScroll={handleScroll}
+              onScrollBeginDrag={() => {
+                if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+              }}
+              onScrollEndDrag={handleScrollEnd}
+              onMomentumScrollEnd={handleScrollEnd}
+              scrollEventThrottle={16}
+              contentContainerStyle={{ paddingTop: 48, paddingBottom: 110 }}
+              renderItem={({ item: group }) => (
+                <View style={styles.groupSection}>
+                  {group.title ? (
+                    <Text style={[styles.groupTitle, { color: colors.text }]}>
+                      {group.title}
+                    </Text>
+                  ) : null}
+
+                  <View style={styles.gridContainer}>
+                    {group.data.map((item, index) => (
+                      <Animated.View
+                        key={item.id}
+                        entering={FadeInUp.delay(Math.min(index * 20, 250)).duration(250)}
+                      >
+                        <TouchableOpacity
+                          style={[
+                            styles.photoCard,
+                            {
+                              width: itemSize,
+                              height: itemSize,
+                              backgroundColor: colors.surfaceVariant,
+                            },
+                          ]}
+                          activeOpacity={0.85}
+                          onPress={() => handlePressMedia(item)}
+
+                        >
+                          <Image
+                            source={{
+                              uri: item.localUri || item.thumbUrl || item.url,
+                              headers:
+                                !item.localUri && item.url?.startsWith('http')
+                                  ? undefined
+                                  : undefined,
+                            }}
+                            style={styles.thumbnailImage}
+                            contentFit="cover"
+                            transition={150}
+                            cachePolicy="memory-disk"
+                            recyclingKey={item.id}
+                            placeholder={null}
+                          />
+
+                          {item.isBackedUp && (
+                            <View style={[styles.cloudBadge, { backgroundColor: colors.primary }]}>
+                              <Ionicons name="cloud-done" size={12} color="#FFFFFF" />
+                            </View>
+                          )}
+
+                          {item.isVideo && (
+                            <View style={styles.videoBadge}>
+                              <Ionicons name="play" size={11} color="#FFFFFF" />
+                            </View>
+                          )}
+                        </TouchableOpacity>
+                      </Animated.View>
+                    ))}
+                  </View>
+                </View>
+              )}
+            />
+          </View>
+        </GestureDetector>
+
+
+
       )}
     </View>
   );
