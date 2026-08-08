@@ -104,6 +104,16 @@
 - Refactored `apps/server/app/dashboard/files/page.tsx` with `DataTable` (matching `logs` implementation), Grid View switcher, Reset preferences action, and File Preview modal.
 - Verified local and Docker Next.js builds (`bun run build --filter=server`) with 100% success and zero errors.
 
+## Session: 2026-08-08 (Dynamic Progress Notification Overhaul)
+- Refactored notification system in `apps/mobile-app` to keep a SINGLE dynamic, ongoing notification in the notification drawer during file uploads (similar to Chrome downloads).
+- Added `SYNC_NOTIFICATION_ID = 'hbs_active_sync_progress_notification'` and configured quiet notification channel `hbs-sync-progress` (`AndroidImportance.LOW`, no vibration, silent progress updates, non-swipeable `sticky: true` while active).
+- Added completion notification channel `hbs-sync-complete` (`AndroidImportance.DEFAULT`, sound enabled) to alert when photo backup finishes.
+- Integrated `updateSyncProgressNotification` and `finishSyncNotification` directly into `syncTracker.ts` to automatically handle dynamic progress updates across manual, auto, and background sync engines.
+- Added intelligent notification update throttling (max once per 350ms) to ensure smooth progress updates without flooding the OS bridge.
+- Removed redundant multi-notification calls (firing every 10 items) from `backup.tsx` and `backgroundSync.ts`, preventing notification area clutter.
+- Verified workspace TypeScript compilation (`bun run typecheck`) with zero errors.
+
+
 
 
 

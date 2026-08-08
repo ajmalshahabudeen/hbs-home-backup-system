@@ -1,4 +1,10 @@
 import { appStorage } from '../utils/storage';
+import {
+  updateSyncProgressNotification,
+  finishSyncNotification,
+  safeNotifications,
+  SYNC_NOTIFICATION_ID,
+} from '../utils/safeNotifications';
 
 export interface SyncState {
   isSyncing: boolean;
@@ -25,6 +31,19 @@ const defaultState: SyncState = {
 
 let memoryState: SyncState = { ...defaultState };
 const listeners = new Set<(state: SyncState) => void>();
+
+async function shouldNotify(): Promise<boolean> {
+  try {
+    const raw = await appStorage.getItem('hbs_sync_config_v1');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.showSyncNotifications === false) return false;
+    }
+  } catch {
+    // fallback
+  }
+  return true;
+}
 
 export async function getStoredSyncState(): Promise<SyncState> {
   try {
@@ -83,8 +102,8 @@ export const syncTracker = {
   updateState: updateSyncState,
   subscribe: subscribeSyncState,
 
-  startSync: (total: number, initialMessage: string = 'Starting sync...') => {
-    return updateSyncState({
+  startSync: async (total: number, initialMessage: string = 'Starting sync...') => {
+    const state = await updateSyncState({
       isSyncing: true,
       totalToSync: total,
       syncedCount: 0,
@@ -92,16 +111,21 @@ export const syncTracker = {
       currentFileName: '',
       syncStepMessage: initialMessage,
     });
+
+    if (await shouldNotify()) {
+      await updateSyncProgressNotification(0, total, '', initialMessage, true);
+    }
+    return state;
   },
 
-  updateProgress: (
+  updateProgress: async (
     syncedCount: number,
     totalToSync: number,
     currentFileName: string,
     stepMessage: string,
     skippedCount?: number
   ) => {
-    return updateSyncState({
+    const state = await updateSyncState({
       isSyncing: true,
       syncedCount,
       totalToSync,
@@ -109,10 +133,15 @@ export const syncTracker = {
       syncStepMessage: stepMessage,
       ...(skippedCount !== undefined ? { skippedCount } : {}),
     });
+
+    if (await shouldNotify()) {
+      await updateSyncProgressNotification(syncedCount, totalToSync, currentFileName, stepMessage);
+    }
+    return state;
   },
 
-  finishSync: (successCount: number, skippedCount: number) => {
-    return updateSyncState({
+  finishSync: async (successCount: number, skippedCount: number) => {
+    const state = await updateSyncState({
       isSyncing: false,
       syncedCount: successCount,
       skippedCount,
@@ -120,5 +149,20 @@ export const syncTracker = {
       syncStepMessage: 'Sync complete',
       lastSyncTimestamp: new Date().toISOString(),
     });
+
+    if (await shouldNotify()) {
+      if (successCount > 0) {
+        const msg = `Backed up ${successCount} item${successCount > 1 ? 's' : ''}${
+          skippedCount > 0 ? ` (${skippedCount} duplicate skipped)` : ''
+        }`;
+        await finishSyncNotification('HBS Photo Backup Complete', msg);
+      } else {
+        await safeNotifications.dismissNotificationAsync(SYNC_NOTIFICATION_ID);
+      }
+    } else {
+      await safeNotifications.dismissNotificationAsync(SYNC_NOTIFICATION_ID);
+    }
+    return state;
   },
 };
+

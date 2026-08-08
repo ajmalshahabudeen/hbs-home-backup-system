@@ -126,10 +126,6 @@ export async function syncPhotosNow(
 
   await syncTracker.startSync(assets.length, 'Syncing in background...');
 
-  if (config.showSyncNotifications && assets.length > 0) {
-    await sendLocalSyncNotification('HBS Background Sync', `Syncing ${assets.length} items to home server...`);
-  }
-
   for (let i = 0; i < assets.length; i++) {
     const asset = assets[i];
     const rawName = asset.filename ? asset.filename.split('/').pop() || asset.filename : '';
@@ -178,28 +174,12 @@ export async function syncPhotosNow(
         asset.creationTime
       );
       synced++;
-
-      // Send progress notification every 10 items if enabled
-      if (config.showSyncNotifications && (i + 1) % 10 === 0) {
-        const percent = Math.round(((i + 1) / assets.length) * 100);
-        await sendLocalSyncNotification(
-          'HBS Auto-Sync Progress',
-          `Synced ${i + 1} / ${assets.length} items (${percent}%)`
-        );
-      }
     } catch {
       // continue next
     }
   }
 
   await syncTracker.finishSync(synced, skipped);
-
-  if (synced > 0 && config.showSyncNotifications) {
-    await sendLocalSyncNotification(
-      'HBS Auto-Sync Complete',
-      `Successfully backed up ${synced} new item${synced > 1 ? 's' : ''} to server.`
-    );
-  }
 
   await saveSyncConfig({
     lastSyncTimestamp: new Date().toISOString(),

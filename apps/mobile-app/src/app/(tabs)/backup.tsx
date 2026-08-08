@@ -154,10 +154,6 @@ export default function BackupScreen() {
       let successCount = 0;
       let dupCount = 0;
 
-      if (showSyncNotifications) {
-        await sendLocalSyncNotification('HBS Sync Started', `Syncing ${assets.length} items to home server...`);
-      }
-
       for (let i = 0; i < assets.length; i++) {
         const asset = assets[i];
         const rawName = asset.filename ? asset.filename.split('/').pop() || asset.filename : '';
@@ -217,15 +213,6 @@ export default function BackupScreen() {
         } catch {
           // continue next item
         }
-
-        // Update notification progress every 10 items
-        if (showSyncNotifications && (i + 1) % 10 === 0) {
-          const pct = Math.round(((i + 1) / assets.length) * 100);
-          await sendLocalSyncNotification(
-            'HBS Sync Progress',
-            `Synced ${i + 1} / ${assets.length} items (${pct}%)`
-          );
-        }
       }
 
       await syncTracker.finishSync(successCount, dupCount);
@@ -234,9 +221,6 @@ export default function BackupScreen() {
         dupCount > 0 ? ` ${dupCount} duplicate items skipped.` : ''
       }`;
       Alert.alert('Auto-Sync Complete', msg);
-      if (showSyncNotifications) {
-        await sendLocalSyncNotification('HBS Photo Backup Complete', msg);
-      }
     } catch (e) {
       await syncTracker.finishSync(0, 0);
       Alert.alert('Sync Error', e instanceof Error ? e.message : 'Sync failed');
@@ -274,10 +258,6 @@ export default function BackupScreen() {
       await syncTracker.startSync(result.assets.length, 'Starting manual upload...');
       let successCount = 0;
       let dupCount = 0;
-
-      if (showSyncNotifications) {
-        await sendLocalSyncNotification('HBS Backup Started', `Uploading ${result.assets.length} selected items...`);
-      }
 
       for (let i = 0; i < result.assets.length; i++) {
         const asset = result.assets[i];
@@ -337,14 +317,6 @@ export default function BackupScreen() {
         } catch {
           // continue next item
         }
-
-        if (showSyncNotifications && (i + 1) % 10 === 0) {
-          const pct = Math.round(((i + 1) / result.assets.length) * 100);
-          await sendLocalSyncNotification(
-            'HBS Backup Progress',
-            `Uploaded ${i + 1} / ${result.assets.length} items (${pct}%)`
-          );
-        }
       }
 
       await syncTracker.finishSync(successCount, dupCount);
@@ -355,9 +327,6 @@ export default function BackupScreen() {
       }`;
 
       Alert.alert('Backup Complete', msg);
-      if (showSyncNotifications) {
-        await sendLocalSyncNotification('HBS Photo Backup Complete', msg);
-      }
     } catch (e) {
       await syncTracker.finishSync(0, 0);
       Alert.alert('Backup Error', e instanceof Error ? e.message : 'Upload failed');
