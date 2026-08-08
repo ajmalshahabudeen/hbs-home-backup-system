@@ -256,8 +256,10 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
   };
 
   const mediaGroups = groupMedia(sortedMedia);
-  // Edge-to-edge layout width calculation with 1px hairline spacing
-  const itemSize = (windowWidth - (columns - 1) * GAP) / columns;
+  // Edge-to-edge layout width calculation with 1px hairline spacing (Math.floor prevents subpixel wrapping)
+  const itemSize = Math.floor((windowWidth - (columns - 1) * GAP) / columns);
+
+
 
   // Render skeleton while initial fetch is loading and media is empty
   if (loading && media.length === 0) {

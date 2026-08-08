@@ -460,9 +460,5 @@
 - Transformed `PhotoGrid.tsx` into an edge-to-edge media wall with zero side screen padding (`paddingHorizontal: 0`) and minimal 1px hairline tile spacing (`gap: 1`).
 - Built `useTabBarStore` Zustand store and integrated smooth translateY auto-hiding animation into `CustomTabBar.tsx` (`tabBarTranslateY = 120`) when scrolling down, restoring on scroll up or after 3s of scroll inactivity.
 - Removed manual column density toggle button from `FilterSortBar.tsx`.
-- Installed `@shopify/flash-list` package via `bun add @shopify/flash-list`.
-- Integrated `FlashList` in `PhotoGrid.tsx` for 60fps component recycling across large media libraries (thousands of photos) without device performance impact or gesture lag.
-- Implemented on-demand batch pagination in `photos.tsx`: initial load fetches 40 photos into memory, requesting subsequent batches dynamically as the user scrolls near bottom (`onEndReached` / `onLoadMore`).
-- Configured `progressViewOffset={65}` on `RefreshControl` in `PhotoGrid.tsx` and `DriveFileList.tsx` so pull-to-refresh activity indicator renders cleanly below floating top headers instead of being hidden behind them.
-- Updated `DriveFileList.tsx` list row styling to edge-to-edge layout (`paddingHorizontal: 0`) matching `photos.tsx`.
+- Fixed grid wrapping bug in `PhotoGrid.tsx`: applied `Math.floor((windowWidth - (columns - 1) * GAP) / columns)` to item size calculation, preventing fractional pixel rounding overflow that caused the 3rd column photo tile to wrap early onto the next line.
 - Verified workspace TypeScript compilation (`bun run typecheck`) with zero errors.
