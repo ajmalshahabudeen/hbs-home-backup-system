@@ -13,10 +13,13 @@ import {
   Manrope_700Bold,
   Manrope_800ExtraBold,
 } from '@expo-google-fonts/manrope';
+import * as SplashScreen from 'expo-splash-screen';
 import { ThemeProvider, useAppTheme } from '../context/ThemeContext';
 import { ServerProvider } from '../context/ServerContext';
 import { AuthProvider } from '../context/AuthContext';
 import { PermissionChecker } from '../components/PermissionChecker';
+
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 function AppContent() {
   const { colors, isDark } = useAppTheme();
@@ -50,6 +53,12 @@ export default function RootLayout() {
     Manrope_Bold: Manrope_700Bold,
     Manrope_ExtraBold: Manrope_800ExtraBold,
   });
+
+  React.useEffect(() => {
+    if (fontsLoaded) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [fontsLoaded]);
 
   if (!fontsLoaded) {
     return null;

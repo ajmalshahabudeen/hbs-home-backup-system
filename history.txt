@@ -120,6 +120,16 @@
 - Removed redundant 45px standalone TopBar from `photos.tsx` and integrated the `Import` button directly into the compact control bar.
 - Verified TypeScript compilation (`bun run typecheck`) with zero errors.
 
+## Session: 2026-08-08 (Production App Icon & Splash Screen Fix)
+- Resolved glitched / missing app icon issue on app startup in production APK & standalone builds.
+- Cleaned up deprecated `splash` schema properties from top-level `expo`, `android`, and `ios` in `app.json` (fixing VS Code `Property splash is not allowed` schema warning).
+- Maintained modern `"expo-splash-screen"` config plugin in `app.json` under `"plugins"` specifying `"resizeMode": "contain"`, `"imageWidth": 120`, and `"dark"` theme options.
+- Integrated `expo-splash-screen` native lifecycle (`SplashScreen.preventAutoHideAsync` & `SplashScreen.hideAsync`) into `_layout.tsx` to hold the native splash screen until font assets load.
+- Updated `index.tsx` landing screen to display the official bundled HBS Cloud app icon image (`require('../../assets/images/icon.png')`) inside a glassmorphic logo container.
+- Verified TypeScript compilation (`bun run typecheck`) with zero errors.
+
+
+
 
 
 
