@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,9 +7,12 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../context/ThemeContext';
+import { useTabBarStore } from '../stores/useTabBarStore';
 import { BackupFileItem } from '../services/api';
 import {
   FilterSortBar,
@@ -18,6 +21,7 @@ import {
   GroupByOption,
 } from './FilterSortBar';
 import { InputDialogModal } from './InputDialogModal';
+
 
 interface DriveFileListProps {
   files: BackupFileItem[];
@@ -50,6 +54,45 @@ export const DriveFileList: React.FC<DriveFileListProps> = ({
 }) => {
   const { colors } = useAppTheme();
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const setTabBarVisible = useTabBarStore((s) => s.setTabBarVisible);
+
+  const lastScrollY = useRef<number>(0);
+  const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const startStopTimer = useCallback(() => {
+    if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+    stopTimerRef.current = setTimeout(() => {
+      setTabBarVisible(true);
+    }, 3000);
+  }, [setTabBarVisible]);
+
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const currentY = event.nativeEvent.contentOffset.y;
+    const dy = currentY - lastScrollY.current;
+
+    if (currentY <= 10) {
+      setTabBarVisible(true);
+      lastScrollY.current = currentY;
+      return;
+    }
+
+    if (dy > 6) {
+      setTabBarVisible(false);
+      startStopTimer();
+    } else if (dy < -6) {
+      if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+      setTabBarVisible(true);
+    }
+
+    lastScrollY.current = currentY;
+  };
+
+  useEffect(() => {
+    return () => {
+      if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+    };
+  }, []);
+
 
   // Search, Sort, Filter, Group state
   const [search, setSearch] = useState<string>('');
@@ -303,7 +346,15 @@ export const DriveFileList: React.FC<DriveFileListProps> = ({
         numColumns={viewMode === 'grid' ? 2 : 1}
         refreshing={refreshing}
         onRefresh={onRefresh}
+        onScroll={handleScroll}
+        onScrollBeginDrag={() => {
+          if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+        }}
+        onScrollEndDrag={startStopTimer}
+        onMomentumScrollEnd={startStopTimer}
+        scrollEventThrottle={16}
         renderItem={renderItem}
+
         onEndReached={onLoadMore}
         onEndReachedThreshold={0.4}
         initialNumToRender={20}

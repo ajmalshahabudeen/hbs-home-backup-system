@@ -11,6 +11,7 @@ import Animated, {
   LinearTransition,
 } from 'react-native-reanimated';
 import { useAppTheme } from '../context/ThemeContext';
+import { useTabBarStore } from '../stores/useTabBarStore';
 
 export interface CustomTabBarProps {
   state: any;
@@ -113,11 +114,32 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
 }) => {
   const { colors, isDark } = useAppTheme();
   const insets = useSafeAreaInsets();
+  const isTabBarVisible = useTabBarStore((s) => s.isTabBarVisible);
+  const setTabBarVisible = useTabBarStore((s) => s.setTabBarVisible);
+
+  const tabBarTranslateY = useSharedValue(0);
+
+  useEffect(() => {
+    tabBarTranslateY.value = withTiming(isTabBarVisible ? 0 : 100, {
+      duration: 220,
+      easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+    });
+  }, [isTabBarVisible, tabBarTranslateY]);
+
+  const animatedContainerStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateY: tabBarTranslateY.value }],
+      opacity: interpolate(tabBarTranslateY.value, [0, 90], [1, 0]),
+    };
+  });
 
   const bottomOffset = Math.max(insets.bottom, 12) + 8;
 
   return (
-    <View pointerEvents="box-none" style={[styles.tabBarContainer, { bottom: bottomOffset }]}>
+    <Animated.View
+      pointerEvents="box-none"
+      style={[styles.tabBarContainer, animatedContainerStyle, { bottom: bottomOffset }]}
+    >
       <Animated.View
         layout={LinearTransition.duration(220)}
         style={[
@@ -132,6 +154,7 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
           const isFocused = state.index === index;
 
           const onPress = () => {
+            setTabBarVisible(true);
             const event = navigation.emit({
               type: 'tabPress',
               target: route.key,
@@ -162,7 +185,7 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
           );
         })}
       </Animated.View>
-    </View>
+    </Animated.View>
   );
 };
 

@@ -19,7 +19,9 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Image } from 'expo-image';
 import { useAppTheme } from '../context/ThemeContext';
+import { useTabBarStore } from '../stores/useTabBarStore';
 import { PhotoMediaItem } from '../services/api';
+
 import {
   FilterSortBar,
   SortField,
@@ -63,6 +65,8 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [groupBy, setGroupBy] = useState<GroupByOption>('day');
 
+  const setTabBarVisible = useTabBarStore((s) => s.setTabBarVisible);
+
   // Reanimated top header scroll animation & 3s auto-restore timer
   const headerTranslateY = useSharedValue(0);
   const lastScrollY = useRef<number>(0);
@@ -74,8 +78,9 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
     }
     stopTimerRef.current = setTimeout(() => {
       headerTranslateY.value = withTiming(0, { duration: 250 });
+      setTabBarVisible(true);
     }, 3000);
-  }, [headerTranslateY]);
+  }, [headerTranslateY, setTabBarVisible]);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const currentY = event.nativeEvent.contentOffset.y;
@@ -84,24 +89,28 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
     // Show header when near the very top of scroll
     if (currentY <= 10) {
       headerTranslateY.value = withTiming(0, { duration: 200 });
+      setTabBarVisible(true);
       lastScrollY.current = currentY;
       return;
     }
 
     if (dy > 6) {
-      // User scrolling DOWN -> hide header & start 3-second auto-restore timer
+      // User scrolling DOWN -> hide header & hide tab bar
       headerTranslateY.value = withTiming(-65, { duration: 250 });
+      setTabBarVisible(false);
       startStopTimer();
     } else if (dy < -6) {
-      // User scrolling UP -> restore header immediately
+      // User scrolling UP -> restore header & restore tab bar immediately
       if (stopTimerRef.current) {
         clearTimeout(stopTimerRef.current);
       }
       headerTranslateY.value = withTiming(0, { duration: 200 });
+      setTabBarVisible(true);
     }
 
     lastScrollY.current = currentY;
   };
+
 
   const handleScrollEnd = () => {
     startStopTimer();

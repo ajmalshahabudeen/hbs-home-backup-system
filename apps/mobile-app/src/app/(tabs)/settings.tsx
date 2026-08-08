@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,12 +7,15 @@ import {
   ScrollView,
   Alert,
   Switch,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAppTheme } from '../../context/ThemeContext';
+import { useTabBarStore } from '../../stores/useTabBarStore';
 import { ColorPalettes, PaletteKey } from '../../constants/theme';
 import { useServer } from '../../context/ServerContext';
 import { useAuth } from '../../context/AuthContext';
@@ -34,6 +37,45 @@ import { asyncTaskQueue, yieldToInteractions } from '../../utils/asyncTaskQueue'
 
 export default function SettingsScreen() {
   const { colors, isDark, themeMode, setThemeMode, paletteKey, setPaletteKey } = useAppTheme();
+  const setTabBarVisible = useTabBarStore((s) => s.setTabBarVisible);
+
+  const lastScrollY = useRef<number>(0);
+  const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const startStopTimer = useCallback(() => {
+    if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+    stopTimerRef.current = setTimeout(() => {
+      setTabBarVisible(true);
+    }, 3000);
+  }, [setTabBarVisible]);
+
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const currentY = event.nativeEvent.contentOffset.y;
+    const dy = currentY - lastScrollY.current;
+
+    if (currentY <= 10) {
+      setTabBarVisible(true);
+      lastScrollY.current = currentY;
+      return;
+    }
+
+    if (dy > 6) {
+      setTabBarVisible(false);
+      startStopTimer();
+    } else if (dy < -6) {
+      if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+      setTabBarVisible(true);
+    }
+
+    lastScrollY.current = currentY;
+  };
+
+  useEffect(() => {
+    return () => {
+      if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+    };
+  }, []);
+
   const router = useRouter();
   const { serverUrl, isConnected } = useServer();
   const { user, signOut, sessionToken } = useAuth();
@@ -99,7 +141,17 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        onScroll={handleScroll}
+        onScrollBeginDrag={() => {
+          if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+        }}
+        onScrollEndDrag={startStopTimer}
+        onMomentumScrollEnd={startStopTimer}
+        scrollEventThrottle={16}
+      >
+
         {/* Profile Card */}
         {user && (
           <GlassCard style={styles.profileCard} borderRadius={22}>
@@ -414,7 +466,9 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
+    paddingBottom: 100,
   },
+
   profileCard: {
     flexDirection: 'row',
     alignItems: 'center',

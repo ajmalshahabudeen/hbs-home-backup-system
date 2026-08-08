@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   Switch,
   ScrollView,
   Alert,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,6 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { safeMediaLibrary } from '../../utils/safeMediaLibrary';
 import { useAppTheme } from '../../context/ThemeContext';
+import { useTabBarStore } from '../../stores/useTabBarStore';
 import { useServer } from '../../context/ServerContext';
 import { useAuth } from '../../context/AuthContext';
 import { hbsApi } from '../../services/api';
@@ -33,6 +36,45 @@ import { asyncTaskQueue, yieldToUI, yieldToInteractions } from '../../utils/asyn
 
 export default function BackupScreen() {
   const { colors, isDark } = useAppTheme();
+  const setTabBarVisible = useTabBarStore((s) => s.setTabBarVisible);
+
+  const lastScrollY = useRef<number>(0);
+  const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const startStopTimer = useCallback(() => {
+    if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+    stopTimerRef.current = setTimeout(() => {
+      setTabBarVisible(true);
+    }, 3000);
+  }, [setTabBarVisible]);
+
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const currentY = event.nativeEvent.contentOffset.y;
+    const dy = currentY - lastScrollY.current;
+
+    if (currentY <= 10) {
+      setTabBarVisible(true);
+      lastScrollY.current = currentY;
+      return;
+    }
+
+    if (dy > 6) {
+      setTabBarVisible(false);
+      startStopTimer();
+    } else if (dy < -6) {
+      if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+      setTabBarVisible(true);
+    }
+
+    lastScrollY.current = currentY;
+  };
+
+  useEffect(() => {
+    return () => {
+      if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+    };
+  }, []);
+
   const { serverUrl, isConnected } = useServer();
   const { sessionToken } = useAuth();
 
@@ -316,7 +358,17 @@ export default function BackupScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        onScroll={handleScroll}
+        onScrollBeginDrag={() => {
+          if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+        }}
+        onScrollEndDrag={startStopTimer}
+        onMomentumScrollEnd={startStopTimer}
+        scrollEventThrottle={16}
+      >
+
         {/* Backup Status Hero Glass Card */}
         <GlassCard variant="gradient" style={styles.heroCard}>
           <View style={[styles.heroIconBadge, { backgroundColor: colors.primaryContainer }]}>
@@ -569,8 +621,9 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
-    paddingBottom: 40,
+    paddingBottom: 100,
   },
+
   heroCard: {
     padding: 20,
     alignItems: 'center',
