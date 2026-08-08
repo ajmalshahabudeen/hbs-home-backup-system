@@ -442,3 +442,14 @@
 - Updated mobile app `api.ts` to supply both `parentPath` and `path`, `fileName` and `name`, `folderName` and `name` in upload requests for complete forward/backward compatibility.
 - Verified TypeScript compilation across workspace (`bun run typecheck`) with zero errors.
 
+## Session: 2026-08-08 (AsyncTaskQueue Cancellation Unhandled Promise Rejection Bug Fix)
+- Diagnosed root cause of Metro error `ERROR [Error: Uncaught (in promise, id: 0) Error: Task fetch_photos_task cancelled]`:
+  1. `asyncTaskQueue.ts` was calling `task.reject(new Error(`Task ${id} cancelled`))` when tasks were cancelled (via component unmount, tab switching, or re-enqueueing duplicate task IDs).
+  2. Because callers across the mobile app (`photos.tsx`, `drive.tsx`, `backup.tsx`, `settings.tsx`) enqueue tasks without `await` or `.catch()` (fire-and-forget UI micro-yielding), rejecting cancelled tasks threw unhandled promise rejections in Metro.
+  3. UI task cancellation is a standard, expected control-flow event, not an uncaught exception.
+- Refactored `asyncTaskQueue.ts` (`cancel`, `cancelAll`, `processNext`):
+  1. Resolved cancelled tasks cleanly (`task.resolve(undefined)`) instead of invoking `task.reject(new Error(...))`.
+  2. Maintained `task.reject(err)` inside `catch` blocks strictly for actual runtime execution errors.
+- Verified TypeScript compilation (`bun run typecheck`) with zero errors.
+
+

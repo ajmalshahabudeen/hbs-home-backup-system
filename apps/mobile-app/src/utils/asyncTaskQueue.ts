@@ -88,7 +88,7 @@ class AsyncTaskQueue {
     this.queue = this.queue.filter((task) => {
       if (task.id === id) {
         task.abortToken.isCancelled = true;
-        task.reject(new Error(`Task ${id} cancelled`));
+        task.resolve(undefined);
         return false;
       }
       return true;
@@ -106,7 +106,7 @@ class AsyncTaskQueue {
     });
 
     this.queue.forEach((task) => {
-      task.reject(new Error('Task queue cancelled'));
+      task.resolve(undefined);
     });
 
     this.queue = [];
@@ -122,6 +122,7 @@ class AsyncTaskQueue {
     if (!task) return;
 
     if (task.abortToken.isCancelled) {
+      task.resolve(undefined);
       this.processNext();
       return;
     }
@@ -133,17 +134,21 @@ class AsyncTaskQueue {
       await yieldToUI();
 
       if (task.abortToken.isCancelled) {
-        task.reject(new Error(`Task ${task.id} cancelled`));
+        task.resolve(undefined);
       } else {
         const result = await task.fn(task.abortToken);
         if (!task.abortToken.isCancelled) {
           task.resolve(result);
         } else {
-          task.reject(new Error(`Task ${task.id} cancelled`));
+          task.resolve(undefined);
         }
       }
     } catch (err) {
-      task.reject(err);
+      if (task.abortToken.isCancelled) {
+        task.resolve(undefined);
+      } else {
+        task.reject(err);
+      }
     } finally {
       this.activeTaskCount--;
       this.activeTaskIds.delete(task.id);
