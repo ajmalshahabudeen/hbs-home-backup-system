@@ -2,6 +2,7 @@ import * as Crypto from 'expo-crypto';
 import { File } from 'expo-file-system';
 import { hbsApi, BackupFileItem } from '../services/api';
 import { backupIndexDb } from './backupIndexDb';
+import { yieldToUI } from './asyncTaskQueue';
 
 export interface DedupeCheckResult {
   isDuplicate: boolean;
@@ -18,8 +19,9 @@ export interface DedupeStats {
 }
 
 /**
- * Calculates a SHA-256 checksum of a local file using modern Expo SDK 57 File API
- * based on unique file attributes (filename + creationTime + fileSize + content sample).
+ * Calculates a fast, memory-safe SHA-256 checksum of a local file
+ * based on unique file metadata (uri + filename + creationTime + fileSize).
+ * Eliminates high-memory file.text() reads that block the JS thread.
  */
 export async function getFileChecksum(
   fileUri: string,
@@ -27,24 +29,23 @@ export async function getFileChecksum(
   fileSize?: number,
   creationTime?: number
 ): Promise<string> {
-  const metaString = `${fileName || ''}_${fileSize || 0}_${creationTime || 0}`;
+  let size = fileSize || 0;
   try {
-    const file = new File(fileUri);
-    let sample = '';
-    if (file.exists) {
-      const text = await file.text();
-      sample = text.slice(0, 1024 * 64);
+    if (!size) {
+      const file = new File(fileUri);
+      if (file.exists && file.size) {
+        size = file.size;
+      }
     }
-    return await Crypto.digestStringAsync(
-      Crypto.CryptoDigestAlgorithm.SHA256,
-      `${metaString}_${sample}`
-    );
-  } catch (err) {
-    return await Crypto.digestStringAsync(
-      Crypto.CryptoDigestAlgorithm.SHA256,
-      `${metaString}_${fileUri}`
-    );
+  } catch {
+    // ignore
   }
+
+  const metaString = `${fileName || ''}_${size}_${creationTime || 0}_${fileUri}`;
+  return await Crypto.digestStringAsync(
+    Crypto.CryptoDigestAlgorithm.SHA256,
+    metaString
+  );
 }
 
 /**

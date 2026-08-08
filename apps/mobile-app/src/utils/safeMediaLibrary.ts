@@ -1,6 +1,7 @@
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { appStorage } from './storage';
 import { scanDeviceStorageForMedia } from './mediaScanner';
+import { yieldToUI } from './asyncTaskQueue';
 
 let MediaLibraryModule: typeof import('expo-media-library') | null = null;
 try {
@@ -217,6 +218,9 @@ export const safeMediaLibrary = {
             hasNextPage = !!res.hasNextPage;
             afterCursor = res.endCursor;
 
+            // Micro-yield to JS event loop after each page read
+            await yieldToUI();
+
             // Break if options explicitly capped page without paginating all
             if (options?.first && options.first <= 1000) {
               break;
@@ -229,6 +233,7 @@ export const safeMediaLibrary = {
     }
 
     // Engine 2: Deep scan internal and external storage directories via FileSystem
+    await yieldToUI();
     try {
       const storageAssets = await scanDeviceStorageForMedia(maxAssetsLimit);
       for (const item of storageAssets) {
@@ -241,6 +246,7 @@ export const safeMediaLibrary = {
     }
 
     // Engine 3: Load user-imported device gallery assets stored in appStorage
+    await yieldToUI();
     try {
       const imported = await getImportedGalleryAssets();
       for (const item of imported) {
@@ -252,6 +258,7 @@ export const safeMediaLibrary = {
       // ignore
     }
 
+    await yieldToUI();
     const result = Array.from(combinedMap.values());
     result.sort((a, b) => b.creationTime - a.creationTime);
     return result;

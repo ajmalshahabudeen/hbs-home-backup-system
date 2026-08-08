@@ -1,5 +1,6 @@
 import { File, Directory, Paths } from 'expo-file-system';
 import { SafeAsset } from './safeMediaLibrary';
+import { yieldToUI } from './asyncTaskQueue';
 
 const SUPPORTED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.gif', '.bmp'];
 const SUPPORTED_VIDEO_EXTENSIONS = ['.mp4', '.mkv', '.mov', '.avi', '.webm', '.m4v', '.3gp'];
@@ -20,7 +21,7 @@ const COMMON_STORAGE_PATHS = [
 
 /**
  * Scans internal and external device storage folders for photos and videos
- * using modern Expo SDK 57 Directory & File API.
+ * using modern Expo SDK 57 Directory & File API with non-blocking micro-yields.
  */
 export async function scanDeviceStorageForMedia(maxItems: number = 10000): Promise<SafeAsset[]> {
   const discovered: SafeAsset[] = [];
@@ -33,13 +34,22 @@ export async function scanDeviceStorageForMedia(maxItems: number = 10000): Promi
   for (const dirUri of directoriesToScan) {
     if (discovered.length >= maxItems) break;
 
+    // Micro-yield between directory scans to release JS thread
+    await yieldToUI();
+
     try {
       const dir = new Directory(dirUri);
       if (!dir.exists) continue;
 
       const contents = dir.list();
+      let itemCount = 0;
       for (const item of contents) {
         if (discovered.length >= maxItems) break;
+        itemCount++;
+        if (itemCount % 50 === 0) {
+          await yieldToUI();
+        }
+
         if (item instanceof Directory) continue;
 
         const file = item as File;

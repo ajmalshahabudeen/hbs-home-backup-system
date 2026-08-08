@@ -30,6 +30,8 @@ import { backupIndexDb } from '../../utils/backupIndexDb';
 import { expoCache } from '../../utils/expoCache';
 import { runSilentIndexReconciliation } from '../../services/backgroundIndexReconciler';
 
+import { asyncTaskQueue, yieldToInteractions } from '../../utils/asyncTaskQueue';
+
 export default function SettingsScreen() {
   const { colors, isDark, themeMode, setThemeMode, paletteKey, setPaletteKey } = useAppTheme();
   const router = useRouter();
@@ -42,10 +44,12 @@ export default function SettingsScreen() {
   const [notifEnabled, setNotifEnabled] = useState<boolean>(true);
 
   useEffect(() => {
-    if (serverUrl && isConnected) {
-      hbsApi.getUserStats(serverUrl, sessionToken).then(setStats).catch(() => {});
-    }
-    loadPerms();
+    yieldToInteractions().then(() => {
+      if (serverUrl && isConnected) {
+        hbsApi.getUserStats(serverUrl, sessionToken).then(setStats).catch(() => {});
+      }
+      loadPerms();
+    });
   }, [serverUrl, isConnected, sessionToken]);
 
   const loadPerms = async () => {
@@ -314,15 +318,20 @@ export default function SettingsScreen() {
                   {
                     text: 'Purge & Rebuild',
                     style: 'destructive',
-                    onPress: async () => {
-                      backupIndexDb.purgeAllIndex();
-                      await expoCache.clearAll();
-                      if (serverUrl) {
-                        const res = await runSilentIndexReconciliation(serverUrl, sessionToken);
-                        Alert.alert('Rebuild Complete', `Index purged and rebuilt with ${res.count} items from server.`);
-                      } else {
-                        Alert.alert('Purge Complete', 'Local cache and SQLite index cleared.');
-                      }
+                    onPress: () => {
+                      asyncTaskQueue.enqueue(
+                        async () => {
+                          backupIndexDb.purgeAllIndex();
+                          await expoCache.clearAll();
+                          if (serverUrl) {
+                            const res = await runSilentIndexReconciliation(serverUrl, sessionToken);
+                            Alert.alert('Rebuild Complete', `Index purged and rebuilt with ${res.count} items from server.`);
+                          } else {
+                            Alert.alert('Purge Complete', 'Local cache and SQLite index cleared.');
+                          }
+                        },
+                        { id: 'purge_rebuild_task', priority: 'high' }
+                      );
                     },
                   },
                 ]

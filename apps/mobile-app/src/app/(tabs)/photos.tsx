@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, InteractionManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -19,6 +19,7 @@ import { UploadModal } from '../../components/UploadModal';
 import { LanScannerModal } from '../../components/LanScannerModal';
 import { useMediaStore } from '../../stores/useMediaStore';
 import { uploadFilesAndFolders, FileToUpload } from '../../utils/folderUploader';
+import { asyncTaskQueue, yieldToUI, yieldToInteractions } from '../../utils/asyncTaskQueue';
 
 export default function PhotosScreen() {
   const { colors } = useAppTheme();
@@ -37,6 +38,15 @@ export default function PhotosScreen() {
   const [selectedMedia, setSelectedMedia] = useState<PhotoMediaItem | null>(null);
   const [showUploadModal, setShowUploadModal] = useState<boolean>(false);
   const [showScannerModal, setShowScannerModal] = useState<boolean>(false);
+  const isMounted = useRef<boolean>(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      asyncTaskQueue.cancel('fetch_photos_task');
+    };
+  }, []);
 
   const fetchPhotos = useCallback(async () => {
     if (mediaList.length === 0) {
@@ -44,75 +54,104 @@ export default function PhotosScreen() {
     }
     setLoading(true);
 
-    try {
-      let perm = await safeMediaLibrary.getPermissionsAsync();
-      if (!perm.granted) {
-        const req = await safeMediaLibrary.requestPermissionsAsync();
-        perm = req;
-      }
-      setHasPermission(perm.granted);
-
-      let serverMedia: PhotoMediaItem[] = [];
-      if (serverUrl) {
+    asyncTaskQueue.enqueue(
+      async (abortSignal) => {
         try {
-          const res = await hbsApi.getPhotos(serverUrl, sessionToken, 'all');
-          serverMedia = (res.media || [])
-            .filter((m) => !m.name.includes('.hbs-thumb') && !m.path.includes('.hbs-thumb'))
-            .map((m) => ({
-              ...m,
-              isBackedUp: true,
-              isLocalOnly: false,
-            }));
-        } catch {
-          // offline or unreachable
-        }
-      }
-
-      const localAssets = await safeMediaLibrary.getAssetsAsync({ first: 50000 });
-      const serverNameSet = new Set(serverMedia.map((m) => m.name.toLowerCase()));
-
-      const mergedList: PhotoMediaItem[] = [...serverMedia];
-
-      for (const asset of localAssets) {
-        const name = asset.filename;
-        const existsOnServer = serverNameSet.has(name.toLowerCase());
-
-        if (existsOnServer) {
-          const serverIdx = mergedList.findIndex((m) => m.name.toLowerCase() === name.toLowerCase());
-          if (serverIdx !== -1) {
-            mergedList[serverIdx].localUri = asset.uri;
+          let perm = await safeMediaLibrary.getPermissionsAsync();
+          if (!perm.granted) {
+            const req = await safeMediaLibrary.requestPermissionsAsync();
+            perm = req;
           }
-        } else {
-          mergedList.push({
-            id: `local_${asset.id}`,
-            userId: 'local',
-            path: name,
-            name,
-            parentPath: '',
-            mimeType: asset.mediaType === 'video' ? 'video/mp4' : 'image/jpeg',
-            size: 0,
-            createdAt: new Date(asset.creationTime).toISOString(),
-            updatedAt: new Date(asset.creationTime).toISOString(),
-            isVideo: asset.mediaType === 'video',
-            url: asset.uri,
-            localUri: asset.uri,
-            isLocalOnly: true,
-            isBackedUp: false,
-          });
-        }
-      }
+          if (abortSignal.isCancelled || !isMounted.current) return;
+          setHasPermission(perm.granted);
 
-      mergedList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      setMediaList(mergedList);
-    } catch {
-      // fallback
-    } finally {
-      setLoading(false);
-    }
+          let serverMedia: PhotoMediaItem[] = [];
+          if (serverUrl) {
+            try {
+              const res = await hbsApi.getPhotos(serverUrl, sessionToken, 'all');
+              serverMedia = (res.media || [])
+                .filter((m) => !m.name.includes('.hbs-thumb') && !m.path.includes('.hbs-thumb'))
+                .map((m) => ({
+                  ...m,
+                  isBackedUp: true,
+                  isLocalOnly: false,
+                }));
+            } catch {
+              // offline or unreachable
+            }
+          }
+          if (abortSignal.isCancelled || !isMounted.current) return;
+
+          const localAssets = await safeMediaLibrary.getAssetsAsync({ first: 50000 });
+          if (abortSignal.isCancelled || !isMounted.current) return;
+
+          // O(1) Map lookups instead of O(N^2) findIndex scanning
+          const serverIndexMap = new Map<string, number>();
+          serverMedia.forEach((m, idx) => {
+            serverIndexMap.set(m.name.toLowerCase(), idx);
+          });
+
+          const mergedList: PhotoMediaItem[] = [...serverMedia];
+
+          let count = 0;
+          for (const asset of localAssets) {
+            if (abortSignal.isCancelled || !isMounted.current) return;
+            count++;
+            if (count % 200 === 0) {
+              await yieldToUI();
+            }
+
+            const name = asset.filename;
+            const nameLower = name.toLowerCase();
+            const serverIdx = serverIndexMap.get(nameLower);
+
+            if (serverIdx !== undefined) {
+              mergedList[serverIdx].localUri = asset.uri;
+            } else {
+              mergedList.push({
+                id: `local_${asset.id}`,
+                userId: 'local',
+                path: name,
+                name,
+                parentPath: '',
+                mimeType: asset.mediaType === 'video' ? 'video/mp4' : 'image/jpeg',
+                size: 0,
+                createdAt: new Date(asset.creationTime).toISOString(),
+                updatedAt: new Date(asset.creationTime).toISOString(),
+                isVideo: asset.mediaType === 'video',
+                url: asset.uri,
+                localUri: asset.uri,
+                isLocalOnly: true,
+                isBackedUp: false,
+              });
+            }
+          }
+
+          if (abortSignal.isCancelled || !isMounted.current) return;
+          await yieldToUI();
+          mergedList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+          if (!abortSignal.isCancelled && isMounted.current) {
+            setMediaList(mergedList);
+          }
+        } catch {
+          // fallback
+        } finally {
+          if (isMounted.current) {
+            setLoading(false);
+          }
+        }
+      },
+      { id: 'fetch_photos_task', priority: 'high' }
+    );
   }, [serverUrl, sessionToken, mediaList.length, loadFromCache, setMediaList, setLoading, setHasPermission]);
 
   useEffect(() => {
-    fetchPhotos();
+    yieldToInteractions().then(() => {
+      if (isMounted.current) {
+        fetchPhotos();
+      }
+    });
   }, [fetchPhotos]);
 
   const handleRequestPermission = async () => {

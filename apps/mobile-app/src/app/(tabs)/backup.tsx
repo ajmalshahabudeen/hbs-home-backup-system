@@ -29,6 +29,8 @@ import { getSyncConfig, saveSyncConfig } from '../../services/backgroundSync';
 import { syncTracker, SyncState } from '../../services/syncTracker';
 import { appStorage } from '../../utils/storage';
 
+import { asyncTaskQueue, yieldToUI, yieldToInteractions } from '../../utils/asyncTaskQueue';
+
 export default function BackupScreen() {
   const { colors, isDark } = useAppTheme();
   const { serverUrl, isConnected } = useServer();
@@ -58,23 +60,28 @@ export default function BackupScreen() {
   }, []);
 
   const calculateFolderItemsCount = useCallback(async (albums: string[]) => {
-    try {
-      const allAlbums = await safeMediaLibrary.getAlbumsAsync();
-      let total = 0;
-      if (albums.length === 0) {
-        total = allAlbums.reduce((sum, a) => sum + a.assetCount, 0);
-      } else {
-        albums.forEach((idOrTitle) => {
-          const match = allAlbums.find(
-            (a) => a.id === idOrTitle || a.title.toLowerCase() === idOrTitle.toLowerCase()
-          );
-          if (match) total += match.assetCount;
-        });
-      }
-      setFolderTotalItems(total);
-    } catch {
-      setFolderTotalItems(0);
-    }
+    asyncTaskQueue.enqueue(
+      async () => {
+        try {
+          const allAlbums = await safeMediaLibrary.getAlbumsAsync();
+          let total = 0;
+          if (albums.length === 0) {
+            total = allAlbums.reduce((sum, a) => sum + a.assetCount, 0);
+          } else {
+            albums.forEach((idOrTitle) => {
+              const match = allAlbums.find(
+                (a) => a.id === idOrTitle || a.title.toLowerCase() === idOrTitle.toLowerCase()
+              );
+              if (match) total += match.assetCount;
+            });
+          }
+          setFolderTotalItems(total);
+        } catch {
+          setFolderTotalItems(0);
+        }
+      },
+      { id: 'calc_folder_items_task', priority: 'low' }
+    );
   }, []);
 
   const loadSettings = useCallback(async () => {
@@ -87,7 +94,9 @@ export default function BackupScreen() {
     const wifiVal = await appStorage.getItem('hbs_wifi_only');
     if (wifiVal !== null) setWifiOnly(JSON.parse(wifiVal));
 
-    await calculateFolderItemsCount(config.selectedAlbums);
+    yieldToInteractions().then(() => {
+      calculateFolderItemsCount(config.selectedAlbums);
+    });
   }, [calculateFolderItemsCount]);
 
   useEffect(() => {
@@ -144,42 +153,51 @@ export default function BackupScreen() {
       }
     }
 
-    try {
-      const assets = await safeMediaLibrary.getAssetsAsync({ first: 50000 });
-      if (!assets || assets.length === 0) {
-        Alert.alert('No Media Found', 'No photos or videos found on your device to sync.');
-        return;
-      }
+    // Immediately trigger Hero progress bar for instant visual feedback
+    await syncTracker.startSync(1, 'Initializing background auto-sync...');
 
-      await syncTracker.startSync(assets.length, 'Scanning camera roll photos...');
+    asyncTaskQueue.enqueue(
+      async () => {
+        try {
+          const assets = await safeMediaLibrary.getAssetsAsync({ first: 50000 });
+          if (!assets || assets.length === 0) {
+            await syncTracker.finishSync(0, 0);
+            Alert.alert('No Media Found', 'No photos or videos found on your device to sync.');
+            return;
+          }
 
-      const result = await runParallelUploadQueue(
-        serverUrl,
-        sessionToken,
-        assets,
-        4,
-        'MobileBackups',
-        (progress) => {
-          syncTracker.updateProgress(
-            progress.completed,
-            progress.total,
-            progress.currentFileName || 'Processing...',
-            `Uploading ${progress.completed}/${progress.total} (${progress.syncedCount} new, ${progress.skippedCount} skipped)`,
-            progress.skippedCount
+          await syncTracker.startSync(assets.length, 'Scanning camera roll photos...');
+
+          const result = await runParallelUploadQueue(
+            serverUrl,
+            sessionToken,
+            assets,
+            4,
+            'MobileBackups',
+            (progress) => {
+              syncTracker.updateProgress(
+                progress.completed,
+                progress.total,
+                progress.currentFileName || 'Processing...',
+                `Uploading ${progress.completed}/${progress.total} (${progress.syncedCount} new, ${progress.skippedCount} skipped)`,
+                progress.skippedCount
+              );
+            }
           );
-        }
-      );
 
-      await syncTracker.finishSync(result.syncedCount, result.skippedCount);
-      setBackedUpCount((prev) => prev + result.syncedCount);
-      const msg = `Synced ${result.syncedCount} new items.${
-        result.skippedCount > 0 ? ` ${result.skippedCount} duplicate items skipped via fast SQLite index.` : ''
-      }`;
-      Alert.alert('Auto-Sync Complete', msg);
-    } catch (e) {
-      await syncTracker.finishSync(0, 0);
-      Alert.alert('Sync Error', e instanceof Error ? e.message : 'Sync failed');
-    }
+          await syncTracker.finishSync(result.syncedCount, result.skippedCount);
+          setBackedUpCount((prev) => prev + result.syncedCount);
+          const msg = `Synced ${result.syncedCount} new items.${
+            result.skippedCount > 0 ? ` ${result.skippedCount} duplicate items skipped via fast SQLite index.` : ''
+          }`;
+          Alert.alert('Auto-Sync Complete', msg);
+        } catch (e) {
+          await syncTracker.finishSync(0, 0);
+          Alert.alert('Sync Error', e instanceof Error ? e.message : 'Sync failed');
+        }
+      },
+      { id: 'background_user_autosync_task', priority: 'normal' }
+    );
   };
 
   const handleStartManualBackup = async () => {

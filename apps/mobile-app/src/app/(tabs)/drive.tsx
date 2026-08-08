@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,6 +12,7 @@ import { MediaViewerModal } from '../../components/MediaViewerModal';
 import { LanScannerModal } from '../../components/LanScannerModal';
 import { useDriveStore } from '../../stores/useDriveStore';
 import { uploadFilesAndFolders, FileToUpload } from '../../utils/folderUploader';
+import { asyncTaskQueue, yieldToInteractions } from '../../utils/asyncTaskQueue';
 
 export default function DriveScreen() {
   const { colors } = useAppTheme();
@@ -32,6 +33,15 @@ export default function DriveScreen() {
   const [showUploadModal, setShowUploadModal] = useState<boolean>(false);
   const [showScannerModal, setShowScannerModal] = useState<boolean>(false);
   const [previewMedia, setPreviewMedia] = useState<PhotoMediaItem | null>(null);
+  const isMounted = useRef<boolean>(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      asyncTaskQueue.cancel('fetch_drive_files_task');
+    };
+  }, []);
 
   const fetchFiles = useCallback(async () => {
     if (!serverUrl) return;
@@ -41,18 +51,31 @@ export default function DriveScreen() {
     }
     setLoading(true);
 
-    try {
-      const res = await hbsApi.getFiles(serverUrl, sessionToken, currentPath, 'all');
-      setFiles(res.files || []);
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false);
-    }
+    asyncTaskQueue.enqueue(
+      async (abortSignal) => {
+        try {
+          const res = await hbsApi.getFiles(serverUrl, sessionToken, currentPath, 'all');
+          if (!abortSignal.isCancelled && isMounted.current) {
+            setFiles(res.files || []);
+          }
+        } catch {
+          // ignore
+        } finally {
+          if (isMounted.current) {
+            setLoading(false);
+          }
+        }
+      },
+      { id: 'fetch_drive_files_task', priority: 'high' }
+    );
   }, [serverUrl, sessionToken, currentPath, displayFiles.length, loadFromCache, setFiles, setLoading]);
 
   useEffect(() => {
-    fetchFiles();
+    yieldToInteractions().then(() => {
+      if (isMounted.current) {
+        fetchFiles();
+      }
+    });
   }, [fetchFiles]);
 
   const driveMediaList: PhotoMediaItem[] = displayFiles

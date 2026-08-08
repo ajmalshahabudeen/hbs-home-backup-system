@@ -2,6 +2,7 @@ import { SafeAsset } from './safeMediaLibrary';
 import { checkFileDuplicate } from './dedupe';
 import { hbsApi } from '../services/api';
 import { backupIndexDb } from './backupIndexDb';
+import { yieldToUI } from './asyncTaskQueue';
 
 export interface ParallelQueueProgress {
   total: number;
@@ -19,7 +20,7 @@ export interface ParallelQueueCallback {
 /**
  * High-performance parallel concurrency queue.
  * Uploads media assets in parallel batches using a worker pool (default concurrency: 4)
- * with fast local SQLite deduplication preflight checks.
+ * with fast local SQLite deduplication preflight checks and non-blocking JS thread yields.
  */
 export async function runParallelUploadQueue(
   serverUrl: string,
@@ -62,6 +63,9 @@ export async function runParallelUploadQueue(
       const ext = asset.mediaType === 'video' ? 'mp4' : 'jpg';
       const fileName = rawName || `media_${asset.creationTime || Date.now()}_${i}.${ext}`;
       const mimeType = asset.mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
+
+      // Yield to UI event loop before checking dedupe/uploading
+      await yieldToUI();
 
       // 1. Fast local SQLite duplicate preflight check
       const dupCheck = await checkFileDuplicate(

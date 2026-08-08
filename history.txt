@@ -422,3 +422,12 @@
   2. Connected `driveMediaList` in `drive.tsx` for seamless media swiping in Drive folders.
 - Verified TypeScript compilation (`bun run typecheck`) across workspace with 0 errors.
 - Verified server build (`bun run build --filter=server`) with 100% success.
+
+## Session: 2026-08-08 (Non-Blocking Parallel Background Execution & UI Unlocking Architecture)
+- Built `asyncTaskQueue.ts` priority-driven FIFO background task queue with event loop micro-yielding (`yieldToUI()`), `InteractionManager.runAfterInteractions` (`yieldToInteractions()`), and task cancellation via abort signals.
+- Replaced $O(N^2)$ `findIndex` search loops in `photos.tsx` with instant $O(1)$ `Map<string, PhotoMediaItem>` lookups.
+- Wrapped photo fetching, drive file loading, auto-sync backup, and index purging in `asyncTaskQueue` and `yieldToInteractions()` across `photos.tsx`, `drive.tsx`, `backup.tsx`, and `settings.tsx`.
+- Added micro-yields (`await yieldToUI()`) inside `safeMediaLibrary.ts`, `mediaScanner.ts`, `dedupe.ts`, and `parallelUploadQueue.ts`.
+- Optimized `getFileChecksum` to digest file metadata (`filename_size_mtime_creationTime`) without loading heavy binary files as UTF-8 text via `file.text()`.
+- Verified workspace TypeScript compilation (`bun run typecheck`) across all packages with 0 errors.
+- Verified server Next.js build (`bun run build --filter=server`) with 100% success.
