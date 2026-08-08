@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,9 +6,17 @@ import {
   FlatList,
   TouchableOpacity,
   Dimensions,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { FadeInUp } from 'react-native-reanimated';
+import Animated, {
+  FadeInUp,
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  interpolate,
+} from 'react-native-reanimated';
 import { Image } from 'expo-image';
 import { useAppTheme } from '../context/ThemeContext';
 import { PhotoMediaItem } from '../services/api';
@@ -35,6 +43,7 @@ interface MediaGroup {
 }
 
 const windowWidth = Dimensions.get('window').width;
+const GAP = 1;
 
 export const PhotoGrid: React.FC<PhotoGridProps> = ({
   media,
@@ -53,6 +62,65 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [groupBy, setGroupBy] = useState<GroupByOption>('day');
+
+  // Reanimated top header scroll animation & 3s auto-restore timer
+  const headerTranslateY = useSharedValue(0);
+  const lastScrollY = useRef<number>(0);
+  const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const startStopTimer = useCallback(() => {
+    if (stopTimerRef.current) {
+      clearTimeout(stopTimerRef.current);
+    }
+    stopTimerRef.current = setTimeout(() => {
+      headerTranslateY.value = withTiming(0, { duration: 250 });
+    }, 3000);
+  }, [headerTranslateY]);
+
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const currentY = event.nativeEvent.contentOffset.y;
+    const dy = currentY - lastScrollY.current;
+
+    // Show header when near the very top of scroll
+    if (currentY <= 10) {
+      headerTranslateY.value = withTiming(0, { duration: 200 });
+      lastScrollY.current = currentY;
+      return;
+    }
+
+    if (dy > 6) {
+      // User scrolling DOWN -> hide header & start 3-second auto-restore timer
+      headerTranslateY.value = withTiming(-65, { duration: 250 });
+      startStopTimer();
+    } else if (dy < -6) {
+      // User scrolling UP -> restore header immediately
+      if (stopTimerRef.current) {
+        clearTimeout(stopTimerRef.current);
+      }
+      headerTranslateY.value = withTiming(0, { duration: 200 });
+    }
+
+    lastScrollY.current = currentY;
+  };
+
+  const handleScrollEnd = () => {
+    startStopTimer();
+  };
+
+  useEffect(() => {
+    return () => {
+      if (stopTimerRef.current) {
+        clearTimeout(stopTimerRef.current);
+      }
+    };
+  }, []);
+
+  const headerAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateY: headerTranslateY.value }],
+      opacity: interpolate(headerTranslateY.value, [-50, 0], [0, 1]),
+    };
+  });
 
   // Filter items
   const filteredMedia = media.filter((item) => {
@@ -126,7 +194,8 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
   };
 
   const mediaGroups = groupMedia(sortedMedia);
-  const itemSize = (windowWidth - 32 - (columns - 1) * 4) / columns;
+  // Edge-to-edge layout width calculation with 1px hairline spacing
+  const itemSize = (windowWidth - (columns - 1) * GAP) / columns;
 
   // Render skeleton while initial fetch is loading and media is empty
   if (loading && media.length === 0) {
@@ -135,30 +204,32 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Ultra-Compact Control Bar with Search, Dropdowns & Import */}
-      <FilterSortBar
-        searchQuery={search}
-        onSearchChange={setSearch}
-        selectedCategory={category}
-        onCategorySelect={setCategory}
-        sortField={sortField}
-        sortOrder={sortOrder}
-        onSortChange={(f, o) => {
-          setSortField(f);
-          setSortOrder(o);
-        }}
-        groupBy={groupBy}
-        onGroupByChange={setGroupBy}
-        columns={columns}
-        onColumnsChange={setColumns}
-        onImport={onImport}
-        totalCount={sortedMedia.length}
-        categories={[
-          { label: 'All Media', value: 'all', icon: 'images-outline' },
-          { label: 'Photos Only', value: 'image', icon: 'image-outline' },
-          { label: 'Videos Only', value: 'video', icon: 'film-outline' },
-        ]}
-      />
+      {/* Floating Animated Header Bar */}
+      <Animated.View style={[styles.animatedHeader, headerAnimatedStyle, { backgroundColor: colors.background }]}>
+        <FilterSortBar
+          searchQuery={search}
+          onSearchChange={setSearch}
+          selectedCategory={category}
+          onCategorySelect={setCategory}
+          sortField={sortField}
+          sortOrder={sortOrder}
+          onSortChange={(f, o) => {
+            setSortField(f);
+            setSortOrder(o);
+          }}
+          groupBy={groupBy}
+          onGroupByChange={setGroupBy}
+          columns={columns}
+          onColumnsChange={setColumns}
+          onImport={onImport}
+          totalCount={sortedMedia.length}
+          categories={[
+            { label: 'All Media', value: 'all', icon: 'images-outline' },
+            { label: 'Photos Only', value: 'image', icon: 'image-outline' },
+            { label: 'Videos Only', value: 'video', icon: 'film-outline' },
+          ]}
+        />
+      </Animated.View>
 
       {sortedMedia.length === 0 ? (
         <View style={styles.emptyContainer}>
@@ -176,7 +247,14 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
           keyExtractor={(item, idx) => item.title || `group_${idx}`}
           refreshing={refreshing}
           onRefresh={onRefresh}
-          contentContainerStyle={{ paddingBottom: 100 }}
+          onScroll={handleScroll}
+          onScrollBeginDrag={() => {
+            if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+          }}
+          onScrollEndDrag={handleScrollEnd}
+          onMomentumScrollEnd={handleScrollEnd}
+          scrollEventThrottle={16}
+          contentContainerStyle={{ paddingTop: 48, paddingBottom: 110 }}
           renderItem={({ item: group }) => (
             <View style={styles.groupSection}>
               {group.title ? (
@@ -189,7 +267,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
                 {group.data.map((item, index) => (
                   <Animated.View
                     key={item.id}
-                    entering={FadeInUp.delay(Math.min(index * 25, 300)).duration(300)}
+                    entering={FadeInUp.delay(Math.min(index * 20, 250)).duration(250)}
                   >
                     <TouchableOpacity
                       style={[
@@ -208,12 +286,12 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
                           uri: item.localUri || item.thumbUrl || item.url,
                           headers:
                             !item.localUri && item.url?.startsWith('http')
-                              ? undefined // token already in query string
+                              ? undefined
                               : undefined,
                         }}
                         style={styles.thumbnailImage}
                         contentFit="cover"
-                        transition={200}
+                        transition={150}
                         cachePolicy="memory-disk"
                         recyclingKey={item.id}
                         placeholder={null}
@@ -221,13 +299,13 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
 
                       {item.isBackedUp && (
                         <View style={[styles.cloudBadge, { backgroundColor: colors.primary }]}>
-                          <Ionicons name="cloud-done" size={13} color="#FFFFFF" />
+                          <Ionicons name="cloud-done" size={12} color="#FFFFFF" />
                         </View>
                       )}
 
                       {item.isVideo && (
                         <View style={styles.videoBadge}>
-                          <Ionicons name="play" size={12} color="#FFFFFF" />
+                          <Ionicons name="play" size={11} color="#FFFFFF" />
                         </View>
                       )}
                     </TouchableOpacity>
@@ -246,47 +324,31 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  topControlRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    marginBottom: 8,
-  },
-  countText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  gridToggleContainer: {
-    flexDirection: 'row',
-    borderRadius: 8,
-    padding: 2,
-  },
-  gridToggleBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  gridToggleText: {
-    fontSize: 12,
-    fontWeight: '700',
+  animatedHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
+    elevation: 4,
   },
   groupSection: {
-    paddingHorizontal: 16,
-    marginBottom: 16,
+    paddingHorizontal: 0,
+    marginBottom: 8,
   },
   groupTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
-    marginBottom: 8,
+    paddingHorizontal: 12,
+    marginVertical: 6,
   },
   gridContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 4,
+    gap: GAP,
   },
   photoCard: {
-    borderRadius: 8,
+    borderRadius: 0,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -296,21 +358,21 @@ const styles = StyleSheet.create({
   },
   cloudBadge: {
     position: 'absolute',
-    top: 6,
-    right: 6,
+    top: 5,
+    right: 5,
     backgroundColor: '#1A73E8',
     borderRadius: 10,
-    padding: 3,
+    padding: 2.5,
     justifyContent: 'center',
     alignItems: 'center',
   },
   videoBadge: {
     position: 'absolute',
-    bottom: 6,
-    right: 6,
+    bottom: 5,
+    right: 5,
     backgroundColor: 'rgba(0,0,0,0.65)',
-    borderRadius: 10,
-    padding: 4,
+    borderRadius: 9,
+    padding: 3,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -318,7 +380,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 32,
-    marginTop: 40,
+    marginTop: 80,
   },
   emptyTitle: {
     fontSize: 17,

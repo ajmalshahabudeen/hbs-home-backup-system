@@ -453,5 +453,10 @@
 - Refactored `yieldToInteractions()` in `asyncTaskQueue.ts` to use `requestIdleCallback` (with 100ms timeout fallback) instead of React Native's deprecated `InteractionManager.runAfterInteractions`, eliminating the warning `WARN InteractionManager has been deprecated and will be removed in a future release`.
 - Verified TypeScript compilation (`bunx tsc --noEmit`) with zero errors.
 
-
-
+## Session: 2026-08-08 (Floating Tab Bar, Collapsible Photo Header, Edge-to-Edge Grid Completed)
+- Created `CustomTabBar.tsx` floating glassmorphic tab bar component using `react-native-reanimated` (`withSpring`) with icons-only layout that smoothly hides the current active screen icon and restores deselected icons when switching tabs.
+- Integrated `<CustomTabBar>` into `_layout.tsx` for Expo Router `<Tabs>`.
+- Overhauled `PhotoGrid.tsx` with collapsible top header on scroll down (`headerTranslateY` Reanimated offset), immediate restore on scroll up, and 3-second auto-restore timer when scrolling stops.
+- Transformed `PhotoGrid.tsx` into an edge-to-edge media wall with zero side screen padding (`paddingHorizontal: 0`) and minimal 1px hairline tile spacing (`gap: 1`).
+- Resolved animation hitching in `CustomTabBar.tsx` during tab transitions: replaced spring physics with cubic-bezier easing (`Easing.bezier(0.25, 0.1, 0.25, 1)`), wrapped items with native `LinearTransition.duration(220)` layout animations, memoized `TabBarItem` with `React.memo`, and isolated touch events with `pointerEvents`.
+- Verified workspace TypeScript compilation (`bun run typecheck`) with zero errors.
