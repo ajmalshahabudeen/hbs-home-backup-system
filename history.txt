@@ -137,6 +137,13 @@
   2. Method B (Foreground Data-Sync Service) for large batch uploads (> 5 items): automatically promotes sync to ongoing foreground service (`FOREGROUND_SERVICE_DATA_SYNC`) with single dynamic progress notification, holding WAKE_LOCK so Android OS won't kill process if user swipe-closes the app.
 - Verified TypeScript compilation (`bun run typecheck`) with zero errors.
 
+## Session: 2026-08-08 (AAPT2 Android Release Asset Compilation Fix)
+- Resolved `Execution failed for task ':app:mergeReleaseResources' -> Aapt2CompileRunnable / drawable-mdpi/assets_images_icon.png` error during `gradlew :app:assembleRelease` build.
+- Removed `require('../../assets/images/icon.png')` inside `index.tsx` which caused Metro to export a raw JS PNG file into Android's native `res/drawable-*/` folder with filename `assets_images_icon.png`.
+- Replaced logoBadge with clean vector `Ionicons name="cloud-upload"` inside `index.tsx`, preventing Metro from exporting invalid PNG drawable resources to AAPT2 during Android release builds.
+- Verified TypeScript compilation (`bun run typecheck`) with zero errors.
+
+
 
 
 
