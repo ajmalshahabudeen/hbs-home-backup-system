@@ -450,6 +450,8 @@
 - Refactored `asyncTaskQueue.ts` (`cancel`, `cancelAll`, `processNext`):
   1. Resolved cancelled tasks cleanly (`task.resolve(undefined)`) instead of invoking `task.reject(new Error(...))`.
   2. Maintained `task.reject(err)` inside `catch` blocks strictly for actual runtime execution errors.
-- Verified TypeScript compilation (`bun run typecheck`) with zero errors.
+- Refactored `yieldToInteractions()` in `asyncTaskQueue.ts` to use `requestIdleCallback` (with 100ms timeout fallback) instead of React Native's deprecated `InteractionManager.runAfterInteractions`, eliminating the warning `WARN InteractionManager has been deprecated and will be removed in a future release`.
+- Verified TypeScript compilation (`bunx tsc --noEmit`) with zero errors.
+
 
 

@@ -1,5 +1,3 @@
-import { InteractionManager } from 'react-native';
-
 /**
  * Micro-yield helper to yield execution back to the React Native JS event loop.
  * This allows touch events, animation frames, and tab switching to process immediately.
@@ -10,13 +8,17 @@ export const yieldToUI = (): Promise<void> =>
   });
 
 /**
- * Yields until all active UI animations and tab transitions complete.
+ * Yields until active UI animations, frame renders, and tab transitions settle.
+ * Uses requestIdleCallback with a 100ms timeout or micro-task fallback to prevent
+ * InteractionManager deprecation warnings.
  */
 export const yieldToInteractions = (): Promise<void> =>
   new Promise((resolve) => {
-    InteractionManager.runAfterInteractions(() => {
-      resolve();
-    });
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(() => resolve(), { timeout: 100 });
+    } else {
+      setTimeout(resolve, 16);
+    }
   });
 
 export interface TaskOptions {
