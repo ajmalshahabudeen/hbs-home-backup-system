@@ -52,7 +52,7 @@ export async function checkFileDuplicate(
   fileName: string,
   fileUri: string,
   fileSize?: number,
-  parentPath: string = '',
+  parentPath: string = 'MobileBackups',
   creationTime?: number
 ): Promise<DedupeCheckResult> {
   try {

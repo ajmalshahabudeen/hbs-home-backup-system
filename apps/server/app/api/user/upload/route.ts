@@ -52,12 +52,19 @@ export async function POST(request: NextRequest) {
     let rawName = "";
     let mime: string | null = null;
     let buf: Buffer | null = null;
+    let rawCreationTime: string | null = request.headers.get("x-file-creation-time");
 
     try {
       const form = await request.formData();
       parentPath = toPosixRel(String(form.get("path") || ""));
       const customName = String(form.get("name") || form.get("filename") || "").trim();
       const file = form.get("file");
+
+      if (!rawCreationTime) {
+        rawCreationTime = String(
+          form.get("creationTime") || form.get("capturedAt") || form.get("mtime") || ""
+        ).trim() || null;
+      }
 
       if (file instanceof File) {
         rawName = customName || file.name || `upload_${Date.now()}`;
@@ -75,6 +82,9 @@ export async function POST(request: NextRequest) {
         rawName = fallback.customName || fallback.fileName;
         buf = fallback.fileBuf;
         mime = fallback.mimeType || guessMime(rawName);
+        if (!rawCreationTime && fallback.creationTime) {
+          rawCreationTime = fallback.creationTime;
+        }
       }
     }
 
@@ -94,6 +104,17 @@ export async function POST(request: NextRequest) {
     ensureUserDir(userId);
     const name = rawName.replace(/[\\/]/g, "_");
     const rel = toPosixRel(parentPath ? `${parentPath}/${name}` : name);
+
+    let fileDate: Date | undefined;
+    if (rawCreationTime) {
+      const num = Number(rawCreationTime);
+      if (!isNaN(num) && num > 0) {
+        fileDate = new Date(num);
+      } else {
+        const d = new Date(rawCreationTime);
+        if (!isNaN(d.getTime())) fileDate = d;
+      }
+    }
 
     const checkOnly =
       request.headers.get("x-check-only") === "1" ||
@@ -118,20 +139,32 @@ export async function POST(request: NextRequest) {
     });
     fs.writeFileSync(/* turbopackIgnore: true */ abs, buf);
 
+    if (fileDate) {
+      try {
+        fs.utimesSync(abs, fileDate, fileDate);
+      } catch {
+        // ignore
+      }
+    }
+
+    const rowData = {
+      userId,
+      path: rel,
+      name,
+      parentPath,
+      isDir: false,
+      size: BigInt(buf.length),
+      mimeType: mime,
+      ...(fileDate ? { createdAt: fileDate, updatedAt: fileDate } : {}),
+    };
+
     const row = await prisma.backupFile.upsert({
       where: { userId_path: { userId, path: rel } },
-      create: {
-        userId,
-        path: rel,
-        name,
-        parentPath,
-        isDir: false,
-        size: BigInt(buf.length),
-        mimeType: mime,
-      },
+      create: rowData,
       update: {
         size: BigInt(buf.length),
         mimeType: mime,
+        ...(fileDate ? { createdAt: fileDate, updatedAt: fileDate } : {}),
       },
     });
 
@@ -141,7 +174,7 @@ export async function POST(request: NextRequest) {
       userId,
       userEmail: session.user.email,
       ...meta,
-      metadata: { path: rel, bytes: buf.length, mime },
+      metadata: { path: rel, bytes: buf.length, mime, creationTime: fileDate?.toISOString() },
     });
 
     console.log(
@@ -180,6 +213,7 @@ async function parseMultipartFallback(
   customName?: string;
   mimeType: string;
   parentPath: string;
+  creationTime?: string;
 } | null> {
   try {
     const arrayBuffer = await request.arrayBuffer();
@@ -194,6 +228,7 @@ async function parseMultipartFallback(
     let customName = "";
     let mimeType = "";
     let parentPath = "";
+    let creationTime = "";
     let fileBuf: Buffer | null = null;
 
     for (const part of parts) {
@@ -211,6 +246,8 @@ async function parseMultipartFallback(
         parentPath = rawBody.trim();
       } else if (fieldName === "name" || fieldName === "filename") {
         customName = rawBody.trim();
+      } else if (fieldName === "creationTime" || fieldName === "capturedAt" || fieldName === "mtime") {
+        creationTime = rawBody.trim();
       } else if (fieldName === "file" || rawHeaders.includes("filename=")) {
         const filenameMatch = rawHeaders.match(/filename="([^"]+)"/i);
         fileName =
@@ -224,7 +261,7 @@ async function parseMultipartFallback(
     }
 
     if (fileBuf && fileName) {
-      return { fileBuf, fileName, customName, mimeType, parentPath };
+      return { fileBuf, fileName, customName, mimeType, parentPath, creationTime };
     }
   } catch {
     // fallback failed

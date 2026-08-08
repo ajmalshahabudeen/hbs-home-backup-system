@@ -175,7 +175,7 @@ export default function BackupScreen() {
           fileName,
           asset.uri,
           undefined,
-          'MobileBackup',
+          'MobileBackups',
           asset.creationTime
         );
 
@@ -194,7 +194,8 @@ export default function BackupScreen() {
             asset.uri,
             fileName,
             mimeType,
-            'MobileBackup'
+            'MobileBackups',
+            asset.creationTime
           );
           successCount++;
         } catch {
@@ -285,7 +286,7 @@ export default function BackupScreen() {
           fileName,
           asset.uri,
           asset.fileSize,
-          'MobileBackup'
+          'MobileBackups'
         );
 
         if (dupCheck.isDuplicate) {
@@ -303,7 +304,7 @@ export default function BackupScreen() {
             asset.uri,
             fileName,
             mimeType,
-            'MobileBackup'
+            'MobileBackups'
           );
           successCount++;
         } catch {

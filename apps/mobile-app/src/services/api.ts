@@ -220,7 +220,8 @@ export const hbsApi = {
     fileUri: string,
     fileName: string,
     mimeType: string,
-    parentPath: string = ''
+    parentPath: string = 'MobileBackups',
+    creationTime?: number
   ): Promise<{ file: BackupFileItem }> => {
     const activeToken = await getValidToken(sessionToken);
     if (!activeToken) {
@@ -235,6 +236,9 @@ export const hbsApi = {
       formData.append('path', parentPath);
       formData.append('name', fileName);
       formData.append('filename', fileName);
+      if (creationTime) {
+        formData.append('creationTime', String(creationTime));
+      }
       formData.append('file', {
         uri: fileUri,
         name: fileName,
@@ -275,6 +279,7 @@ export const hbsApi = {
               path: parentPath,
               name: fileName,
               filename: fileName,
+              ...(creationTime ? { creationTime: String(creationTime) } : {}),
             },
             headers: {
               ...headers,

@@ -141,7 +141,7 @@ export async function syncPhotosNow(
         fileName,
         asset.uri,
         0,
-        'MobileBackup',
+        'MobileBackups',
         asset.creationTime
       );
 
@@ -156,7 +156,8 @@ export async function syncPhotosNow(
         asset.uri,
         fileName,
         mime,
-        'AutoSync'
+        'MobileBackups',
+        asset.creationTime
       );
       synced++;
 
