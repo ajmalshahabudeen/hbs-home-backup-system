@@ -11,6 +11,7 @@ import { UploadModal } from '../../components/UploadModal';
 import { MediaViewerModal } from '../../components/MediaViewerModal';
 import { LanScannerModal } from '../../components/LanScannerModal';
 import { useDriveStore } from '../../stores/useDriveStore';
+import { uploadFilesAndFolders, FileToUpload } from '../../utils/folderUploader';
 
 export default function DriveScreen() {
   const { colors } = useAppTheme();
@@ -47,7 +48,6 @@ export default function DriveScreen() {
   const fetchFiles = useCallback(async () => {
     if (!serverUrl) return;
 
-    // Load from cache first for instant display when changing folders
     if (displayFiles.length === 0) {
       await loadFromCache(currentPath);
     }
@@ -84,6 +84,16 @@ export default function DriveScreen() {
       fetchFiles();
     } catch (e) {
       Alert.alert('Upload Failed', e instanceof Error ? e.message : 'Unknown error');
+    }
+  };
+
+  const handleUploadBatch = async (batchFiles: FileToUpload[]) => {
+    try {
+      const res = await uploadFilesAndFolders(serverUrl, sessionToken, batchFiles, currentPath);
+      Alert.alert('Upload Complete', `Successfully uploaded ${res.successCount} item(s).`);
+      fetchFiles();
+    } catch (e) {
+      Alert.alert('Upload Error', e instanceof Error ? e.message : 'Unknown error');
     }
   };
 
@@ -141,6 +151,7 @@ export default function DriveScreen() {
         visible={showUploadModal}
         onClose={() => setShowUploadModal(false)}
         onUploadMedia={handleUploadMedia}
+        onUploadBatch={handleUploadBatch}
         onCreateFolder={handleCreateFolder}
       />
 

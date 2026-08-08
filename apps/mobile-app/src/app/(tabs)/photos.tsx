@@ -18,6 +18,7 @@ import { MediaViewerModal } from '../../components/MediaViewerModal';
 import { UploadModal } from '../../components/UploadModal';
 import { LanScannerModal } from '../../components/LanScannerModal';
 import { useMediaStore } from '../../stores/useMediaStore';
+import { uploadFilesAndFolders, FileToUpload } from '../../utils/folderUploader';
 
 export default function PhotosScreen() {
   const { colors } = useAppTheme();
@@ -38,14 +39,12 @@ export default function PhotosScreen() {
   const [showScannerModal, setShowScannerModal] = useState<boolean>(false);
 
   const fetchPhotos = useCallback(async () => {
-    // 0. Load cached data first if available for instant display
     if (mediaList.length === 0) {
       await loadFromCache();
     }
     setLoading(true);
 
     try {
-      // 1. Check local media permissions
       let perm = await safeMediaLibrary.getPermissionsAsync();
       if (!perm.granted) {
         const req = await safeMediaLibrary.requestPermissionsAsync();
@@ -53,7 +52,6 @@ export default function PhotosScreen() {
       }
       setHasPermission(perm.granted);
 
-      // 2. Fetch server media
       let serverMedia: PhotoMediaItem[] = [];
       if (serverUrl) {
         try {
@@ -70,25 +68,21 @@ export default function PhotosScreen() {
         }
       }
 
-      // 3. Fetch all local camera roll media files (photos & videos) from mobile device
       const localAssets = await safeMediaLibrary.getAssetsAsync({ first: 50000 });
       const serverNameSet = new Set(serverMedia.map((m) => m.name.toLowerCase()));
 
       const mergedList: PhotoMediaItem[] = [...serverMedia];
 
-      // Add local assets if not already on server
       for (const asset of localAssets) {
         const name = asset.filename;
         const existsOnServer = serverNameSet.has(name.toLowerCase());
 
         if (existsOnServer) {
-          // Mark server item as having localUri
           const serverIdx = mergedList.findIndex((m) => m.name.toLowerCase() === name.toLowerCase());
           if (serverIdx !== -1) {
             mergedList[serverIdx].localUri = asset.uri;
           }
         } else {
-          // Local only media item on device gallery
           mergedList.push({
             id: `local_${asset.id}`,
             userId: 'local',
@@ -108,9 +102,7 @@ export default function PhotosScreen() {
         }
       }
 
-      // Sort merged list by creation date descending (newest first like native gallery)
       mergedList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
       setMediaList(mergedList);
     } catch {
       // fallback
@@ -174,6 +166,16 @@ export default function PhotosScreen() {
     }
   };
 
+  const handleUploadBatch = async (batchFiles: FileToUpload[]) => {
+    try {
+      const res = await uploadFilesAndFolders(serverUrl, sessionToken, batchFiles, '');
+      Alert.alert('Upload Complete', `Uploaded ${res.successCount} item(s) to cloud server.`);
+      fetchPhotos();
+    } catch (e) {
+      Alert.alert('Upload Error', e instanceof Error ? e.message : 'Upload failed');
+    }
+  };
+
   const handleUploadItemToServer = async (item: PhotoMediaItem) => {
     if (!item.url) return;
     try {
@@ -207,7 +209,6 @@ export default function PhotosScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
-      {/* Permission Rationale Banner */}
       {!hasPermission && (
         <View style={[styles.permBanner, { backgroundColor: colors.warning + '15', borderColor: colors.warning + '40' }]}>
           <Ionicons name="images-outline" size={24} color={colors.warning} />
@@ -236,7 +237,6 @@ export default function PhotosScreen() {
         onImport={handlePickDeviceMedia}
       />
 
-      {/* Floating Upload Button */}
       <TouchableOpacity
         style={[styles.fab, { backgroundColor: colors.primary }]}
         onPress={() => setShowUploadModal(true)}
@@ -245,7 +245,6 @@ export default function PhotosScreen() {
         <Ionicons name="add" size={30} color="#FFFFFF" />
       </TouchableOpacity>
 
-      {/* Fullscreen Photo/Video Viewer */}
       <MediaViewerModal
         visible={!!selectedMedia}
         media={selectedMedia}
@@ -256,15 +255,14 @@ export default function PhotosScreen() {
         onSaveToDevice={handleSaveToDevice}
       />
 
-      {/* Upload Modal */}
       <UploadModal
         visible={showUploadModal}
         onClose={() => setShowUploadModal(false)}
         onUploadMedia={handleUploadMedia}
+        onUploadBatch={handleUploadBatch}
         onCreateFolder={() => {}}
       />
 
-      {/* LAN Scanner Modal */}
       <LanScannerModal
         visible={showScannerModal}
         onClose={() => setShowScannerModal(false)}

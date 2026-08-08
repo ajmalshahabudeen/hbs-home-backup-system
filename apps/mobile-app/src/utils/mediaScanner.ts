@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system/legacy';
+import { File, Directory, Paths } from 'expo-file-system';
 import { SafeAsset } from './safeMediaLibrary';
 
 const SUPPORTED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.gif', '.bmp'];
@@ -19,54 +19,47 @@ const COMMON_STORAGE_PATHS = [
 ];
 
 /**
- * Scans internal and external device storage folders for photos and videos.
+ * Scans internal and external device storage folders for photos and videos
+ * using modern Expo SDK 57 Directory & File API.
  */
-export async function scanDeviceStorageForMedia(maxItems: number = 500): Promise<SafeAsset[]> {
+export async function scanDeviceStorageForMedia(maxItems: number = 10000): Promise<SafeAsset[]> {
   const discovered: SafeAsset[] = [];
   const seenUris = new Set<string>();
 
-  // Add app document & cache directories
   const directoriesToScan: string[] = [...COMMON_STORAGE_PATHS];
-  const docDir = (FileSystem as any).documentDirectory;
-  const cacheDir = (FileSystem as any).cacheDirectory;
-  if (docDir) directoriesToScan.push(docDir);
-  if (cacheDir) directoriesToScan.push(cacheDir);
+  if (Paths.document?.uri) directoriesToScan.push(Paths.document.uri);
+  if (Paths.cache?.uri) directoriesToScan.push(Paths.cache.uri);
 
   for (const dirUri of directoriesToScan) {
     if (discovered.length >= maxItems) break;
 
     try {
-      const dirInfo = await FileSystem.getInfoAsync(dirUri);
-      if (!dirInfo.exists || !dirInfo.isDirectory) continue;
+      const dir = new Directory(dirUri);
+      if (!dir.exists) continue;
 
-      const contents = await FileSystem.readDirectoryAsync(dirUri);
-      for (const fileName of contents) {
+      const contents = dir.list();
+      for (const item of contents) {
         if (discovered.length >= maxItems) break;
+        if (item instanceof Directory) continue;
 
-        const lowerName = fileName.toLowerCase();
+        const file = item as File;
+        const lowerName = file.name.toLowerCase();
         const isImage = SUPPORTED_IMAGE_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
         const isVideo = SUPPORTED_VIDEO_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
 
         if (!isImage && !isVideo) continue;
 
-        const fileUri = dirUri.endsWith('/') ? `${dirUri}${fileName}` : `${dirUri}/${fileName}`;
-
-        if (seenUris.has(fileUri.toLowerCase())) continue;
-        seenUris.add(fileUri.toLowerCase());
+        if (seenUris.has(file.uri.toLowerCase())) continue;
+        seenUris.add(file.uri.toLowerCase());
 
         try {
-          const fileInfo = await FileSystem.getInfoAsync(fileUri);
-          if (fileInfo.exists && !fileInfo.isDirectory) {
-            const modTime = fileInfo.modificationTime
-              ? fileInfo.modificationTime * 1000
-              : Date.now();
-
+          if (file.exists) {
             discovered.push({
-              id: `storage_${fileName}_${fileInfo.size || 0}`,
-              filename: fileName,
-              uri: fileUri,
+              id: `storage_${file.name}_${file.size || 0}`,
+              filename: file.name,
+              uri: file.uri,
               mediaType: isVideo ? 'video' : 'photo',
-              creationTime: modTime,
+              creationTime: Date.now(),
             });
           }
         } catch {

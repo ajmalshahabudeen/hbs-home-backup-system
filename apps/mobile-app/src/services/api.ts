@@ -1,9 +1,4 @@
-import {
-  uploadAsync,
-  downloadAsync,
-  FileSystemUploadType,
-  documentDirectory,
-} from 'expo-file-system/legacy';
+import { File, Directory, Paths, UploadType } from 'expo-file-system';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
@@ -151,21 +146,18 @@ export const hbsApi = {
     const headers: Record<string, string> = authHeaders(activeToken);
 
     try {
-      const result = await uploadAsync(
-        `${serverUrl}/api/user/upload`,
-        fileUri,
-        {
-          httpMethod: 'POST',
-          uploadType: FileSystemUploadType.MULTIPART,
-          fieldName: 'file',
-          mimeType,
-          parameters: {
-            parentPath,
-            fileName,
-          },
-          headers,
-        }
-      );
+      const file = new File(fileUri);
+      const result = await file.upload(`${serverUrl}/api/user/upload`, {
+        httpMethod: 'POST',
+        uploadType: UploadType.MULTIPART,
+        fieldName: 'file',
+        mimeType,
+        parameters: {
+          parentPath,
+          fileName,
+        },
+        headers,
+      });
 
       if (result.status < 200 || result.status >= 300) {
         throw new Error(`Upload failed (${result.status}): ${result.body}`);
@@ -247,18 +239,14 @@ export const hbsApi = {
   ): Promise<string> {
     const activeToken = await getValidToken(sessionToken);
     const downloadUrl = `${serverUrl}/api/user/media/${encodeURIComponent(filePath)}?token=${encodeURIComponent(activeToken || '')}`;
-    const targetUri = `${documentDirectory}${fileName}`;
+    const destination = new File(Paths.document, fileName);
 
     const headers: Record<string, string> = authHeaders(activeToken);
 
-    const result = await downloadAsync(downloadUrl, targetUri, {
+    const downloadedFile = await File.downloadFileAsync(downloadUrl, destination, {
       headers,
     });
 
-    if (result.status < 200 || result.status >= 300) {
-      throw new Error(`Download failed (${result.status})`);
-    }
-
-    return result.uri;
+    return downloadedFile.uri;
   },
 };

@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import { File, Directory, Paths } from 'expo-file-system';
 import { appStorage } from './storage';
 
 const CACHE_KEY_PREFIX = 'hbs_expo_cache_';
@@ -11,15 +11,10 @@ export interface CachedData<T> {
 
 /**
  * High-performance Expo caching layer.
- * Combines memory cache, persistent appStorage, and FileSystem disk caching.
+ * Combines memory cache, persistent appStorage, and modern FileSystem disk caching.
  */
 class ExpoCacheManager {
   private memoryCache = new Map<string, CachedData<any>>();
-
-  private getCacheDirectory(): string | null {
-    const fsAny = FileSystem as any;
-    return fsAny.cacheDirectory || fsAny.Paths?.cache?.uri || null;
-  }
 
   /**
    * Set cached items in memory and persistent storage
@@ -40,14 +35,11 @@ class ExpoCacheManager {
       // ignore storage errors
     }
 
-    // 3. Optional disk file cache in FileSystem cacheDirectory for heavy payloads
+    // 3. Optional disk file cache in FileSystem cache directory
     try {
-      const cacheDir = this.getCacheDirectory();
-      if (cacheDir) {
-        const fileUri = `${cacheDir}hbs_cache_${encodeURIComponent(key)}.json`;
-        await FileSystem.writeAsStringAsync(fileUri, JSON.stringify(cacheEntry), {
-          encoding: FileSystem.EncodingType.UTF8,
-        });
+      if (Paths.cache) {
+        const file = new File(Paths.cache, `hbs_cache_${encodeURIComponent(key)}.json`);
+        await file.write(JSON.stringify(cacheEntry));
       }
     } catch {
       // ignore file system cache errors
@@ -82,16 +74,12 @@ class ExpoCacheManager {
       // fallback to disk
     }
 
-    // 3. Check FileSystem cacheDirectory
+    // 3. Check FileSystem cache directory using modern File API
     try {
-      const cacheDir = this.getCacheDirectory();
-      if (cacheDir) {
-        const fileUri = `${cacheDir}hbs_cache_${encodeURIComponent(key)}.json`;
-        const info = await FileSystem.getInfoAsync(fileUri);
-        if (info.exists) {
-          const rawDisk = await FileSystem.readAsStringAsync(fileUri, {
-            encoding: FileSystem.EncodingType.UTF8,
-          });
+      if (Paths.cache) {
+        const file = new File(Paths.cache, `hbs_cache_${encodeURIComponent(key)}.json`);
+        if (file.exists) {
+          const rawDisk = await file.text();
           const parsedDisk: CachedData<T> = JSON.parse(rawDisk);
           if (now - parsedDisk.timestamp <= maxAgeMs) {
             this.memoryCache.set(key, parsedDisk);
@@ -113,10 +101,11 @@ class ExpoCacheManager {
     this.memoryCache.delete(key);
     await appStorage.removeItem(`${CACHE_KEY_PREFIX}${key}`).catch(() => {});
     try {
-      const cacheDir = this.getCacheDirectory();
-      if (cacheDir) {
-        const fileUri = `${cacheDir}hbs_cache_${encodeURIComponent(key)}.json`;
-        await FileSystem.deleteAsync(fileUri, { idempotent: true });
+      if (Paths.cache) {
+        const file = new File(Paths.cache, `hbs_cache_${encodeURIComponent(key)}.json`);
+        if (file.exists) {
+          await file.delete();
+        }
       }
     } catch {
       // ignore

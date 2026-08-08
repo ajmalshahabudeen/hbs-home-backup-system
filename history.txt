@@ -184,6 +184,17 @@
 - Upgraded `safeMediaLibrary.ts` with automatic pagination loop (`hasNextPage`, `endCursor`) and updated `photos.tsx`, `backup.tsx`, and `backgroundSync.ts` to request up to 50,000 items.
 - Verified TypeScript compilation (`bun run typecheck`) with 0 errors.
 
+## Session: 2026-08-08 (Multi-File & Folder Upload Implementation Plan)
+- Analyzed request for multiple files and folder upload with automatic server folder creation.
+- Confirmed use of `expo-file-system/legacy` (`uploadAsync`) for streaming uploads.
+- Created `implementation_plan.md` artifact detailing complete migration from `expo-file-system/legacy` to modern SDK 57 `File`, `Directory`, and `Paths` API, with `File.pickFileAsync({ multipleFiles: true })` and `folderUploader.ts` batch engine.
+- Purged all `expo-file-system/legacy` references across `api.ts`, `mediaScanner.ts`, `dedupe.ts`, and `expoCache.ts`.
+- Implemented `folderUploader.ts` engine for parsing folder relative paths, automatically creating missing parent directories on the server via `hbsApi.createFolder`, and uploading each file to its exact destination.
+- Upgraded `UploadModal.tsx` with modern `File.pickFileAsync({ multipleFiles: true })` and options for Upload Folder, Upload Files, Upload Media, and New Folder.
+- Connected batch file and folder upload callbacks in `drive.tsx` and `photos.tsx`.
+- Verified TypeScript compilation (`bun run typecheck`) across workspace with 0 errors.
+- Verified server build (`bun run build --filter=server`) with 100% success.
+
 
 
 
