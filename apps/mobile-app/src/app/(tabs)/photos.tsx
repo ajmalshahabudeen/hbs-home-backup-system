@@ -345,10 +345,10 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 20,
-    bottom: 84,
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+    bottom: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000000',
@@ -357,5 +357,6 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 6,
   },
+
 
 });

@@ -458,5 +458,5 @@
 - Integrated `<CustomTabBar>` into `_layout.tsx` for Expo Router `<Tabs>`.
 - Overhauled `PhotoGrid.tsx` with collapsible top header on scroll down (`headerTranslateY` Reanimated offset), immediate restore on scroll up, and 3-second auto-restore timer when scrolling stops.
 - Transformed `PhotoGrid.tsx` into an edge-to-edge media wall with zero side screen padding (`paddingHorizontal: 0`) and minimal 1px hairline tile spacing (`gap: 1`).
-- Resolved animation hitching in `CustomTabBar.tsx` during tab transitions: replaced spring physics with cubic-bezier easing (`Easing.bezier(0.25, 0.1, 0.25, 1)`), wrapped items with native `LinearTransition.duration(220)` layout animations, memoized `TabBarItem` with `React.memo`, and isolated touch events with `pointerEvents`.
+- Aligned floating plus FAB button position in `photos.tsx` (`bottom: 24`, `width: 56`, `height: 56`) to match `drive.tsx` so the FAB sits on the exact same vertical level as the floating tab bar.
 - Verified workspace TypeScript compilation (`bun run typecheck`) with zero errors.
