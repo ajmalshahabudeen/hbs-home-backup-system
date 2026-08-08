@@ -52,6 +52,22 @@ export default function PhotosScreen() {
     };
   }, []);
 
+  const [hasMore, setHasMore] = useState<boolean>(true);
+  const [page, setPage] = useState<number>(1);
+  const allAssetsRef = useRef<PhotoMediaItem[]>([]);
+  const PAGE_SIZE = 40;
+
+  const loadMorePhotos = useCallback(() => {
+    if (!hasMore || loading) return;
+    const nextPage = page + 1;
+    const nextSlice = allAssetsRef.current.slice(0, nextPage * PAGE_SIZE);
+    setMediaList(nextSlice);
+    setPage(nextPage);
+    if (nextSlice.length >= allAssetsRef.current.length) {
+      setHasMore(false);
+    }
+  }, [hasMore, loading, page, setMediaList]);
+
   const fetchPhotos = useCallback(async () => {
     if (mediaList.length === 0) {
       await loadFromCache();
@@ -89,7 +105,7 @@ export default function PhotosScreen() {
           const localAssets = await safeMediaLibrary.getAssetsAsync({ first: 50000 });
           if (abortSignal.isCancelled || !isMounted.current) return;
 
-          // O(1) Map lookups instead of O(N^2) findIndex scanning
+          // O(1) Map lookups instead of O(N^2) scanning
           const serverIndexMap = new Map<string, number>();
           serverMedia.forEach((m, idx) => {
             serverIndexMap.set(m.name.toLowerCase(), idx);
@@ -101,7 +117,7 @@ export default function PhotosScreen() {
           for (const asset of localAssets) {
             if (abortSignal.isCancelled || !isMounted.current) return;
             count++;
-            if (count % 200 === 0) {
+            if (count % 250 === 0) {
               await yieldToUI();
             }
 
@@ -136,7 +152,11 @@ export default function PhotosScreen() {
           mergedList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
           if (!abortSignal.isCancelled && isMounted.current) {
-            setMediaList(mergedList);
+            allAssetsRef.current = mergedList;
+            const initialSlice = mergedList.slice(0, PAGE_SIZE);
+            setMediaList(initialSlice);
+            setPage(1);
+            setHasMore(mergedList.length > PAGE_SIZE);
           }
         } catch {
           // fallback
@@ -149,6 +169,7 @@ export default function PhotosScreen() {
       { id: 'fetch_photos_task', priority: 'high' }
     );
   }, [serverUrl, sessionToken, mediaList.length, loadFromCache, setMediaList, setLoading, setHasPermission]);
+
 
   useEffect(() => {
     yieldToInteractions().then(() => {
@@ -278,7 +299,10 @@ export default function PhotosScreen() {
         refreshing={loading && mediaList.length > 0}
         loading={loading && mediaList.length === 0}
         onImport={handlePickDeviceMedia}
+        onLoadMore={loadMorePhotos}
+        hasMore={hasMore}
       />
+
 
       <MediaViewerModal
         visible={!!selectedMedia}

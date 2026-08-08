@@ -3,11 +3,11 @@ import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   TouchableOpacity,
   Dimensions,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -16,10 +16,10 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
-  withSpring,
   interpolate,
   runOnJS,
 } from 'react-native-reanimated';
+import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
 import { useAppTheme } from '../context/ThemeContext';
 import { useTabBarStore } from '../stores/useTabBarStore';
@@ -40,6 +40,8 @@ interface PhotoGridProps {
   refreshing?: boolean;
   loading?: boolean;
   onImport?: () => void;
+  onLoadMore?: () => void;
+  hasMore?: boolean;
 }
 
 interface MediaGroup {
@@ -57,6 +59,8 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
   refreshing = false,
   loading = false,
   onImport,
+  onLoadMore,
+  hasMore = false,
 }) => {
   const { colors } = useAppTheme();
   const [columns, setColumns] = useState<number>(3);
@@ -75,7 +79,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
   const lastScrollY = useRef<number>(0);
   const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 2-Finger Pinch Gesture for column count changing (without any visual scale transforms)
+  // 2-Finger Pinch Gesture for column count changing (without visual scale transforms)
   const isPinchingRef = useRef<boolean>(false);
   const lastPinchTimeRef = useRef<number>(0);
 
@@ -121,10 +125,6 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
         }
       }
     });
-
-
-
-
 
   const startStopTimer = useCallback(() => {
     if (stopTimerRef.current) {
@@ -304,15 +304,19 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
       ) : (
         <GestureDetector gesture={pinchGesture}>
           <View style={{ flex: 1 }}>
-
-
-
-            <FlatList
+            <FlashList
               data={mediaGroups}
               keyExtractor={(item, idx) => item.title || `group_${idx}`}
-              refreshing={isPinchingRef.current ? false : refreshing}
-              onRefresh={isPinchingRef.current ? undefined : onRefresh}
 
+              refreshControl={
+                <RefreshControl
+                  refreshing={isPinchingRef.current ? false : refreshing}
+                  onRefresh={isPinchingRef.current ? undefined : onRefresh}
+                  progressViewOffset={65}
+                  tintColor={colors.primary}
+                  colors={[colors.primary]}
+                />
+              }
               onScroll={handleScroll}
               onScrollBeginDrag={() => {
                 if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
@@ -321,6 +325,8 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
               onMomentumScrollEnd={handleScrollEnd}
               scrollEventThrottle={16}
               contentContainerStyle={{ paddingTop: 48, paddingBottom: 110 }}
+              onEndReached={onLoadMore}
+              onEndReachedThreshold={0.5}
               renderItem={({ item: group }) => (
                 <View style={styles.groupSection}>
                   {group.title ? (
@@ -346,7 +352,6 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
                           ]}
                           activeOpacity={0.85}
                           onPress={() => handlePressMedia(item)}
-
                         >
                           <Image
                             source={{
@@ -384,9 +389,6 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
             />
           </View>
         </GestureDetector>
-
-
-
       )}
     </View>
   );

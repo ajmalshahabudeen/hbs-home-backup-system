@@ -9,7 +9,9 @@ import {
   ActivityIndicator,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  RefreshControl,
 } from 'react-native';
+
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../context/ThemeContext';
 import { useTabBarStore } from '../stores/useTabBarStore';
@@ -344,8 +346,16 @@ export const DriveFileList: React.FC<DriveFileListProps> = ({
         key={viewMode}
         keyExtractor={(item) => item.id}
         numColumns={viewMode === 'grid' ? 2 : 1}
-        refreshing={refreshing}
-        onRefresh={onRefresh}
+        refreshControl={
+
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            progressViewOffset={65}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
         onScroll={handleScroll}
         onScrollBeginDrag={() => {
           if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
@@ -361,7 +371,8 @@ export const DriveFileList: React.FC<DriveFileListProps> = ({
         maxToRenderPerBatch={25}
         windowSize={10}
         removeClippedSubviews={true}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
+        contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: 110 }}
+
         ListFooterComponent={
           hasMore ? (
             <View style={styles.loadingFooter}>

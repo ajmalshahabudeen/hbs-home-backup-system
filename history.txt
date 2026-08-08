@@ -460,10 +460,9 @@
 - Transformed `PhotoGrid.tsx` into an edge-to-edge media wall with zero side screen padding (`paddingHorizontal: 0`) and minimal 1px hairline tile spacing (`gap: 1`).
 - Built `useTabBarStore` Zustand store and integrated smooth translateY auto-hiding animation into `CustomTabBar.tsx` (`tabBarTranslateY = 120`) when scrolling down, restoring on scroll up or after 3s of scroll inactivity.
 - Removed manual column density toggle button from `FilterSortBar.tsx`.
-- Created global `useUploadModalStore.ts` to manage upload modal visibility across the application.
-- Created dedicated Google Photos inspired search screen `apps/mobile-app/src/app/search.tsx` with auto-focused input, suggestion chips, and unified search results across drive folders/files and photos/videos timeline, with full `MediaViewerModal` preview support.
-- Registered `/search` route in `apps/mobile-app/src/app/_layout.tsx`.
-- Updated `CustomTabBar.tsx` to group the Search (`🔍`) and Plus (`➕`) floating buttons into a sleek glassmorphic action capsule situated directly alongside the floating tab selector on the exact same horizontal axis and height (`56px`), with synchronized scroll-driven translateY hiding.
-- Removed standalone FAB buttons from `photos.tsx` and `drive.tsx`, connecting `<UploadModal>` to `useUploadModalStore`.
-- Streamlined `FilterSortBar.tsx` by removing the embedded search input box.
+- Installed `@shopify/flash-list` package via `bun add @shopify/flash-list`.
+- Integrated `FlashList` in `PhotoGrid.tsx` for 60fps component recycling across large media libraries (thousands of photos) without device performance impact or gesture lag.
+- Implemented on-demand batch pagination in `photos.tsx`: initial load fetches 40 photos into memory, requesting subsequent batches dynamically as the user scrolls near bottom (`onEndReached` / `onLoadMore`).
+- Configured `progressViewOffset={65}` on `RefreshControl` in `PhotoGrid.tsx` and `DriveFileList.tsx` so pull-to-refresh activity indicator renders cleanly below floating top headers instead of being hidden behind them.
+- Updated `DriveFileList.tsx` list row styling to edge-to-edge layout (`paddingHorizontal: 0`) matching `photos.tsx`.
 - Verified workspace TypeScript compilation (`bun run typecheck`) with zero errors.
