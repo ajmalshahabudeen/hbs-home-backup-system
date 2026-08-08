@@ -128,6 +128,13 @@
 - Updated `index.tsx` landing screen to display the official bundled HBS Cloud app icon image (`require('../../assets/images/icon.png')`) inside a glassmorphic logo container.
 - Verified TypeScript compilation (`bun run typecheck`) with zero errors.
 
+## Session: 2026-08-08 (Android Silent Background Upload & Battery Architecture Analysis)
+- Researched Android OS process lifecycle, battery optimization policies (Doze Mode, App Standby), and Expo background execution constraints.
+- Added Android background execution permissions to `app.json`: `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC`, `RECEIVE_BOOT_COMPLETED`, `WAKE_LOCK`.
+- Provided technical report detailing why swipe-killing an app terminates standard JS WebSockets/fetch, and how `WorkManager` (`expo-background-task`), `ForegroundService` (with persistent progress notification), and Firebase Cloud Messaging (FCM Push) enable silent, battery-efficient uploads when closed.
+- Verified TypeScript compilation (`bun run typecheck`) with zero errors.
+
+
 
 
 
