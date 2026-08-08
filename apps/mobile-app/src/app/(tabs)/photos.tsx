@@ -18,7 +18,9 @@ import { MediaViewerModal } from '../../components/MediaViewerModal';
 import { UploadModal } from '../../components/UploadModal';
 import { LanScannerModal } from '../../components/LanScannerModal';
 import { useMediaStore } from '../../stores/useMediaStore';
+import { useUploadModalStore } from '../../stores/useUploadModalStore';
 import { uploadFilesAndFolders, FileToUpload } from '../../utils/folderUploader';
+
 import { asyncTaskQueue, yieldToUI, yieldToInteractions } from '../../utils/asyncTaskQueue';
 
 export default function PhotosScreen() {
@@ -36,9 +38,11 @@ export default function PhotosScreen() {
   } = useMediaStore();
 
   const [selectedMedia, setSelectedMedia] = useState<PhotoMediaItem | null>(null);
-  const [showUploadModal, setShowUploadModal] = useState<boolean>(false);
+  const showUploadModal = useUploadModalStore((s) => s.showUploadModal);
+  const closeUploadModal = useUploadModalStore((s) => s.closeUploadModal);
   const [showScannerModal, setShowScannerModal] = useState<boolean>(false);
   const isMounted = useRef<boolean>(true);
+
 
   useEffect(() => {
     isMounted.current = true;
@@ -276,14 +280,6 @@ export default function PhotosScreen() {
         onImport={handlePickDeviceMedia}
       />
 
-      <TouchableOpacity
-        style={[styles.fab, { backgroundColor: colors.primary }]}
-        onPress={() => setShowUploadModal(true)}
-        activeOpacity={0.85}
-      >
-        <Ionicons name="add" size={30} color="#FFFFFF" />
-      </TouchableOpacity>
-
       <MediaViewerModal
         visible={!!selectedMedia}
         media={selectedMedia}
@@ -296,11 +292,12 @@ export default function PhotosScreen() {
 
       <UploadModal
         visible={showUploadModal}
-        onClose={() => setShowUploadModal(false)}
+        onClose={closeUploadModal}
         onUploadMedia={handleUploadMedia}
         onUploadBatch={handleUploadBatch}
         onCreateFolder={() => {}}
       />
+
 
       <LanScannerModal
         visible={showScannerModal}

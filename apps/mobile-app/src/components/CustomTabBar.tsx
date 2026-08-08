@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { View, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -12,6 +13,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useAppTheme } from '../context/ThemeContext';
 import { useTabBarStore } from '../stores/useTabBarStore';
+import { useUploadModalStore } from '../stores/useUploadModalStore';
 
 export interface CustomTabBarProps {
   state: any;
@@ -50,7 +52,6 @@ const TabBarItem: React.FC<{
   onLongPress: () => void;
   colors: any;
 }> = React.memo(({ routeName, isFocused, onPress, onLongPress, colors }) => {
-  // Shared value 1 when visible (inactive tab), 0 when hidden (active tab)
   const visibility = useSharedValue(isFocused ? 0 : 1);
 
   useEffect(() => {
@@ -114,8 +115,10 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
 }) => {
   const { colors, isDark } = useAppTheme();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const isTabBarVisible = useTabBarStore((s) => s.isTabBarVisible);
   const setTabBarVisible = useTabBarStore((s) => s.setTabBarVisible);
+  const openUploadModal = useUploadModalStore((s) => s.openUploadModal);
 
   const tabBarTranslateY = useSharedValue(0);
 
@@ -134,19 +137,22 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
   });
 
   const bottomOffset = Math.max(insets.bottom, 12) + 8;
+  const glassBg = isDark ? 'rgba(20, 20, 28, 0.88)' : 'rgba(255, 255, 255, 0.92)';
+  const glassBorder = isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)';
 
   return (
     <Animated.View
       pointerEvents="box-none"
       style={[styles.tabBarContainer, animatedContainerStyle, { bottom: bottomOffset }]}
     >
+      {/* Floating Tab Selector Bar */}
       <Animated.View
         layout={LinearTransition.duration(220)}
         style={[
           styles.floatingBar,
           {
-            backgroundColor: isDark ? 'rgba(20, 20, 28, 0.88)' : 'rgba(255, 255, 255, 0.92)',
-            borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)',
+            backgroundColor: glassBg,
+            borderColor: glassBorder,
           },
         ]}
       >
@@ -185,6 +191,45 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
           );
         })}
       </Animated.View>
+
+      {/* Floating Action Capsule (Search + Plus Buttons) grouped alongside Tab Selector */}
+      <Animated.View
+        layout={LinearTransition.duration(220)}
+        style={[
+          styles.actionCapsule,
+          {
+            backgroundColor: glassBg,
+            borderColor: glassBorder,
+          },
+        ]}
+      >
+        {/* Search Icon Button */}
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Search"
+          onPress={() => router.push('/search')}
+          activeOpacity={0.75}
+          style={styles.actionBtn}
+        >
+          <View style={[styles.iconWrapper, { backgroundColor: colors.surfaceVariant + '40' }]}>
+            <Ionicons name="search-outline" size={21} color={colors.primary} />
+          </View>
+        </TouchableOpacity>
+
+        
+        {/* Plus Upload Floating Button */}
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Upload"
+          onPress={openUploadModal}
+          activeOpacity={0.8}
+          style={styles.actionBtn}
+        >
+          <View style={[styles.iconWrapper, { backgroundColor: colors.primary }]}>
+            <Ionicons name="add" size={24} color="#FFFFFF" />
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
     </Animated.View>
   );
 };
@@ -194,8 +239,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 20,
     zIndex: 999,
   },
   floatingBar: {
@@ -206,6 +253,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderWidth: 1,
+    height: 56,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -217,6 +265,37 @@ const styles = StyleSheet.create({
         elevation: 8,
       },
     }),
+  },
+  actionCapsule: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 32,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderWidth: 1,
+    height: 56,
+    gap: 15,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.2,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+  },
+  actionBtn: {
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  separator: {
+    width: 1,
+    height: 22,
   },
   tabItem: {
     height: 48,

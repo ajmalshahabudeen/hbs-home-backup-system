@@ -24,8 +24,9 @@ export interface CategoryItem {
 }
 
 interface FilterSortBarProps {
-  searchQuery: string;
-  onSearchChange: (text: string) => void;
+  searchQuery?: string;
+  onSearchChange?: (text: string) => void;
+
   selectedCategory: string;
   onCategoryChange?: (category: string) => void;
   onCategorySelect?: (category: string) => void;
@@ -91,22 +92,6 @@ export const FilterSortBar: React.FC<FilterSortBarProps> = ({
     <View style={styles.container}>
       {/* Compact Single-Row Header Bar */}
       <View style={styles.barRow}>
-        {/* Search Input Box */}
-        <View style={[styles.searchBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Ionicons name="search-outline" size={15} color={colors.textSecondary} style={styles.searchIcon} />
-          <TextInput
-            style={[styles.searchInput, { color: colors.text }]}
-            placeholder={totalCount !== undefined ? `Search ${totalCount} items...` : "Search..."}
-            placeholderTextColor={colors.textSecondary}
-            value={searchQuery}
-            onChangeText={onSearchChange}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => onSearchChange('')} style={styles.clearBtn}>
-              <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
-            </TouchableOpacity>
-          )}
-        </View>
 
         {/* Category Dropdown Pill */}
         <TouchableOpacity

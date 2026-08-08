@@ -36,6 +36,8 @@ function AppContent() {
               <Stack.Screen name="(auth)/login" />
               <Stack.Screen name="(auth)/register" />
               <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="search" options={{ headerShown: false, animation: 'fade' }} />
+
             </Stack>
           </AuthProvider>
         </ServerProvider>
