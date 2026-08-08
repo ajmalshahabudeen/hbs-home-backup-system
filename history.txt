@@ -175,6 +175,15 @@
 - Verified TypeScript compilation (`bun run typecheck`) across workspace with 0 errors.
 - Verified server build (`bun run build --filter=server`) with 100% success.
 
+## Session: 2026-08-08 (Expo Media Library & Storage Architecture Audit)
+- Analyzed user query regarding `expo-media-library` usage for device gallery & folder access.
+- Confirmed `expo-media-library` (`^57.0.3`) is installed and configured in `app.json` plugins (`expo-media-library` with photos/save permissions).
+- Audited multi-engine discovery architecture in `safeMediaLibrary.ts` and `mediaScanner.ts` combining OS MediaStore queries (`MediaLibrary.getAssetsAsync` / `MediaLibrary.getAlbumsAsync`) with fallback storage directory scanning (`DCIM`, `Pictures`, `WhatsApp`, `Download`).
+- Diagnosed root cause of discrepancy between album total count (3,968 items) and gallery/backup count (1,000 items):
+  `safeMediaLibrary.getAssetsAsync` previously only fetched the first page (capped at 1,000 items default) and stopped without paginating further.
+- Upgraded `safeMediaLibrary.ts` with automatic pagination loop (`hasNextPage`, `endCursor`) and updated `photos.tsx`, `backup.tsx`, and `backgroundSync.ts` to request up to 50,000 items.
+- Verified TypeScript compilation (`bun run typecheck`) with 0 errors.
+
 
 
 

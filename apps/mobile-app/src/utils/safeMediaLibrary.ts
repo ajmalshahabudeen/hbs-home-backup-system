@@ -93,7 +93,7 @@ export const safeMediaLibrary = {
 
     // 1. Fetch all assets to compute exact real item counts across categories
     try {
-      const allAssets = await safeMediaLibrary.getAssetsAsync({ first: 2000 });
+      const allAssets = await safeMediaLibrary.getAssetsAsync({ first: 50000 });
       if (allAssets.length > 0) {
         albumMap.set('camera_roll', {
           id: 'camera_roll',
@@ -166,8 +166,9 @@ export const safeMediaLibrary = {
 
   getAssetsAsync: async (options?: { album?: string; first?: number; after?: string }): Promise<SafeAsset[]> => {
     const combinedMap = new Map<string, SafeAsset>();
+    const maxAssetsLimit = options?.first || 50000;
 
-    // Engine 1: Query OS MediaStore API via expo-media-library
+    // Engine 1: Query OS MediaStore API via expo-media-library with paginated loop
     if (MediaLibraryModule) {
       try {
         let { granted } = await MediaLibraryModule.getPermissionsAsync();
@@ -177,21 +178,29 @@ export const safeMediaLibrary = {
         }
 
         if (granted) {
-          const queryParams: any = {
-            first: options?.first || 1000,
-            sortBy: ['creationTime'],
-          };
+          let hasNextPage = true;
+          let afterCursor: string | undefined = options?.after;
 
-          if (options?.after) {
-            queryParams.after = options.after;
-          }
+          while (hasNextPage && combinedMap.size < maxAssetsLimit) {
+            const pageSize = Math.min(1000, maxAssetsLimit - combinedMap.size);
+            const queryParams: any = {
+              first: pageSize,
+              sortBy: ['creationTime'],
+            };
 
-          if (options?.album) {
-            queryParams.album = options.album;
-          }
+            if (afterCursor) {
+              queryParams.after = afterCursor;
+            }
 
-          const res = await MediaLibraryModule.getAssetsAsync(queryParams);
-          if (res && res.assets && Array.isArray(res.assets)) {
+            if (options?.album) {
+              queryParams.album = options.album;
+            }
+
+            const res = await MediaLibraryModule.getAssetsAsync(queryParams);
+            if (!res || !res.assets || !Array.isArray(res.assets) || res.assets.length === 0) {
+              break;
+            }
+
             for (const a of res.assets) {
               const item: SafeAsset = {
                 id: String(a.id),
@@ -204,6 +213,14 @@ export const safeMediaLibrary = {
               };
               combinedMap.set(item.uri.toLowerCase(), item);
             }
+
+            hasNextPage = !!res.hasNextPage;
+            afterCursor = res.endCursor;
+
+            // Break if options explicitly capped page without paginating all
+            if (options?.first && options.first <= 1000) {
+              break;
+            }
           }
         }
       } catch (e) {
@@ -213,7 +230,7 @@ export const safeMediaLibrary = {
 
     // Engine 2: Deep scan internal and external storage directories via FileSystem
     try {
-      const storageAssets = await scanDeviceStorageForMedia(options?.first || 1000);
+      const storageAssets = await scanDeviceStorageForMedia(maxAssetsLimit);
       for (const item of storageAssets) {
         if (!combinedMap.has(item.uri.toLowerCase())) {
           combinedMap.set(item.uri.toLowerCase(), item);

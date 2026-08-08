@@ -71,7 +71,7 @@ export default function PhotosScreen() {
       }
 
       // 3. Fetch all local camera roll media files (photos & videos) from mobile device
-      const localAssets = await safeMediaLibrary.getAssetsAsync({ first: 1000 });
+      const localAssets = await safeMediaLibrary.getAssetsAsync({ first: 50000 });
       const serverNameSet = new Set(serverMedia.map((m) => m.name.toLowerCase()));
 
       const mergedList: PhotoMediaItem[] = [...serverMedia];

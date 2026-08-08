@@ -144,7 +144,7 @@ export default function BackupScreen() {
     }
 
     try {
-      const assets = await safeMediaLibrary.getAssetsAsync({ first: 1000 });
+      const assets = await safeMediaLibrary.getAssetsAsync({ first: 50000 });
       if (!assets || assets.length === 0) {
         Alert.alert('No Media Found', 'No photos or videos found on your device to sync.');
         return;

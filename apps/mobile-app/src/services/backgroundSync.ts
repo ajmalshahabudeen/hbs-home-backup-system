@@ -97,7 +97,7 @@ export async function getEnabledSyncAssets(): Promise<SafeAsset[]> {
   if (!config.autoSyncEnabled) {
     return [];
   }
-  return safeMediaLibrary.getAssetsAsync({ first: 1000 });
+  return safeMediaLibrary.getAssetsAsync({ first: 50000 });
 }
 
 export async function syncPhotosNow(
@@ -116,7 +116,7 @@ export async function syncPhotosNow(
     return { synced: 0, skipped: 0, total: 0 };
   }
 
-  const assets = await safeMediaLibrary.getAssetsAsync({ first: 1000 });
+  const assets = await safeMediaLibrary.getAssetsAsync({ first: 50000 });
   if (!assets || assets.length === 0) {
     return { synced: 0, skipped: 0, total: 0 };
   }
