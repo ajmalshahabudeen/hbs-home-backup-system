@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../../context/ThemeContext';
 import { useServer } from '../../context/ServerContext';
 import { useAuth } from '../../context/AuthContext';
-import { hbsApi, BackupFileItem } from '../../services/api';
+import { hbsApi, BackupFileItem, PhotoMediaItem } from '../../services/api';
 import { DriveFileList } from '../../components/DriveFileList';
 import { UploadModal } from '../../components/UploadModal';
 import { MediaViewerModal } from '../../components/MediaViewerModal';
@@ -31,19 +31,7 @@ export default function DriveScreen() {
 
   const [showUploadModal, setShowUploadModal] = useState<boolean>(false);
   const [showScannerModal, setShowScannerModal] = useState<boolean>(false);
-  const [previewMedia, setPreviewMedia] = useState<{
-    id: string;
-    userId: string;
-    path: string;
-    name: string;
-    parentPath: string;
-    mimeType: string | null;
-    size: number;
-    createdAt: string;
-    updatedAt: string;
-    isVideo: boolean;
-    url: string;
-  } | null>(null);
+  const [previewMedia, setPreviewMedia] = useState<PhotoMediaItem | null>(null);
 
   const fetchFiles = useCallback(async () => {
     if (!serverUrl) return;
@@ -67,12 +55,24 @@ export default function DriveScreen() {
     fetchFiles();
   }, [fetchFiles]);
 
+  const driveMediaList: PhotoMediaItem[] = displayFiles
+    .filter((f) => !f.isDir && (f.mimeType?.startsWith('image/') || f.mimeType?.startsWith('video/')))
+    .map((f) => ({
+      ...f,
+      isVideo: f.mimeType?.startsWith('video/') || false,
+      url: `${serverUrl}/api/files/download?path=${encodeURIComponent(f.path)}&token=${encodeURIComponent(sessionToken || '')}`,
+      isLocalOnly: false,
+      isBackedUp: true,
+    }));
+
   const handleOpenFile = (file: BackupFileItem) => {
     if (file.mimeType?.startsWith('image/') || file.mimeType?.startsWith('video/')) {
       setPreviewMedia({
         ...file,
         isVideo: file.mimeType.startsWith('video/'),
         url: `${serverUrl}/api/files/download?path=${encodeURIComponent(file.path)}&token=${encodeURIComponent(sessionToken || '')}`,
+        isLocalOnly: false,
+        isBackedUp: true,
       });
     }
   };
@@ -158,7 +158,22 @@ export default function DriveScreen() {
       <MediaViewerModal
         visible={!!previewMedia}
         media={previewMedia}
+        mediaList={driveMediaList}
         onClose={() => setPreviewMedia(null)}
+        onDelete={(item) => {
+          handleDeleteFile({
+            id: item.id,
+            userId: item.userId,
+            path: item.path,
+            name: item.name,
+            parentPath: item.parentPath,
+            isDir: false,
+            mimeType: item.mimeType,
+            size: item.size,
+            createdAt: item.createdAt,
+            updatedAt: item.updatedAt,
+          });
+        }}
       />
 
       <LanScannerModal

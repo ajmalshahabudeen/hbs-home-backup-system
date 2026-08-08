@@ -5,13 +5,14 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Image,
   Alert,
   FlatList,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useAppTheme } from '../context/ThemeContext';
 import { PhotoMediaItem } from '../services/api';
@@ -28,13 +29,52 @@ interface MediaViewerModalProps {
   onSaveToDevice?: (media: PhotoMediaItem) => void;
 }
 
-const VideoPlayerComponent: React.FC<{ url: string }> = ({ url }) => {
+const ActiveVideoPlayer: React.FC<{ url: string }> = ({ url }) => {
   const player = useVideoPlayer(url, (p) => {
     p.loop = true;
     p.play();
   });
 
-  return <VideoView style={styles.fullVideo} player={player} />;
+  return (
+    <VideoView
+      style={styles.fullVideo}
+      player={player}
+      nativeControls={true}
+      startsPictureInPictureAutomatically={false}
+      surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
+    />
+  );
+};
+
+const VideoPlayerComponent: React.FC<{ url: string; posterUri?: string; isActive: boolean }> = ({
+  url,
+  posterUri,
+  isActive,
+}) => {
+  if (!isActive || !url) {
+    return (
+      <View style={styles.posterContainer}>
+        {posterUri ? (
+          <Image
+            source={{ uri: posterUri }}
+            style={styles.fullImage}
+            contentFit="contain"
+            cachePolicy="memory-disk"
+            transition={200}
+          />
+        ) : (
+          <View style={styles.videoPlaceholder}>
+            <Ionicons name="film-outline" size={48} color="#9AA0A6" />
+          </View>
+        )}
+        <View style={styles.playOverlay}>
+          <Ionicons name="play-circle" size={54} color="rgba(255,255,255,0.85)" />
+        </View>
+      </View>
+    );
+  }
+
+  return <ActiveVideoPlayer url={url} />;
 };
 
 export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
@@ -98,22 +138,6 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
     ]);
   };
 
-  const handlePrev = () => {
-    if (currentIndex > 0) {
-      const newIdx = currentIndex - 1;
-      setCurrentIndex(newIdx);
-      listRef.current?.scrollToIndex({ index: newIdx, animated: true });
-    }
-  };
-
-  const handleNext = () => {
-    if (currentIndex < items.length - 1) {
-      const newIdx = currentIndex + 1;
-      setCurrentIndex(newIdx);
-      listRef.current?.scrollToIndex({ index: newIdx, animated: true });
-    }
-  };
-
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <SafeAreaView style={styles.overlay}>
@@ -172,6 +196,10 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
             pagingEnabled
             showsHorizontalScrollIndicator={false}
             keyExtractor={(item, index) => `${item.id}_${index}`}
+            windowSize={3}
+            initialNumToRender={1}
+            maxToRenderPerBatch={2}
+            removeClippedSubviews={true}
             getItemLayout={(_, index) => ({
               length: SCREEN_WIDTH,
               offset: SCREEN_WIDTH * index,
@@ -183,33 +211,30 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                 setCurrentIndex(newIdx);
               }
             }}
-            renderItem={({ item }) => (
-              <View style={[styles.slide, { width: SCREEN_WIDTH }]}>
-                {item.isVideo ? (
-                  <VideoPlayerComponent url={item.url} />
-                ) : (
-                  <Image
-                    source={{ uri: item.url }}
-                    style={styles.fullImage}
-                    resizeMode="contain"
-                  />
-                )}
-              </View>
-            )}
+            renderItem={({ item, index }) => {
+              const isActive = index === currentIndex;
+              const mediaUri = item.localUri || item.url;
+              return (
+                <View style={[styles.slide, { width: SCREEN_WIDTH }]}>
+                  {item.isVideo ? (
+                    <VideoPlayerComponent
+                      url={mediaUri}
+                      posterUri={item.localUri || item.thumbUrl || item.url}
+                      isActive={isActive}
+                    />
+                  ) : (
+                    <Image
+                      source={{ uri: mediaUri }}
+                      style={styles.fullImage}
+                      contentFit="contain"
+                      cachePolicy="memory-disk"
+                      transition={200}
+                    />
+                  )}
+                </View>
+              );
+            }}
           />
-
-          {/* Swipe Left / Right Navigation Overlay Controls */}
-          {currentIndex > 0 && (
-            <TouchableOpacity style={[styles.navBtn, styles.prevBtn]} onPress={handlePrev}>
-              <Ionicons name="chevron-back" size={28} color="#FFFFFF" />
-            </TouchableOpacity>
-          )}
-
-          {currentIndex < items.length - 1 && (
-            <TouchableOpacity style={[styles.navBtn, styles.nextBtn]} onPress={handleNext}>
-              <Ionicons name="chevron-forward" size={28} color="#FFFFFF" />
-            </TouchableOpacity>
-          )}
         </View>
 
         {/* Bottom Details Footer Bar */}
@@ -302,22 +327,21 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  navBtn: {
-    position: 'absolute',
-    top: '45%',
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  posterContainer: {
+    width: '100%',
+    height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 20,
+    position: 'relative',
   },
-  prevBtn: {
-    left: 12,
+  videoPlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  nextBtn: {
-    right: 12,
+  playOverlay: {
+    position: 'absolute',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   footerBar: {
     paddingHorizontal: 20,

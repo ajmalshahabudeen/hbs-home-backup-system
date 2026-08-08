@@ -208,6 +208,201 @@
 - Verified server build (`bun run build --filter=server`) with 100% success.
 - Installed `await-lock@3.0.0` to resolve Metro bundler resolution error for `expo-sqlite` devtools client.
 
+- Fixed `Cannot find native module 'ExpoMediaLibraryNext'` error in Expo Go:
+  1. Refactored `backup.tsx` to use `expo-image-picker` (`ImagePicker.launchImageLibraryAsync`) which is natively supported out of the box in Expo Go.
+- Fixed `AsyncStorageError: Native module is null`:
+  1. Created `appStorage` utility (`src/utils/storage.ts`) with safe in-memory fallback trapping around `AsyncStorage`.
+  2. Updated `ThemeContext.tsx`, `ServerContext.tsx`, and `AuthContext.tsx` to consume `appStorage` safely without throwing unhandled native module null errors.
+- Verified TypeScript compilation across workspace.
+- Created implementation plan for safe area insets and status/navigation bar overlap fixes across Expo mobile app.
+- Fully implemented `SafeAreaProvider`, migrated all screens and modals to `react-native-safe-area-context`, and updated `tabBarStyle` and bottom sheets with dynamic safe area insets.
+- Verified TypeScript compilation with zero errors (`bunx tsc --noEmit`).
+
+## Session: 2026-08-07
+- Analyzed request for major mobile app feature upgrades: search/sort/groupby/filter, folder selection auto-sync, deduplication engine, reanimated animations, battery optimization, background sync, local notifications, friendly Android permission modals, and modern glassmorphic non-traditional UI overhaul.
+- Researched existing `apps/mobile-app` codebase and server API routes (`/api/user/upload`, `/api/user/files`, `/api/user/photos`).
+- Formulated comprehensive Implementation Plan covering deduplication preflight checks, battery-aware background tasks, search/sort/filter components, permission explanation cards, and glassmorphic UI components.
+- Added server preflight deduplication API route in `apps/server/app/api/user/upload/check/route.ts`.
+- Installed dependencies via Bun: `expo-notifications`, `expo-background-fetch`, `expo-task-manager`, `expo-crypto`, `expo-linear-gradient`, `expo-battery`, `expo-blur`.
+- Built deduplication hash calculator & preflight utility (`src/utils/dedupe.ts`).
+- Built unified permission manager & OS app settings deep-linking utility (`src/utils/permissions.ts`).
+- Built battery-aware background sync service with push notifications (`src/services/backgroundSync.ts`).
+- Created reusable glassmorphic UI container (`src/components/ui/GlassCard.tsx`).
+- Created permission rationale modal (`src/components/PermissionModal.tsx`).
+- Created interactive filter, search, multi-field sort & groupby header component (`src/components/FilterSortBar.tsx`).
+- Created camera roll folder manager modal (`src/components/FolderSelectorModal.tsx`).
+- Upgraded `PhotoGrid.tsx` and `DriveFileList.tsx` with search, sort (Date, Name, Size, Type), filter, groupby (Day, Month, Year, Category), grid/list toggle, and reanimated card entrance animations.
+- Redesigned `backup.tsx` and `settings.tsx` screens with auto-sync folder management, battery saver optimization toggle, preflight deduplication stats, and permissions diagnostic widget.
+- Verified TypeScript compilation across workspace (`bun run typecheck`) with zero errors.
+- Ran `bun run db:generate` in `packages/db` to generate fresh Prisma client types after dependency installation.
+- Created `safeNotifications.ts` and `safeMediaLibrary.ts` wrappers using conditional environment detection (`ExecutionEnvironment.StoreClient` / `appOwnership === 'expo'`) to prevent `expo-notifications` push token warning and `ExpoMediaLibraryNext` missing native module crashes in Expo Go while maintaining full functionality in standalone builds.
+- Configured `"usesCleartextTraffic": true` and Android network permissions in `app.json` to fix Android 9+ security policy blocking unencrypted HTTP connections over LAN (`http://192.168.1.100:38480`) in production/standalone APK builds.
+- Upgraded `ServerContext.tsx` with persistent URL storage, 5000ms LAN health check timeout, fast-path candidate scanning for `192.168.1.100`, and IPv4 subnet parsing.
+- Installed `expo-build-properties` via Bun and configured `usesCleartextTraffic: true` under `"plugins"` in `app.json` to resolve Expo config schema validation warning while enforcing cleartext HTTP over LAN.
+- Executed full implementation plan resolving all 7 mobile & server issues:
+  1. Upgraded mobile uploads to `uploadAsync` (`expo-file-system/legacy`) and added fallback multipart parser to `apps/server/app/api/user/upload/route.ts`.
+  2. Created cross-platform `InputDialogModal` replacing iOS-only `Alert.prompt` for folder creation and file renaming on Android.
+  3. Upgraded `photos.tsx` with Google Photos hybrid timeline grid, cloud status badges on thumbnails, `expo-video` video player, and "Upload to Server" / "Save to Device" actions.
+  4. Scoped auto-sync in `backgroundSync.ts` strictly to user-enabled albums (`selectedAlbums`).
+  5. Enhanced `FolderSelectorModal` with permissions handling and fallback album loading on Android.
+  6. Updated `settings.tsx` with dynamic `formatStorage` utility (`MB`, `GB`, `KB`).
+  7. Created `PermissionChecker` startup component mounted in `_layout.tsx` to evaluate permissions on app launch.
+- Added automatic self-healing retry logic to `run.bat` and `run.sh`: if `docker compose up` fails, launcher runs `docker builder prune -af` and `docker compose build --no-cache` followed by `docker compose up -d --force-recreate`.
+- Diagnosed root cause of `archive/tar: invalid tar header`: removed accidental `G` folder created by Windows path mapping in workspace root and added `G*`, `.run-bat*`, `hbs-*.json` to `.dockerignore`.
+- Fixed thumbnail cache files (`.hbs-thumb.jpg`) showing up as separate media items:
+  1. Updated `apps/server/app/api/user/photos/route.ts`, `api/user/files/route.ts`, and `api/user/stats/route.ts` with `NOT: [{ name: { contains: ".hbs-thumb" } }, { path: { contains: ".hbs-thumb" } }]` so generated disk thumbnail files are excluded from API results and storage metrics.
+  2. Updated `photos.tsx` in `apps/mobile-app` to filter out `.hbs-thumb` files on client side as an extra safety net.
+  3. Verified TypeScript compilation (`bun run typecheck`) with zero errors.
+
+## Session: 2026-08-07 (Header UI Redesign Completed)
+- Researched modern 2026 mobile app header design trends (Floating Glassmorphic Capsule, Dynamic Server Pulse Indicator, Linear Gradient Brand Badges, Theme Toggle Capsules).
+- Redesigned `apps/mobile-app/src/components/Header.tsx` into a floating glass capsule UI with:
+  1. `BlurView` frosted glass backdrop with subtle border highlights and drop shadows.
+  2. Vibrant multi-stop `LinearGradient` brand icon badge.
+  3. Animated server live pulse dot (continuous looping scale & opacity animation when connected to LAN server) and IP text capsule.
+  4. Interactive theme mode pill button (`sunny` / `moon` / `desktop-outline`).
+  5. Gradient avatar ring for user profile.
+  6. Embedded dynamic search input capsule.
+- Upgraded `GlassCard.tsx` with smart style splitting (forwarding inner flex/padding styles to inner container while preserving outer bounds & header-matching surface colors).
+- Aligned `Auto-Sync Folders` card in `backup.tsx` and `HBS LAN Server Settings` card in `settings.tsx` with the new Header design (vibrant `LinearGradient` squircle icon badges, centered vertical title alignment, and glass chevron action pills).
+- Implemented automatic LAN IP scanning on app startup in `ServerContext.tsx` if saved server URL is offline/unreachable:
+  1. Tests saved/default server URL first; if reachable, connects immediately.
+  2. If unreachable, automatically sweeps LAN subnet & fast candidate IP list (`192.168.1.100`, subnet `.100`, `.101`, `.50`, etc.).
+- Updated `ServerContext.tsx` LAN scanning to connect immediately on the first discovered server IP (`autoConnectOnFirst`):
+  1. Concurrently tests fast candidates (`192.168.1.100`, subnet `.100`, `.101`, `.50`, etc.).
+  2. As soon as the VERY FIRST active server responds (within ~30-50ms), sets `serverUrlState`, persists to `appStorage`, marks `isConnected: true`, and exits scan early.
+  3. Eliminates waiting for all 254 subnet IPs to finish scanning, resulting in ultra-fast startup connection times.
+- Updated `photos.tsx` and `safeMediaLibrary.ts` to automatically request media permissions on launch and fetch all mobile device photos & videos (up to 500 items) like a native gallery app, automatically merging local & cloud items into a unified timeline.
+- Created `mediaScanner.ts` deep device storage scanner that scans internal and external storage directories (`DCIM`, `Pictures`, `Download`, `WhatsApp`, `Movies`, `documentDirectory`, `cacheDirectory`) for real photos & videos via `FileSystem`.
+- Integrated `mediaScanner.ts` into `safeMediaLibrary.ts` as a dual-engine discovery system combining OS MediaStore API and deep storage filesystem scanning.
+- Completely removed all demo sample photos and videos (`sample_1`, `sample_2`, `sample_3` / Unsplash / Google Cloud links) and fallback demo albums from `safeMediaLibrary.ts`.
+- Fixed native media library access in `app.json` by adding the `"expo-media-library"` plugin (`photosPermission`, `savePhotosPermission`, `isAccessMediaLocationEnabled`) and adding `READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`, `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO` under `android.permissions`.
+- Fixed permission status bug in `safeMediaLibrary.ts` (was incorrectly returning `granted: true` when ungranted/uninitialized, blocking native OS permission dialogs).
+- Enhanced `backup.tsx` with live sync progress tracking (current file name, step status, percentage badge, and smooth progress bar) and added a dedicated **Auto-Sync Selected Folders Now** engine (`handleStartAutoSync`).
+- Integrated background process sync (`BACKGROUND_SYNC_TASK` via `BackgroundTask.registerTaskAsync` / `TaskManager`) in `backgroundSync.ts` and `backup.tsx` to automatically run camera roll photo & video sync even when the app is closed or minimized.
+- Added progress notifications (`sendLocalSyncNotification`) with step & percentage progress updates during sync operations, and added a user toggle switch **Sync Progress Notifications** (`showSyncNotifications`) in `backup.tsx` preferences.
+- Implemented 5 curated color accent palettes (`Amber Gold`, `Ocean Blue`, `Emerald Mint`, `Violet Plum`, `Rose Amber`) in `theme.ts` with low-contrast, comfortable tones across both Light and Dark modes.
+- Added persistent palette storage (`hbs_app_color_palette` via `appStorage`) and dynamic theme state in `ThemeContext.tsx` (`paletteKey`, `setPaletteKey`).
+- Fixed false duplicate upload bug on server (`apps/server/app/api/user/upload/check/route.ts`) by targeting the exact file path (`targetPath = reqPath/fileName`) and excluding directory rows (`isDir: false`).
+- Updated `dedupe.ts` (`getFileChecksum`, `checkFileDuplicate`), `backup.tsx`, and `backgroundSync.ts` to compute unique SHA-256 digests (`fileName_fileSize_creationTime_base64Sample`), preserve original file names, and pass full file target paths (`MobileBackup/fileName`) for accurate preflight deduplication.
+- Unified all mobile manual uploads and auto-sync background processes under a single parent folder `MobileBackups` across `api.ts`, `backup.tsx`, `backgroundSync.ts`, and `dedupe.ts`.
+- Created `syncTracker.ts` persistent sync progress manager (`hbs_active_sync_state_v1`) to persist active sync state (`isSyncing`, `totalToSync`, `syncedCount`, `currentFileName`, `syncStepMessage`) across app closes, restarts, and background tasks.
+- Subscribed `backup.tsx` Hero progress UI and `backgroundSync.ts` to `syncTracker` event broadcasts, ensuring live progress bars and item progress remain visible whenever the app is re-opened without restarting sync.
+- Verified TypeScript compilation across workspace (`bun run typecheck`) with zero errors.
+
+## Session: 2026-08-08 (Server Files Dashboard Overhaul)
+- Added `zustand` and `@cyntler/react-doc-viewer` to `apps/server/package.json` dependencies and updated `bun.lock`.
+- Added `preview=1` query parameter support in `apps/server/app/api/admin/files/route.ts` with `Content-Disposition: inline` and expanded MIME type resolution.
+- Built persistent Zustand store `apps/server/lib/stores/use-files-store.ts` to save user dropdown selection, path navigation, table page size, sort state, and view mode (table vs grid).
+- Enhanced `apps/server/components/data-table.tsx` with controlled sort, page size, and row interaction callbacks while maintaining full backward compatibility.
+- Built interactive multi-format `FilePreviewModal` (`apps/server/components/file-preview-modal.tsx`) supporting images, videos, audio, text/code (with copy button and line stats), PDFs, and documents (`@cyntler/react-doc-viewer`).
+- Refactored `apps/server/app/dashboard/files/page.tsx` with `DataTable` (matching `logs` implementation), Grid View switcher, Reset preferences action, and File Preview modal.
+- Verified local and Docker Next.js builds (`bun run build --filter=server`) with 100% success and zero errors.
+
+## Session: 2026-08-08 (Dynamic Progress Notification Overhaul)
+- Refactored notification system in `apps/mobile-app` to keep a SINGLE dynamic, ongoing notification in the notification drawer during file uploads (similar to Chrome downloads).
+- Added `SYNC_NOTIFICATION_ID = 'hbs_active_sync_progress_notification'` and configured quiet notification channel `hbs-sync-progress` (`AndroidImportance.LOW`, no vibration, silent progress updates, non-swipeable `sticky: true` while active).
+- Added completion notification channel `hbs-sync-complete` (`AndroidImportance.DEFAULT`, sound enabled) to alert when photo backup finishes.
+- Integrated `updateSyncProgressNotification` and `finishSyncNotification` directly into `syncTracker.ts` to automatically handle dynamic progress updates across manual, auto, and background sync engines.
+- Added intelligent notification update throttling (max once per 350ms) to ensure smooth progress updates without flooding the OS bridge.
+- Removed redundant multi-notification calls (firing every 10 items) from `backup.tsx` and `backgroundSync.ts`, preventing notification area clutter.
+- Verified workspace TypeScript compilation (`bun run typecheck`) with zero errors.
+
+## Session: 2026-08-08 (Compact Gallery Toolbar UI Overhaul)
+- Overhauled `photos.tsx`, `PhotoGrid.tsx`, and `FilterSortBar.tsx` into a single, ultra-compact 38px control bar with dropdowns, saving ~135px of vertical screen space for media display.
+- Replaced 42px scrolling category chips row with a compact `All Media ▾` / `Photos ▾` / `Videos ▾` dropdown pill and full category picker modal.
+- Replaced 36px separate item count & column toggle row with an inline `2x` / `3x` / `4x` density switcher pill and integrated search placeholder counter (`Search 142 items...`).
+- Removed redundant 45px standalone TopBar from `photos.tsx` and integrated the `Import` button directly into the compact control bar.
+- Verified TypeScript compilation (`bun run typecheck`) with zero errors.
+
+## Session: 2026-08-08 (Production App Icon & Splash Screen Fix)
+- Resolved glitched / missing app icon issue on app startup in production APK & standalone builds.
+- Cleaned up deprecated `splash` schema properties from top-level `expo`, `android`, and `ios` in `app.json` (fixing VS Code `Property splash is not allowed` schema warning).
+- Maintained modern `"expo-splash-screen"` config plugin in `app.json` under `"plugins"` specifying `"resizeMode": "contain"`, `"imageWidth": 120`, and `"dark"` theme options.
+- Integrated `expo-splash-screen` native lifecycle (`SplashScreen.preventAutoHideAsync` & `SplashScreen.hideAsync`) into `_layout.tsx` to hold the native splash screen until font assets load.
+- Updated `index.tsx` landing screen to display the official bundled HBS Cloud app icon image (`require('../../assets/images/icon.png')`) inside a glassmorphic logo container.
+- Verified TypeScript compilation (`bun run typecheck`) with zero errors.
+
+## Session: 2026-08-08 (Android Silent Background Upload & Battery Architecture Analysis)
+- Researched Android OS process lifecycle, battery optimization policies (Doze Mode, App Standby), and Expo background execution constraints.
+- Added Android background execution permissions to `app.json`: `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC`, `RECEIVE_BOOT_COMPLETED`, `WAKE_LOCK`.
+- Provided technical report detailing why swipe-killing an app terminates standard JS WebSockets/fetch, and how `WorkManager` (`expo-background-task`), `ForegroundService` (with persistent progress notification), and Firebase Cloud Messaging (FCM Push) enable silent, battery-efficient uploads when closed.
+- Built Hybrid Dual-Engine Background Sync System in `syncTracker.ts` (`DUAL_ENGINE_FOREGROUND_THRESHOLD = 5`):
+  1. Method A (WorkManager Silent Sync) for small batch uploads (<= 5 items): runs 100% silently in background, 0% notification noise, 0% extra battery.
+  2. Method B (Foreground Data-Sync Service) for large batch uploads (> 5 items): automatically promotes sync to ongoing foreground service (`FOREGROUND_SERVICE_DATA_SYNC`) with single dynamic progress notification, holding WAKE_LOCK so Android OS won't kill process if user swipe-closes the app.
+- Verified TypeScript compilation (`bun run typecheck`) with zero errors.
+
+## Session: 2026-08-08 (AAPT2 Android Release Asset Compilation Fix)
+- Resolved `Execution failed for task ':app:mergeReleaseResources' -> Aapt2CompileRunnable / drawable-mdpi/assets_images_icon.png` error during `gradlew :app:assembleRelease` build.
+- Removed `require('../../assets/images/icon.png')` inside `index.tsx` which caused Metro to export a raw JS PNG file into Android's native `res/drawable-*/` folder with filename `assets_images_icon.png`.
+- Replaced logoBadge with clean vector `Ionicons name="cloud-upload"` inside `index.tsx`, preventing Metro from exporting invalid PNG drawable resources to AAPT2 during Android release builds.
+- Verified TypeScript compilation (`bun run typecheck`) with zero errors.
+
+## Session: 2026-08-08 (Mobile App Feature & Performance Overhaul Plan)
+- Analyzed request for 6 mobile app feature & performance upgrades:
+  1. Add skeleton loader in `photos.tsx` & `PhotoGrid.tsx` while media loads.
+  2. Implement Expo caches (expo-image memory/disk caching, FileSystem cacheDirectory, stale-while-revalidate).
+  3. Integrate Better-Auth Expo client method in `AuthContext.tsx` with SecureStore session persistence & direct user routing.
+  4. Implement Zustand global state management for auth, media, drive, and server state.
+  5. Add Google sign in buttons to Login and Register screens.
+  6. Add on-demand batch loading and virtualization in `drive.tsx` for folders with 1,000+ items.
+- Created comprehensive implementation plan artifact `implementation_plan.md`.
+- Executed full implementation plan resolving all 6 mobile app upgrades:
+  1. Built `SkeletonPhotoGrid` shimmer skeleton grid loader in `PhotoGrid.tsx` for media loading.
+  2. Implemented `expoCache` layer using `FileSystem.cacheDirectory`, `appStorage`, and `expo-image` `cachePolicy="memory-disk"`.
+  3. Upgraded `AuthContext.tsx` with Better-Auth standard Expo client and `expo-secure-store` session persistence, automatically routing signed-in users directly to `/(tabs)/photos`.
+  4. Installed `zustand` and built global stores (`useAuthStore`, `useMediaStore`, `useDriveStore`).
+  5. Added styled Google Sign-In buttons connected to social login on `login.tsx` and `register.tsx`.
+  6. Overhauled `DriveFileList.tsx` with single-level `FlatList` virtualization and on-demand chunk loading for folders with 1,000+ items.
+- Verified TypeScript compilation (`bun run typecheck`) across workspace with 0 errors.
+- Verified server Next.js build (`bun run build --filter=server`) with 100% success.
+
+## Session: 2026-08-08 (Purge Custom Auth & Enforce Better-Auth SDK Plan)
+- Analyzed request to replace all custom HTTP fetch auth calls, manual token extraction, and cookie header parsing in the Expo app with pure Better-Auth SDK methods (`authClient.signIn.email`, `authClient.signUp.email`, `authClient.signIn.social`, `authClient.signOut`, `authClient.getSession`).
+- Installed `@better-auth/expo@1.6.26` package.
+- Created `implementation_plan.md` artifact detailing complete refactoring of `authClient.ts`, `AuthContext.tsx`, `login.tsx`, `register.tsx`, `settings.tsx`, and `api.ts`.
+- Purged all custom fetch auth code and refactored authentication 100% to native `@better-auth/expo/client` SDK methods:
+  1. `authClient.signIn.email({ email, password })` for email sign-in.
+  2. `authClient.signUp.email({ name, email, password })` for user registration.
+  3. `authClient.signIn.social({ provider: 'google', callbackURL: 'hbs-cloud://(auth)/login' })` for Google OAuth.
+  4. `authClient.signOut()` for user sign-out.
+  5. `authClient.getSession()` for session restoration and hydration.
+- Verified TypeScript compilation (`bun run typecheck`) across workspace with 0 errors.
+- Verified server build (`bun run build --filter=server`) with 100% success.
+
+## Session: 2026-08-08 (Expo Media Library & Storage Architecture Audit)
+- Analyzed user query regarding `expo-media-library` usage for device gallery & folder access.
+- Confirmed `expo-media-library` (`^57.0.3`) is installed and configured in `app.json` plugins (`expo-media-library` with photos/save permissions).
+- Audited multi-engine discovery architecture in `safeMediaLibrary.ts` and `mediaScanner.ts` combining OS MediaStore queries (`MediaLibrary.getAssetsAsync` / `MediaLibrary.getAlbumsAsync`) with fallback storage directory scanning (`DCIM`, `Pictures`, `WhatsApp`, `Download`).
+- Diagnosed root cause of discrepancy between album total count (3,968 items) and gallery/backup count (1,000 items):
+  `safeMediaLibrary.getAssetsAsync` previously only fetched the first page (capped at 1,000 items default) and stopped without paginating further.
+- Upgraded `safeMediaLibrary.ts` with automatic pagination loop (`hasNextPage`, `endCursor`) and updated `photos.tsx`, `backup.tsx`, and `backgroundSync.ts` to request up to 50,000 items.
+- Verified TypeScript compilation (`bun run typecheck`) with 0 errors.
+
+## Session: 2026-08-08 (Multi-File & Folder Upload Implementation Plan)
+- Analyzed request for multiple files and folder upload with automatic server folder creation.
+- Confirmed use of `expo-file-system/legacy` (`uploadAsync`) for streaming uploads.
+- Created `implementation_plan.md` artifact detailing complete migration from `expo-file-system/legacy` to modern SDK 57 `File`, `Directory`, and `Paths` API, with `File.pickFileAsync({ multipleFiles: true })` and `folderUploader.ts` batch engine.
+- Purged all `expo-file-system/legacy` references across `api.ts`, `mediaScanner.ts`, `dedupe.ts`, and `expoCache.ts`.
+- Implemented `folderUploader.ts` engine for parsing folder relative paths, automatically creating missing parent directories on the server via `hbsApi.createFolder`, and uploading each file to its exact destination.
+- Upgraded `UploadModal.tsx` with modern `File.pickFileAsync({ multipleFiles: true })` and options for Upload Folder, Upload Files, Upload Media, and New Folder.
+- Connected batch file and folder upload callbacks in `drive.tsx` and `photos.tsx`.
+- Verified TypeScript compilation (`bun run typecheck`) across workspace with 0 errors.
+- Verified server build (`bun run build --filter=server`) with 100% success.
+
+## Session: 2026-08-08 (SQLite Local Index, Parallel Queue & Reconciler Plan)
+- Analyzed request for local SQLite indexing (`expo-sqlite`), fast local duplicate lookups, parallel upload queueing, Settings "Purge & Rebuild Cache/Index", and silent background index reconciliation.
+- Created `implementation_plan.md` artifact detailing `expo-sqlite` integration, `backupIndexDb.ts`, `parallelUploadQueue.ts`, `backgroundIndexReconciler.ts`, `dedupe.ts` local preflight, and `settings.tsx` purge action.
+- Installed `expo-sqlite@57.0.1` package.
+- Built `backupIndexDb.ts` SQLite database manager with fast index lookups and `isLocallyUploaded` preflight check.
+- Integrated SQLite preflight check into `dedupe.ts`, bypassing network duplicate checks for indexed files.
+- Built `parallelUploadQueue.ts` worker pool (4 concurrent workers) and connected it to `backup.tsx` for fast multi-file parallel auto-sync.
+- Created `backgroundIndexReconciler.ts` using `expo-task-manager`, `expo-background-task`, and `expo-battery` for silent background index reconciliation.
+- Added **"Purge & Rebuild Cache & Index"** action in `settings.tsx` to clear SQLite index, reset caches, and re-sync database with server.
+- Verified TypeScript compilation (`bun run typecheck`) across workspace with 0 errors.
+- Verified server build (`bun run build --filter=server`) with 100% success.
+- Installed `await-lock@3.0.0` to resolve Metro bundler resolution error for `expo-sqlite` devtools client.
+
 ## Session: 2026-08-08 (Server Free Disk Space Calculation & Settings UI)
 - Refactored server `app/api/user/stats/route.ts` to call `getStorageInfo()` from `@/lib/storage`, querying the exact configured external hard drive volume (e.g. `D:` drive or external mount) instead of default root path.
 - Updated `UserStats` interface in `api.ts` with `driveName`, `diskTotalBytes`, and `diskFreeBytes`.
@@ -215,21 +410,15 @@
 - Verified TypeScript compilation (`bun run typecheck`) across workspace with 0 errors.
 - Verified server build (`bun run build --filter=server`) with 100% success.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+## Session: 2026-08-08 (Media Viewer Crash Fix & Modern Gesture Navigation)
+- Researched `expo-video` (`useVideoPlayer`, `VideoView`) and `expo-image` (`Image`) SDK 57 documentation.
+- Diagnosed cause of app crashes in `MediaViewerModal.tsx`:
+  1. Standard React Native `Image` caused memory spikes / OOM crashes on high-res camera roll photos; replaced with `expo-image` `Image` (`cachePolicy="memory-disk"`, `contentFit="contain"`).
+  2. Unconditional `useVideoPlayer` initialization in `FlatList` cells instantiated multiple native ExoPlayer/AVPlayer instances concurrently; refactored `VideoPlayerComponent` to only activate when `isActive === true`.
+  3. Removed left/right chevron navigation overlay arrows as requested.
+  4. Enhanced `drive.tsx` to construct `driveMediaList` for seamless in-folder media swiping.
+- Executed implementation plan:
+  1. Refactored `MediaViewerModal.tsx` with `ActiveVideoPlayer` lifecycle wrapper, `expo-image` disk caching, and removed chevron arrow overlays.
+  2. Connected `driveMediaList` in `drive.tsx` for seamless media swiping in Drive folders.
+- Verified TypeScript compilation (`bun run typecheck`) across workspace with 0 errors.
+- Verified server build (`bun run build --filter=server`) with 100% success.
