@@ -474,3 +474,13 @@
 - Verified Next.js server production build (`bun run build --filter=server`) with 100% success and zero errors.
 - Fixed TypeScript error `Type 'boolean | "indeterminate"' is not assignable to type 'boolean | undefined'` in `apps/server/app/dashboard/files/page.tsx`: updated `<Checkbox checked={allSelected}>` to pass a strict boolean value matching Base UI Checkbox prop signature.
 - Re-verified Next.js build (`bun run build --filter=server`) with 0 errors.
+
+## Session: 2026-08-08 (Browser Back Navigation & Skeleton Loaders Completed)
+- Synchronized folder path navigation (`currentPath`) and user selection (`selectedUserId`) in `apps/server/app/dashboard/files/page.tsx` with Next.js URL query parameters (`?userId=...&path=...`) via `useSearchParams` and `useRouter.push`.
+- Enabled native browser Back / Forward button navigation for folder browsing: pressing Back steps back to the parent directory or previously visited folder instead of leaving the Files page.
+- Added responsive Skeleton loading states to `apps/server/app/dashboard/files/page.tsx`:
+  1. Table View skeleton: 8 animated pulse rows with placeholders for checkboxes, file icons, titles, type badges, sizes, dates, and action buttons.
+  2. Grid View skeleton: 12 animated pulse cards matching the responsive grid column layout.
+  3. Wrapped page component in Next.js `<Suspense>` boundary to ensure clean App Router hydration.
+- Verified Next.js server production build (`bun run build --filter=server`) with 100% success and zero errors.
+

@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, Suspense } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   Folder,
   FileIcon,
@@ -20,13 +21,13 @@ import {
   FileCode,
   CheckSquare,
   Square,
-  Check,
 } from "lucide-react";
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";
 import { Badge } from "@workspace/ui/components/badge";
 import { Checkbox } from "@workspace/ui/components/checkbox";
+import { Skeleton } from "@workspace/ui/components/skeleton";
 import {
   Card,
   CardContent,
@@ -77,7 +78,7 @@ function formatBytes(n: number) {
   return `${n.toFixed(1)} ${u[i]}`;
 }
 
-export default function FilesPage() {
+function FilesPageContent() {
   const {
     selectedUserId,
     currentPath,
@@ -93,13 +94,17 @@ export default function FilesPage() {
     resetPreferences,
   } = useFilesStore();
 
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const [mounted, setMounted] = useState(false);
   const [users, setUsers] = useState<UserOpt[]>([]);
   const [files, setFiles] = useState<FileRow[]>([]);
   const [storageRoot, setStorageRoot] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [folderName, setFolderName] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // Selection state for bulk operations
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -117,6 +122,40 @@ export default function FilesPage() {
     setMounted(true);
   }, []);
 
+  // Sync state with URL search params on browser navigation (Back / Forward)
+  useEffect(() => {
+    const urlPath = searchParams.get("path") ?? "";
+    const urlUserId = searchParams.get("userId") ?? "";
+
+    if (urlUserId && urlUserId !== selectedUserId) {
+      setSelectedUserId(urlUserId);
+    }
+    if (urlPath !== currentPath) {
+      setCurrentPath(urlPath);
+    }
+  }, [searchParams, selectedUserId, currentPath, setSelectedUserId, setCurrentPath]);
+
+  // Helper to push new URL state to browser history
+  const updateUrl = useCallback(
+    (targetUserId: string | null, targetPath: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (targetUserId) {
+        params.set("userId", targetUserId);
+      } else {
+        params.delete("userId");
+      }
+      if (targetPath) {
+        params.set("path", targetPath);
+      } else {
+        params.delete("path");
+      }
+      const queryString = params.toString();
+      const newUrl = queryString ? `${pathname}?${queryString}` : pathname;
+      router.push(newUrl);
+    },
+    [searchParams, pathname, router]
+  );
+
   // Clear selection whenever path or user changes
   useEffect(() => {
     setSelectedIds(new Set());
@@ -129,21 +168,26 @@ export default function FilesPage() {
       if (!res.ok) throw new Error(data.error || "Failed");
       setUsers(data.users || []);
       setStorageRoot(data.storageRoot || "");
-      if (!selectedUserId && data.users?.[0]?.id) {
+
+      const urlUserId = searchParams.get("userId");
+      if (!selectedUserId && !urlUserId && data.users?.[0]?.id) {
         setSelectedUserId(data.users[0].id);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load users");
     }
-  }, [selectedUserId, setSelectedUserId]);
+  }, [selectedUserId, setSelectedUserId, searchParams]);
 
   const loadFiles = useCallback(async () => {
-    if (!selectedUserId) return;
+    const activeUser = searchParams.get("userId") || selectedUserId;
+    const activePath = searchParams.get("path") !== null ? searchParams.get("path")! : currentPath;
+
+    if (!activeUser) return;
     setLoading(true);
     setError(null);
     try {
       const res = await fetch(
-        `/api/admin/files?userId=${encodeURIComponent(selectedUserId)}&path=${encodeURIComponent(currentPath)}`
+        `/api/admin/files?userId=${encodeURIComponent(activeUser)}&path=${encodeURIComponent(activePath)}`
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to list files");
@@ -154,17 +198,17 @@ export default function FilesPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedUserId, currentPath]);
+  }, [selectedUserId, currentPath, searchParams]);
 
   useEffect(() => {
     loadUsers();
   }, [loadUsers]);
 
   useEffect(() => {
-    if (mounted && selectedUserId) {
+    if (mounted && (selectedUserId || searchParams.get("userId"))) {
       loadFiles();
     }
-  }, [mounted, selectedUserId, currentPath, loadFiles]);
+  }, [mounted, selectedUserId, currentPath, searchParams, loadFiles]);
 
   async function createFolder(e: React.FormEvent) {
     e.preventDefault();
@@ -190,19 +234,24 @@ export default function FilesPage() {
 
   async function onUpload(fileList: FileList | null) {
     if (!fileList?.length || !selectedUserId) return;
-    for (const file of Array.from(fileList)) {
-      const fd = new FormData();
-      fd.set("userId", selectedUserId);
-      fd.set("path", currentPath);
-      fd.set("file", file);
-      const res = await fetch("/api/admin/files", { method: "POST", body: fd });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || `Upload failed: ${file.name}`);
-        return;
+    setLoading(true);
+    try {
+      for (const file of Array.from(fileList)) {
+        const fd = new FormData();
+        fd.set("userId", selectedUserId);
+        fd.set("path", currentPath);
+        fd.set("file", file);
+        const res = await fetch("/api/admin/files", { method: "POST", body: fd });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.error || `Upload failed: ${file.name}`);
+          return;
+        }
       }
+      await loadFiles();
+    } finally {
+      setLoading(false);
     }
-    await loadFiles();
   }
 
   async function removeSingleItem(id: string) {
@@ -255,15 +304,27 @@ export default function FilesPage() {
     }
   }
 
+  // Navigation handlers with Browser History push
   function openDir(name: string) {
-    setCurrentPath(currentPath ? `${currentPath}/${name}` : name);
+    const nextPath = currentPath ? `${currentPath}/${name}` : name;
+    updateUrl(selectedUserId, nextPath);
   }
 
   function goUp() {
     if (!currentPath) return;
     const parts = currentPath.split("/").filter(Boolean);
     parts.pop();
-    setCurrentPath(parts.join("/"));
+    const nextPath = parts.join("/");
+    updateUrl(selectedUserId, nextPath);
+  }
+
+  function handleBreadcrumbClick(targetPath: string) {
+    updateUrl(selectedUserId, targetPath);
+  }
+
+  function handleUserSelect(userId: string) {
+    setSelectedUserId(userId);
+    updateUrl(userId, "");
   }
 
   function handlePreview(file: FileRow) {
@@ -446,8 +507,8 @@ export default function FilesPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={loadFiles}>
-            <RefreshCw className="size-4" />
+          <Button variant="outline" size="sm" onClick={loadFiles} disabled={loading}>
+            <RefreshCw className={cn("size-4", loading && "animate-spin")} />
             Refresh
           </Button>
           <Button
@@ -544,8 +605,7 @@ export default function FilesPage() {
                 value={selectedUserId || undefined}
                 onValueChange={(v) => {
                   if (v) {
-                    setSelectedUserId(v);
-                    setCurrentPath("");
+                    handleUserSelect(v);
                   }
                 }}
                 items={userItems}
@@ -597,23 +657,26 @@ export default function FilesPage() {
             <Button
               size="icon-xs"
               variant="ghost"
-              onClick={() => setCurrentPath("")}
+              onClick={() => handleBreadcrumbClick("")}
               title="Root directory"
             >
               <Home className="size-3.5" />
             </Button>
-            {crumbs.map((c, i) => (
-              <span key={i} className="flex items-center gap-1">
-                <ChevronRight className="size-3.5" />
-                <button
-                  type="button"
-                  className="hover:text-foreground hover:underline font-medium text-foreground/80"
-                  onClick={() => setCurrentPath(crumbs.slice(0, i + 1).join("/"))}
-                >
-                  {c}
-                </button>
-              </span>
-            ))}
+            {crumbs.map((c, i) => {
+              const targetPath = crumbs.slice(0, i + 1).join("/");
+              return (
+                <span key={i} className="flex items-center gap-1">
+                  <ChevronRight className="size-3.5" />
+                  <button
+                    type="button"
+                    className="hover:text-foreground hover:underline font-medium text-foreground/80"
+                    onClick={() => handleBreadcrumbClick(targetPath)}
+                  >
+                    {c}
+                  </button>
+                </span>
+              );
+            })}
             {currentPath && (
               <Button size="xs" variant="ghost" className="ms-2" onClick={goUp}>
                 Up level
@@ -623,14 +686,41 @@ export default function FilesPage() {
         </CardHeader>
 
         <CardContent>
-          {/* TABLE VIEW */}
-          {viewMode === "table" && (
+          {/* SKELETON LOADER STATE FOR TABLE VIEW */}
+          {loading && viewMode === "table" && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <Skeleton className="h-9 w-64 rounded-xl" />
+                <Skeleton className="h-9 w-32 rounded-xl" />
+              </div>
+              <div className="overflow-hidden rounded-2xl border">
+                <div className="p-4 space-y-3">
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-4 py-2 border-b last:border-0">
+                      <Skeleton className="size-4 rounded-md shrink-0" />
+                      <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                        <Skeleton className="size-5 rounded-lg shrink-0" />
+                        <Skeleton className="h-4 w-48 rounded-md" />
+                      </div>
+                      <Skeleton className="h-5 w-16 rounded-md hidden sm:block" />
+                      <Skeleton className="h-4 w-16 rounded-md hidden md:block" />
+                      <Skeleton className="h-4 w-28 rounded-md hidden lg:block" />
+                      <Skeleton className="h-7 w-20 rounded-lg ms-auto shrink-0" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TABLE VIEW CONTENT */}
+          {!loading && viewMode === "table" && (
             <DataTable
               rows={files}
               columns={columns}
               rowKey={(f) => f.id}
               searchPlaceholder="Search files / mime type…"
-              empty={loading ? "Loading files…" : "Empty folder — upload files or create a directory"}
+              empty="Empty folder — upload files or create a directory"
               defaultPageSize={pageSize}
               initialSortKey={sortKey}
               initialSortDir={sortDir}
@@ -640,8 +730,30 @@ export default function FilesPage() {
             />
           )}
 
-          {/* GRID VIEW */}
-          {viewMode === "grid" && (
+          {/* SKELETON LOADER STATE FOR GRID VIEW */}
+          {loading && viewMode === "grid" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between border-b pb-2">
+                <Skeleton className="h-6 w-28 rounded-md" />
+                <Skeleton className="h-4 w-20 rounded-md" />
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+                {Array.from({ length: 12 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="flex flex-col items-center justify-center rounded-2xl border p-4 text-center space-y-2"
+                  >
+                    <Skeleton className="size-14 rounded-2xl" />
+                    <Skeleton className="h-4 w-3/4 rounded-md" />
+                    <Skeleton className="h-3 w-1/2 rounded-md" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* GRID VIEW CONTENT */}
+          {!loading && viewMode === "grid" && (
             <div className="space-y-4">
               {files.length > 0 && (
                 <div className="flex items-center justify-between border-b pb-2">
@@ -733,7 +845,7 @@ export default function FilesPage() {
                 })}
               </div>
 
-              {!loading && files.length === 0 && (
+              {files.length === 0 && (
                 <div className="flex h-32 flex-col items-center justify-center text-sm text-muted-foreground">
                   Empty folder — upload files or create a directory
                 </div>
@@ -790,5 +902,26 @@ export default function FilesPage() {
         onConfirm={handleBulkDelete}
       />
     </div>
+  );
+}
+
+export default function FilesPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <Skeleton className="h-8 w-32 rounded-xl" />
+            <Skeleton className="h-8 w-24 rounded-xl" />
+          </div>
+          <div className="rounded-2xl border p-6 space-y-4">
+            <Skeleton className="h-10 w-full rounded-xl" />
+            <Skeleton className="h-64 w-full rounded-2xl" />
+          </div>
+        </div>
+      }
+    >
+      <FilesPageContent />
+    </Suspense>
   );
 }
