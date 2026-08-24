@@ -47,6 +47,7 @@ WORKDIR /app/apps/server
 # Real Node binary (not bun's node shim)
 RUN /usr/local/bin/node ./node_modules/next/dist/bin/next build
 
+# ─── Slim Production Runner (Node 22 only ~300MB) ───────────────────────────
 FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 
@@ -55,22 +56,16 @@ ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0 \
     STORAGE_ROOT=/data/storage \
     NEXT_TELEMETRY_DISABLED=1 \
-    BUN_INSTALL=/root/.bun \
-    PATH="/root/.bun/bin:$PATH" \
-    PYTHON_BIN=python3 \
-    PYTHON_SCRIPTS_DIR=/app/python \
     QUEUE_BACKEND=celery \
     BETTER_AUTH_STRICT_ORIGINS=false
 
+# Only minimal runtime OS utilities (no python/pip, no bun, no ffmpeg)
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-    ca-certificates openssl curl unzip \
-    python3 python3-pip python3-venv \
-    ffmpeg \
+    ca-certificates openssl curl \
   && rm -rf /var/lib/apt/lists/* \
   && mkdir -p /data/storage/users \
-  && chmod -R 777 /data/storage \
-  && curl -fsSL https://bun.sh/install | bash
+  && chmod -R 777 /data/storage
 
 # Standalone Next output (monorepo → apps/server/server.js)
 COPY --from=builder /app/apps/server/.next/standalone ./
@@ -82,12 +77,6 @@ COPY --from=builder /app/packages/db/prisma ./packages/db/prisma
 COPY --from=builder /app/packages/db/generated ./packages/db/generated
 COPY --from=builder /app/packages/db/package.json ./packages/db/package.json
 COPY --from=builder /app/package.json ./package.json
-
-# Python enqueue client (same scripts as worker; needs celery+redis+psycopg)
-COPY python /app/python
-RUN pip3 install --break-system-packages --no-cache-dir -r /app/python/requirements.txt \
-  && chmod +x /app/python/enqueue_job.py /app/python/worker-entrypoint.sh /app/python/beat-entrypoint.sh \
-  && sed -i 's/\r$//' /app/python/*.sh /app/python/enqueue_job.py || true
 
 COPY apps/server/docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh \

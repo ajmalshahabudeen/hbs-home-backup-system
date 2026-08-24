@@ -97,8 +97,6 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       QUEUE_BACKEND: ${QUEUE_BACKEND:-celery}
-      PYTHON_BIN: python3
-      PYTHON_SCRIPTS_DIR: /app/python
     volumes:
       - *storage-vol
     labels:

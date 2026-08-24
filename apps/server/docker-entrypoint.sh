@@ -21,25 +21,15 @@ wait_for_pg() {
   local i host port
   host="${DB_HOST_HINT:-postgres}"
   port=5432
-  if command -v bun >/dev/null 2>&1; then
+  if command -v node >/dev/null 2>&1; then
     for i in $(seq 1 60); do
-      if bun -e '
-        import net from "node:net";
+      if node -e '
+        const net = require("node:net");
         const host = process.env.PGHOST || "postgres";
         const port = Number(process.env.PGPORT || 5432);
         const s = net.connect({ host, port }, () => { s.end(); process.exit(0); });
         s.on("error", () => process.exit(1));
         setTimeout(() => process.exit(1), 2000);
-      ' 2>/dev/null; then
-        return 0
-      fi
-      # also try pg query if available
-      if bun -e '
-        import pg from "pg";
-        const c = new pg.Client({ connectionString: process.env.DATABASE_URL });
-        await c.connect();
-        await c.query("SELECT 1");
-        await c.end();
       ' 2>/dev/null; then
         return 0
       fi
@@ -70,13 +60,8 @@ if [[ -n "${DATABASE_URL:-}" ]]; then
 
   echo "[hbs-server] applying schema..."
   cd /app/packages/db
-  if command -v bun >/dev/null 2>&1; then
-    if [[ -d prisma/migrations ]] && ls prisma/migrations/*/migration.sql >/dev/null 2>&1; then
-      bunx prisma migrate deploy --url "$DATABASE_URL" || true
-    fi
-    bunx prisma db push --url "$DATABASE_URL" --accept-data-loss || bunx prisma db push --url "$DATABASE_URL"
-  else
-    npx --yes prisma@7.9.1 db push --url "$DATABASE_URL" --accept-data-loss || true
+  if command -v npx >/dev/null 2>&1; then
+    npx --yes prisma@7.9.1 db push --schema=./prisma/schema.prisma --url "$DATABASE_URL" --accept-data-loss || true
   fi
   cd /app
 fi

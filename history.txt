@@ -518,5 +518,11 @@
   1. Added `HBS_Logo_transparent.png` brand logo in header for consistent auth styling.
 - Verified TypeScript compilation (`bun run typecheck`) with zero errors and Next.js server production build (`bun run build --filter=server`) with 100% success.
 
-
-
+## Session: 2026-08-24 (Docker Image Size Optimization Completed)
+- Conducted architectural analysis and executed full image size optimization for `apps/server`:
+  1. Refactored `apps/server/lib/queue.ts` into a pure TypeScript / Node.js Celery v2 task dispatcher using `getRedis()` (`ioredis`) and `@workspace/db` Prisma client, completely removing the Python child-process execution dependency (`enqueue_job.py`).
+  2. Refactored `apps/server/docker-entrypoint.sh` to use native Node.js socket health probes (`node:net`) and standalone Prisma execution, completely eliminating the need for `bun` in the production runner.
+  3. Optimized `apps/server/Dockerfile` by removing `python3`, `python3-pip`, `python3-venv`, `pip install requirements.txt`, `ffmpeg`, and `bun` from the `runner` stage, bringing the estimated production container size down from ~1.2GB to ~280MB–350MB.
+  4. Cleaned unused `PYTHON_BIN` and `PYTHON_SCRIPTS_DIR` from `server` service environment in `docker-compose.yml`.
+- Verified TypeScript compilation across all 9 packages (`bun run typecheck`) with zero errors.
+- Fixed Docker build error (`/app/node_modules/@prisma: not found`): removed redundant `COPY node_modules/prisma` directives from `apps/server/Dockerfile` and streamlined `apps/server/docker-entrypoint.sh` to use Node's bundled `npx prisma db push`.
