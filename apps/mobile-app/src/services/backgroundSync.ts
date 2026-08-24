@@ -254,30 +254,14 @@ export async function syncPhotosNow(
 try {
   TaskManager.defineTask(BACKGROUND_SYNC_TASK, async () => {
     try {
-      const config = await getSyncConfig();
-      if (!config.autoSyncEnabled) {
+      // Dynamic import to avoid circular dependency
+      const { runAutonomousSync } = await import('./autonomousSyncEngine');
+      const result = await runAutonomousSync({ source: 'background_task' });
+
+      if (result.success) {
         return BackgroundTask.BackgroundTaskResult.Success;
       }
-
-      const networkCheck = await isNetworkOkForSync(config.wifiOnly);
-      if (!networkCheck.ok) {
-        return BackgroundTask.BackgroundTaskResult.Success;
-      }
-
-      const batteryCheck = await isBatteryOkForSync(config.pauseOnLowBattery);
-      if (!batteryCheck.ok) {
-        return BackgroundTask.BackgroundTaskResult.Success;
-      }
-
-      const savedUrl = await appStorage.getItem('hbs_server_url');
-      const savedToken = await appStorage.getItem('hbs_session_token');
-
-      if (savedUrl) {
-        await syncPhotosNow(savedUrl, savedToken);
-      }
-
-      await saveSyncConfig({ lastSyncTimestamp: new Date().toISOString() });
-      return BackgroundTask.BackgroundTaskResult.Success;
+      return BackgroundTask.BackgroundTaskResult.Success; // Return success so OS continues scheduling
     } catch (error) {
       return BackgroundTask.BackgroundTaskResult.Failed;
     }

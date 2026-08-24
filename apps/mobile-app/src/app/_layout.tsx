@@ -24,6 +24,47 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 function AppContent() {
   const { colors, isDark } = useAppTheme();
 
+  React.useEffect(() => {
+    let subReceived: any;
+    let subResponse: any;
+
+    try {
+      const Notifications = require('expo-notifications');
+      if (Notifications.addNotificationReceivedListener) {
+        subReceived = Notifications.addNotificationReceivedListener((notification: any) => {
+          const data = notification?.request?.content?.data;
+          if (data?.action === 'autonomous_sync') {
+            import('../services/autonomousSyncEngine').then(({ runAutonomousSync }) => {
+              runAutonomousSync({ force: true, source: 'push_wakeup' });
+            });
+          }
+        });
+      }
+
+      if (Notifications.addNotificationResponseReceivedListener) {
+        subResponse = Notifications.addNotificationResponseReceivedListener((response: any) => {
+          const data = response?.notification?.request?.content?.data;
+          if (data?.action === 'autonomous_sync') {
+            import('../services/autonomousSyncEngine').then(({ runAutonomousSync }) => {
+              runAutonomousSync({ force: true, source: 'push_response' });
+            });
+          }
+        });
+      }
+    } catch {
+      // ignore
+    }
+
+    return () => {
+      try {
+        if (subReceived?.remove) subReceived.remove();
+        if (subResponse?.remove) subResponse.remove();
+      } catch {
+        // ignore
+      }
+    };
+  }, []);
+
   return (
     <GestureHandlerRootView style={[styles.flex, { backgroundColor: colors.background }]}>
       <SafeAreaProvider>
@@ -37,7 +78,6 @@ function AppContent() {
               <Stack.Screen name="(auth)/register" />
               <Stack.Screen name="(tabs)" />
               <Stack.Screen name="search" options={{ headerShown: false, animation: 'fade' }} />
-
             </Stack>
           </AuthProvider>
         </ServerProvider>

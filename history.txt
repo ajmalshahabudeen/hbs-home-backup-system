@@ -577,3 +577,31 @@
 - Verified TypeScript compilation across all packages (`bun run typecheck`) with zero errors.
 - Verified Next.js server production build (`bun run build --filter=server`) with 100% success and zero errors.
 
+## Session: 2026-08-24 (Autonomous Background Backup & Server Wake-Up Engine Completed)
+- Designed and implemented a fully autonomous zero-interaction background media backup system with server presence detection and wake-up notifications:
+  1. Database Schema (`packages/db/prisma/schema.prisma`):
+     - Added `MobileDevice` model tracking `deviceId`, `deviceName`, `platform`, `pushToken`, `lastIp`, and `lastSeenAt`.
+     - Linked `mobileDevices MobileDevice[]` relation to `User` and regenerated Prisma client (`bun run db:generate`).
+  2. Server Device Registration & Presence APIs (`apps/server`):
+     - Created `POST /api/user/device/register/route.ts`: registers mobile device IDs, names, platforms, local IPs, and push tokens for authenticated users.
+     - Created `POST /api/user/device/ping/route.ts`: lightweight heartbeat endpoint to update `lastSeenAt` and `lastIp`.
+     - Built `apps/server/lib/device-presence.ts`: LAN presence detector probing common mobile ports and sending silent/high-priority Expo Push Notification wake-up payloads (`action: 'autonomous_sync'`).
+     - Created `POST /api/admin/devices/scan/route.ts`: admin/system route to list registered devices, trigger manual presence sweeps, and send test wake-up signals.
+     - Created `scripts/device_scanner.py`: standalone Python presence scanner script that monitors LAN devices and triggers push alerts on configurable 10s–60s intervals.
+  3. Mobile Autonomous Sync Engine (`apps/mobile-app/src/services/autonomousSyncEngine.ts`):
+     - Built `runAutonomousSync` orchestrator:
+       a. Evaluates Wi-Fi Only (`isNetworkOkForSync`) and Low Battery (`isBatteryOkForSync`) constraints from settings.
+       b. Probes server URL; if offline or IP changed, automatically sweeps LAN subnet for active HBS servers on port 38480.
+       c. Automatically re-authenticates against new server IPs using securely stored credentials in `SecureStore` (unless user explicitly tapped "Sign Out").
+       d. Registers device push token and local IP with server.
+       e. Scans camera roll media and performs fast local SQLite index delta checks (`backupIndexDb.isLocallyUploaded`).
+       f. Uploads new/unindexed media files in parallel to `MobileBackups/`, updates SQLite database records, and posts dynamic progress notifications.
+  4. Authentication & Push Notification Enhancements:
+     - Updated `AuthContext.tsx` with `autoAuthenticateUser(targetServerUrl)` and persistent credential management (`hbs_auth_credentials`, `hbs_user_logged_out`).
+     - Updated `safeNotifications.ts` with `getExpoPushTokenAsync()` for safe push token retrieval.
+     - Updated `_layout.tsx` with push notification listener triggering `runAutonomousSync({ force: true, source: 'push_wakeup' })`.
+     - Updated `backgroundSync.ts` to route `BACKGROUND_SYNC_TASK` directly through `runAutonomousSync`.
+- Verified TypeScript compilation across all packages (`bun run typecheck`) with zero errors.
+- Verified Next.js server production build (`bun run build --filter=server`) with 100% success and zero errors.
+
+

@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
+import * as SecureStore from 'expo-secure-store';
 import { useServer } from './ServerContext';
 import { createHbsAuthClient } from '../utils/authClient';
+import { appStorage } from '../utils/storage';
 
 export interface UserProfile {
   id: string;
@@ -21,6 +23,59 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
   refreshSession: () => Promise<void>;
+}
+
+const AUTH_CREDENTIALS_KEY = 'hbs_auth_credentials';
+const USER_LOGGED_OUT_KEY = 'hbs_user_logged_out';
+
+/**
+ * Headless autonomous authentication helper.
+ * Used by background sync tasks to verify session or automatically log in
+ * against discovered/new server IPs using saved credentials in SecureStore.
+ */
+export async function autoAuthenticateUser(targetServerUrl: string): Promise<{ token: string | null; user: any | null }> {
+  try {
+    const isLoggedOut = (await appStorage.getItem(USER_LOGGED_OUT_KEY)) === 'true';
+    if (isLoggedOut) {
+      return { token: null, user: null };
+    }
+
+    const client = createHbsAuthClient(targetServerUrl);
+
+    // 1. Try active session check
+    try {
+      const res: any = await client.getSession();
+      if (res?.data?.user) {
+        const token = res.data.session?.token || res.data.session?.id || (client as any).getCookie?.();
+        if (token) {
+          await SecureStore.setItemAsync('hbs_auth_session_token', token);
+        }
+        return { token: token || null, user: res.data.user };
+      }
+    } catch {
+      // session expired or IP changed
+    }
+
+    // 2. Try auto-login with securely stored email/password
+    const credsRaw = await SecureStore.getItemAsync(AUTH_CREDENTIALS_KEY);
+    if (credsRaw) {
+      const { email, password } = JSON.parse(credsRaw);
+      if (email && password) {
+        const loginRes: any = await client.signIn.email({ email, password });
+        if (loginRes?.data?.user) {
+          const token = loginRes.data.session?.token || loginRes.data.session?.id || (client as any).getCookie?.();
+          if (token) {
+            await SecureStore.setItemAsync('hbs_auth_session_token', token);
+          }
+          await appStorage.setItem(USER_LOGGED_OUT_KEY, 'false');
+          return { token: token || null, user: loginRes.data.user };
+        }
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+  return { token: null, user: null };
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -56,11 +111,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
+      const isLoggedOut = (await appStorage.getItem(USER_LOGGED_OUT_KEY)) === 'true';
+      if (isLoggedOut) {
+        setUser(null);
+        setSessionToken(null);
+        setIsLoading(false);
+        return;
+      }
+
       const res: any = await authClient.getSession();
       if (res?.data?.user) {
         setUser(res.data.user as UserProfile);
         const token = res.data.session?.token || res.data.session?.id || (authClient as any).getCookie?.();
         setSessionToken(token || null);
+        if (token) {
+          await SecureStore.setItemAsync('hbs_auth_session_token', token);
+        }
+        await appStorage.setItem(USER_LOGGED_OUT_KEY, 'false');
+        setIsLoading(false);
+        return;
+      }
+
+      // If getSession failed, attempt auto-login using saved credentials
+      const autoAuth = await autoAuthenticateUser(serverUrl);
+      if (autoAuth.user && autoAuth.token) {
+        setUser(autoAuth.user as UserProfile);
+        setSessionToken(autoAuth.token);
         setIsLoading(false);
         return;
       }
@@ -95,6 +171,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(res.data.user as UserProfile);
         const token = res.data.session?.token || res.data.session?.id || (authClient as any).getCookie?.();
         setSessionToken(token || null);
+
+        // Securely persist credentials & session for auto background re-auth
+        await SecureStore.setItemAsync(AUTH_CREDENTIALS_KEY, JSON.stringify({ email, password }));
+        if (token) {
+          await SecureStore.setItemAsync('hbs_auth_session_token', token);
+        }
+        await appStorage.setItem(USER_LOGGED_OUT_KEY, 'false');
+
         setIsLoading(false);
         return { success: true };
       }
@@ -126,6 +210,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(res.data.user as UserProfile);
         const token = res.data.session?.token || res.data.session?.id || (authClient as any).getCookie?.();
         setSessionToken(token || null);
+
+        await SecureStore.setItemAsync(AUTH_CREDENTIALS_KEY, JSON.stringify({ email, password }));
+        if (token) {
+          await SecureStore.setItemAsync('hbs_auth_session_token', token);
+        }
+        await appStorage.setItem(USER_LOGGED_OUT_KEY, 'false');
+
         setIsLoading(false);
         return { success: true };
       }
@@ -152,6 +243,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, error: res.error.message || 'Google sign in failed' };
       }
 
+      await appStorage.setItem(USER_LOGGED_OUT_KEY, 'false');
       await refreshSession();
       return { success: true };
     } catch (e) {
@@ -168,6 +260,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setUser(null);
       setSessionToken(null);
+      await SecureStore.deleteItemAsync(AUTH_CREDENTIALS_KEY).catch(() => {});
+      await SecureStore.deleteItemAsync('hbs_auth_session_token').catch(() => {});
+      await SecureStore.deleteItemAsync('hbs_auth_cookie').catch(() => {});
+      await appStorage.setItem(USER_LOGGED_OUT_KEY, 'true');
       setIsLoading(false);
     }
   };
@@ -193,3 +289,4 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 };
 
 export const useAuth = () => useContext(AuthContext);
+

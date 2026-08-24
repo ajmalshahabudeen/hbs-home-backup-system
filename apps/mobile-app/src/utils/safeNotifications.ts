@@ -112,6 +112,24 @@ export const safeNotifications = {
     }
     return { status: 'granted', granted: true, canAskAgain: true };
   },
+
+  getExpoPushTokenAsync: async (): Promise<string | null> => {
+    if (isExpoGo) return null;
+    if (NotificationsModule && NotificationsModule.getExpoPushTokenAsync) {
+      try {
+        const { granted } = await NotificationsModule.getPermissionsAsync();
+        if (!granted) {
+          const req = await NotificationsModule.requestPermissionsAsync();
+          if (!req.granted) return null;
+        }
+        const tokenData = await NotificationsModule.getExpoPushTokenAsync();
+        return tokenData?.data || null;
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  },
 };
 
 export const updateSyncProgressNotification = async (

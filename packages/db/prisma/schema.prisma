@@ -31,6 +31,7 @@ model User {
   backupFiles   BackupFile[]
   systemLogs    SystemLog[]     @relation("LogActor")
   jobs          BackgroundJob[]
+  mobileDevices MobileDevice[]
 
   @@unique([email])
   @@map("user")
@@ -221,3 +222,23 @@ model BackgroundJob {
   @@index([createdAt])
   @@map("background_job")
 }
+
+model MobileDevice {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId   String
+  deviceName String?
+  platform   String   @default("android") // android | ios | web
+  pushToken  String?
+  lastIp     String?
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, deviceId])
+  @@index([userId])
+  @@index([lastIp])
+  @@map("mobile_device")
+}
+

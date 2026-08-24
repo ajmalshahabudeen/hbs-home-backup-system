@@ -275,4 +275,36 @@ export const hbsApi = {
 
     return downloadedFile.uri;
   },
+
+  async registerDevice(
+    serverUrl: string,
+    sessionToken: string | null,
+    data: {
+      deviceId: string;
+      deviceName?: string;
+      platform?: string;
+      pushToken?: string;
+      localIp?: string;
+    }
+  ): Promise<{ success: boolean; device?: any }> {
+    return request(serverUrl, sessionToken, '/api/user/device/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  },
+
+  async pingDevice(
+    serverUrl: string,
+    sessionToken: string | null,
+    deviceId?: string,
+    localIp?: string
+  ): Promise<{ success: boolean; timestamp: number }> {
+    return request(serverUrl, sessionToken, '/api/user/device/ping', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId, localIp }),
+    });
+  },
 };
+
