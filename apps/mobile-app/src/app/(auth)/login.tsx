@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -64,8 +65,13 @@ export default function LoginScreen() {
       >
         {/* Brand Header */}
         <View style={styles.brandHeader}>
-          <View style={[styles.logoBadge, { backgroundColor: colors.primaryContainer }]}>
-            <Ionicons name="cloud-upload" size={40} color={colors.primary} />
+          <View style={styles.logoContainer}>
+            <Image
+              source={require('../../../assets/images/HBS_Logo_transparent.png')}
+              style={styles.logoImage}
+              contentFit="contain"
+              transition={300}
+            />
           </View>
           <Text style={[styles.title, { color: colors.text }]}>Sign in to HBS</Text>
           <Text style={[styles.subTitle, { color: colors.textSecondary }]}>
@@ -211,13 +217,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
   },
-  logoBadge: {
-    width: 64,
-    height: 64,
-    borderRadius: 18,
+  logoContainer: {
+    width: 72,
+    height: 72,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 12,
+  },
+  logoImage: {
+    width: 68,
+    height: 68,
   },
   title: {
     fontSize: 24,

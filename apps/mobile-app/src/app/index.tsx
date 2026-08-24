@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -43,8 +44,13 @@ export default function SplashScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Brand Splash Content */}
       <View style={styles.brandBox}>
-        <View style={[styles.logoBadge, { backgroundColor: colors.primaryContainer }]}>
-          <Ionicons name="cloud-upload" size={54} color={colors.primary} />
+        <View style={styles.logoContainer}>
+          <Image
+            source={require('../../assets/images/HBS_Logo_transparent.png')}
+            style={styles.logoImage}
+            contentFit="contain"
+            transition={300}
+          />
         </View>
 
         <Text style={[styles.brandTitle, { color: colors.text }]}>HBS Cloud</Text>
@@ -118,13 +124,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  logoBadge: {
-    width: 100,
-    height: 100,
-    borderRadius: 28,
+  logoContainer: {
+    width: 104,
+    height: 104,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 20,
+  },
+  logoImage: {
+    width: 100,
+    height: 100,
   },
   brandTitle: {
     fontSize: 32,

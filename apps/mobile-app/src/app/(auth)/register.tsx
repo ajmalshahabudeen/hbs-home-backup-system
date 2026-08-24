@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -67,6 +68,14 @@ export default function RegisterScreen() {
         </TouchableOpacity>
 
         <View style={styles.header}>
+          <View style={styles.logoContainer}>
+            <Image
+              source={require('../../../assets/images/HBS_Logo_transparent.png')}
+              style={styles.logoImage}
+              contentFit="contain"
+              transition={300}
+            />
+          </View>
           <Text style={[styles.title, { color: colors.text }]}>Create Account</Text>
           <Text style={[styles.subTitle, { color: colors.textSecondary }]}>
             First user will automatically become admin
@@ -175,6 +184,16 @@ const styles = StyleSheet.create({
   },
   header: {
     marginBottom: 20,
+  },
+  logoContainer: {
+    width: 64,
+    height: 64,
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  logoImage: {
+    width: 60,
+    height: 60,
   },
   title: {
     fontSize: 26,

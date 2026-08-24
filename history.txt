@@ -498,5 +498,25 @@
 - Integrated drive folder & file result list alongside edge-to-edge media wall with 2-finger pinch column zooming and category filtering.
 - Verified TypeScript compilation and server build with zero errors.
 
+## Session: 2026-08-24 (HBS Brand Logo Integration for Mobile App)
+- Processed `apps/mobile-app/assets/HBS_Logo.png` into full production asset suite:
+  1. `icon.png`: 1024x1024 high-res app icon.
+  2. `splash-icon.png`: 1024x1024 transparent circular logo for native splash screen.
+  3. `android-icon-foreground.png`: 1024x1024 adaptive icon foreground centered within Android 66% safe zone.
+  4. `android-icon-background.png`: 1024x1024 dark background (#121212).
+  5. `android-icon-monochrome.png`: 432x432 monochrome silhouette for Android 13+ themed icons.
+  6. `favicon.png`: 512x512 web favicon.
+  7. `HBS_Logo_transparent.png`: Anti-aliased transparent alpha mask of circular watercolor planet logo for in-app UI.
+- Updated `apps/mobile-app/app.json`:
+  1. Configured `"android.adaptiveIcon.foregroundImage"` -> `./assets/images/android-icon-foreground.png`.
+  2. Configured `"plugins.expo-splash-screen.image"` and dark variant -> `./assets/images/splash-icon.png`.
+- Updated Splash Screen (`apps/mobile-app/src/app/index.tsx`):
+  1. Replaced placeholder `Ionicons` with `HBS_Logo_transparent.png` via `expo-image` `Image`.
+- Updated Login Screen (`apps/mobile-app/src/app/(auth)/login.tsx`):
+  1. Replaced placeholder `Ionicons` with `HBS_Logo_transparent.png` in brand header.
+- Updated Register Screen (`apps/mobile-app/src/app/(auth)/register.tsx`):
+  1. Added `HBS_Logo_transparent.png` brand logo in header for consistent auth styling.
+- Verified TypeScript compilation (`bun run typecheck`) with zero errors and Next.js server production build (`bun run build --filter=server`) with 100% success.
+
 
 
