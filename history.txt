@@ -540,3 +540,16 @@
      - Replaced 3 floating boxed cards with a unified 3-column quick metrics bar with hairline vertical separators (`Uploaded`, `Duplicates`, `Server Status`).
      - Streamlined Synced Folders, Destination Server, and Sync Preferences into borderless grouped sections with soft icon badges and inset hairline dividers.
 - Verified TypeScript compilation across workspace (`bun run typecheck`) and Next.js server production build (`bun run build --filter=server`) with 100% success and zero errors.
+
+## Session: 2026-08-24 (AMOLED Dark Pure Black Theme Mode Completed)
+- Implemented **AMOLED Dark (Pure Black)** theme mode across `apps/mobile-app`:
+  1. `src/constants/theme.ts`:
+     - Added `createAmoledTheme` helper that maps any active accent palette's dark variant to pure `#000000` AMOLED black background, `#0A0A0A` surfaces, `#000000` tab bar, `#121212` search backgrounds, and `#1E1E1E` borders, while preserving vibrant accent colors on buttons, active badges, highlights, and icons.
+  2. `src/context/ThemeContext.tsx`:
+     - Added `amoledDark`, `isAmoled` flags, and `setAmoledDark` persistent handler (`hbs_app_amoled_dark` in `appStorage`).
+     - Dynamically applies `createAmoledTheme` when in dark mode with AMOLED enabled.
+  3. `src/app/(tabs)/settings.tsx`:
+     - Added **"AMOLED Pure Black"** toggle row under Appearance & Theme with live reactive preview and automatic switch handling.
+  4. `src/app/(tabs)/backup.tsx` & `src/components/CustomTabBar.tsx`:
+     - Synchronized group containers and floating tab bar with `isAmoled` pure black backgrounds.
+- Verified TypeScript compilation across workspace (`bun run typecheck`) and Next.js server build (`bun run build --filter=server`) with 100% success and zero errors.

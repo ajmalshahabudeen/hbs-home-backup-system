@@ -31,7 +31,7 @@ import { appStorage } from '../../utils/storage';
 import { asyncTaskQueue, yieldToInteractions } from '../../utils/asyncTaskQueue';
 
 export default function BackupScreen() {
-  const { colors, isDark } = useAppTheme();
+  const { colors, isDark, isAmoled } = useAppTheme();
   const setTabBarVisible = useTabBarStore((s) => s.setTabBarVisible);
 
   const lastScrollY = useRef<number>(0);
@@ -350,8 +350,16 @@ export default function BackupScreen() {
   const syncStepMessage = syncState.syncStepMessage;
   const skippedDuplicatesCount = syncState.skippedCount;
 
-  const groupBg = isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.025)';
-  const dividerColor = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.05)';
+  const groupBg = isDark
+    ? isAmoled
+      ? '#0D0D0D'
+      : 'rgba(255, 255, 255, 0.04)'
+    : 'rgba(0, 0, 0, 0.025)';
+  const dividerColor = isDark
+    ? isAmoled
+      ? '#1A1A1A'
+      : 'rgba(255, 255, 255, 0.06)'
+    : 'rgba(0, 0, 0, 0.05)';
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>

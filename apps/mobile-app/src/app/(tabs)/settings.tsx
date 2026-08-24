@@ -33,7 +33,17 @@ import { runSilentIndexReconciliation } from '../../services/backgroundIndexReco
 import { asyncTaskQueue, yieldToInteractions } from '../../utils/asyncTaskQueue';
 
 export default function SettingsScreen() {
-  const { colors, isDark, themeMode, setThemeMode, paletteKey, setPaletteKey } = useAppTheme();
+  const {
+    colors,
+    isDark,
+    isAmoled,
+    amoledDark,
+    themeMode,
+    setThemeMode,
+    paletteKey,
+    setPaletteKey,
+    setAmoledDark,
+  } = useAppTheme();
   const setTabBarVisible = useTabBarStore((s) => s.setTabBarVisible);
 
   const lastScrollY = useRef<number>(0);
@@ -104,6 +114,13 @@ export default function SettingsScreen() {
     await appStorage.setItem('hbs_notif_enabled', JSON.stringify(val));
   };
 
+  const handleToggleAmoled = (val: boolean) => {
+    setAmoledDark(val);
+    if (val && themeMode === 'light') {
+      setThemeMode('dark');
+    }
+  };
+
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out of HBS?', [
       { text: 'Cancel', style: 'cancel' },
@@ -136,8 +153,16 @@ export default function SettingsScreen() {
       ? Math.min(100, Math.max(2, Math.round((stats.totalBytes / stats.diskTotalBytes) * 100)))
       : 15;
 
-  const groupBg = isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.025)';
-  const dividerColor = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.05)';
+  const groupBg = isDark
+    ? isAmoled
+      ? '#0D0D0D'
+      : 'rgba(255, 255, 255, 0.04)'
+    : 'rgba(0, 0, 0, 0.025)';
+  const dividerColor = isDark
+    ? isAmoled
+      ? '#1A1A1A'
+      : 'rgba(255, 255, 255, 0.06)'
+    : 'rgba(0, 0, 0, 0.05)';
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
@@ -208,7 +233,7 @@ export default function SettingsScreen() {
             </View>
           </View>
 
-          <View style={[styles.storageTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
+          <View style={[styles.storageTrack, { backgroundColor: isDark ? (isAmoled ? '#181818' : 'rgba(255,255,255,0.08)') : 'rgba(0,0,0,0.06)' }]}>
             <View
               style={[
                 styles.storageFill,
@@ -301,7 +326,7 @@ export default function SettingsScreen() {
             <Switch
               value={notifEnabled}
               onValueChange={handleToggleNotif}
-              trackColor={{ false: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', true: colors.primary }}
+              trackColor={{ false: isDark ? (isAmoled ? '#222222' : 'rgba(255,255,255,0.1)') : 'rgba(0,0,0,0.1)', true: colors.primary }}
               thumbColor="#FFFFFF"
             />
           </View>
@@ -343,7 +368,11 @@ export default function SettingsScreen() {
                   isSelected && [
                     styles.themeSegmentActive,
                     {
-                      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#FFFFFF',
+                      backgroundColor: isDark
+                        ? isAmoled
+                          ? '#1C1C1C'
+                          : 'rgba(255, 255, 255, 0.12)'
+                        : '#FFFFFF',
                       shadowColor: '#000000',
                       shadowOffset: { width: 0, height: 2 },
                       shadowOpacity: isDark ? 0 : 0.08,
@@ -374,6 +403,47 @@ export default function SettingsScreen() {
               </TouchableOpacity>
             );
           })}
+        </View>
+
+        {/* AMOLED Dark Pure Black Option */}
+        <View style={[styles.groupContainer, { backgroundColor: groupBg, marginTop: 2, marginBottom: 18 }]}>
+          <View style={styles.itemRow}>
+            <View
+              style={[
+                styles.iconBadge,
+                {
+                  backgroundColor: isAmoled
+                    ? colors.primary + '18'
+                    : isDark
+                    ? isAmoled
+                      ? '#1A1A1A'
+                      : 'rgba(255, 255, 255, 0.06)'
+                    : 'rgba(0, 0, 0, 0.04)',
+                },
+              ]}
+            >
+              <Ionicons
+                name="contrast"
+                size={18}
+                color={isAmoled ? colors.primary : colors.subtext}
+              />
+            </View>
+            <View style={styles.itemInfo}>
+              <Text style={[styles.itemTitle, { color: colors.text }]}>AMOLED Pure Black</Text>
+              <Text style={[styles.itemSub, { color: colors.subtext }]}>
+                True #000000 black canvas with vibrant color accents
+              </Text>
+            </View>
+            <Switch
+              value={amoledDark}
+              onValueChange={handleToggleAmoled}
+              trackColor={{
+                false: isDark ? (isAmoled ? '#222222' : 'rgba(255,255,255,0.1)') : 'rgba(0,0,0,0.1)',
+                true: colors.primary,
+              }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
         </View>
 
         {/* Accent Color Palette */}
@@ -700,7 +770,7 @@ const styles = StyleSheet.create({
     padding: 4,
     borderRadius: 16,
     gap: 4,
-    marginBottom: 18,
+    marginBottom: 10,
   },
   themeSegmentItem: {
     flex: 1,

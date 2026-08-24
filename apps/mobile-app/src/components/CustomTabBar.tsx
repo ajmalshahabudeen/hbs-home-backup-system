@@ -113,7 +113,7 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
   descriptors,
   navigation,
 }) => {
-  const { colors, isDark } = useAppTheme();
+  const { colors, isDark, isAmoled } = useAppTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const isTabBarVisible = useTabBarStore((s) => s.isTabBarVisible);
@@ -137,8 +137,16 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
   });
 
   const bottomOffset = Math.max(insets.bottom, 12) + 8;
-  const glassBg = isDark ? 'rgba(20, 20, 28, 0.88)' : 'rgba(255, 255, 255, 0.92)';
-  const glassBorder = isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)';
+  const glassBg = isDark
+    ? isAmoled
+      ? 'rgba(0, 0, 0, 0.95)'
+      : 'rgba(20, 20, 28, 0.88)'
+    : 'rgba(255, 255, 255, 0.92)';
+  const glassBorder = isDark
+    ? isAmoled
+      ? '#1A1A1A'
+      : 'rgba(255, 255, 255, 0.12)'
+    : 'rgba(0, 0, 0, 0.08)';
 
   return (
     <Animated.View

@@ -36,6 +36,23 @@ export interface PalettePreset {
   dark: ThemeColors;
 }
 
+export function createAmoledTheme(darkTheme: ThemeColors): ThemeColors {
+  return {
+    ...darkTheme,
+    background: '#000000',
+    surface: '#0A0A0A',
+    surfaceVariant: '#141414',
+    card: '#0A0A0A',
+    tabBar: '#000000',
+    tabBarBorder: '#1A1A1A',
+    searchBg: '#121212',
+    modalBg: '#080808',
+    border: '#1E1E1E',
+    primaryContainer: '#181818',
+    secondaryContainer: '#121212',
+  };
+}
+
 export const GooglePalette: { light: ThemeColors; dark: ThemeColors } = {
   light: {
     primary: '#D97706', // Warm Vibrant Amber Yellow
