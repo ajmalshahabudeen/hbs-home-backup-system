@@ -553,3 +553,27 @@
   4. `src/app/(tabs)/backup.tsx` & `src/components/CustomTabBar.tsx`:
      - Synchronized group containers and floating tab bar with `isAmoled` pure black backgrounds.
 - Verified TypeScript compilation across workspace (`bun run typecheck`) and Next.js server build (`bun run build --filter=server`) with 100% success and zero errors.
+
+## Session: 2026-08-24 (Backup Screen Server Integration & Options Optimization Completed)
+- Conducted comprehensive audit of `apps/mobile-app/src/app/(tabs)/backup.tsx` and related services (`backgroundSync.ts`, `api.ts`, `safeMediaLibrary.ts`, `apps/server/app/api/user/upload/check/route.ts`):
+  1. Backend Server Deduplication API (`apps/server/app/api/user/upload/check/route.ts`):
+     - Added support for all parameter aliases (`name` / `fileName`, `size` / `fileSize`, `checksum` / `hash`, `path` / `targetFilePath` / `reqPath`).
+     - Standardized response payload to `{ duplicate: boolean, isDuplicate: boolean, file, existingFile }` ensuring 100% interoperability with mobile and web clients.
+  2. Mobile API Client (`apps/mobile-app/src/services/api.ts`):
+     - Enhanced `checkDuplicate` to send all field aliases and parse both `duplicate` and `isDuplicate` response attributes.
+  3. Safe Media Library (`apps/mobile-app/src/utils/safeMediaLibrary.ts`):
+     - Added `filterAssetsBySelectedAlbums(assets, selectedAlbums)` helper to filter local media assets by user-selected album IDs, categories (`camera`, `whatsapp`, `screenshots`, `downloads`), or names.
+  4. Background Sync Service (`apps/mobile-app/src/services/backgroundSync.ts`):
+     - Added `isNetworkOkForSync(wifiOnly)` using `expo-network` (`Network.getNetworkStateAsync()`).
+     - Added `wifiOnly` preference into `SyncConfig` with default `true` and persistent storage.
+     - Updated `syncPhotosNow` and background task to enforce network (`isNetworkOkForSync`) and battery (`isBatteryOkForSync`) guards, filter assets with `filterAssetsBySelectedAlbums`, and index uploaded assets in `backupIndexDb.markAsUploaded`.
+  5. Backup Screen (`apps/mobile-app/src/app/(tabs)/backup.tsx`):
+     - Connected live server stats hydration (`hbsApi.getUserStats`), dynamically displaying server backed up media counts in the `UPLOADED` metric box with fallback to local SQLite index.
+     - Updated **"Sync Now"** auto-sync engine: enforces server connection, battery warning guard, cellular data prompt when Wi-Fi Only is active, filters assets by user-selected folders, executes parallel upload queue, updates SQLite index, and refreshes server stats.
+     - Updated **"Select Photos"** manual backup engine: enforces connection, battery, and Wi-Fi guards, executes preflight deduplication checks, uploads non-duplicate files, indexes newly uploaded items in SQLite database, and refreshes server metrics.
+     - Connected **"Folders & Albums"** (`FolderSelectorModal`): accurately calculates ready item count for selected albums, saves custom selections, and scopes auto-sync.
+     - Connected all 4 Sync Preferences switches (**Background Auto-Sync**, **Sync Progress Notifications**, **Wi-Fi Only Sync**, **Pause on Low Battery**), verifying system permissions and immediately applying runtime guards.
+     - Removed all dead, unused, and redundant code.
+- Verified TypeScript compilation across all packages (`bun run typecheck`) with zero errors.
+- Verified Next.js server production build (`bun run build --filter=server`) with 100% success and zero errors.
+

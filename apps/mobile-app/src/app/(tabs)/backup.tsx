@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { safeMediaLibrary } from '../../utils/safeMediaLibrary';
+import { safeMediaLibrary, filterAssetsBySelectedAlbums } from '../../utils/safeMediaLibrary';
 import { useAppTheme } from '../../context/ThemeContext';
 import { useTabBarStore } from '../../stores/useTabBarStore';
 import { useServer } from '../../context/ServerContext';
@@ -25,9 +25,14 @@ import { PermissionModal } from '../../components/PermissionModal';
 import { checkFileDuplicate } from '../../utils/dedupe';
 import { runParallelUploadQueue } from '../../utils/parallelUploadQueue';
 import { getAppPermissionsStatus } from '../../utils/permissions';
-import { getSyncConfig, saveSyncConfig } from '../../services/backgroundSync';
+import {
+  getSyncConfig,
+  saveSyncConfig,
+  isBatteryOkForSync,
+  isNetworkOkForSync,
+} from '../../services/backgroundSync';
 import { syncTracker, SyncState } from '../../services/syncTracker';
-import { appStorage } from '../../utils/storage';
+import { backupIndexDb } from '../../utils/backupIndexDb';
 import { asyncTaskQueue, yieldToInteractions } from '../../utils/asyncTaskQueue';
 
 export default function BackupScreen() {
@@ -97,23 +102,30 @@ export default function BackupScreen() {
     return unsubscribe;
   }, []);
 
+  const refreshStats = useCallback(async () => {
+    try {
+      if (isConnected && serverUrl) {
+        const stats = await hbsApi.getUserStats(serverUrl, sessionToken);
+        if (stats) {
+          const count = (stats.photoCount || 0) + (stats.videoCount || 0);
+          setBackedUpCount(count > 0 ? count : stats.fileCount || 0);
+          return;
+        }
+      }
+    } catch {
+      // ignore network errors
+    }
+    const localCount = backupIndexDb.getUploadedCount();
+    setBackedUpCount(localCount);
+  }, [isConnected, serverUrl, sessionToken]);
+
   const calculateFolderItemsCount = useCallback(async (albums: string[]) => {
     asyncTaskQueue.enqueue(
       async () => {
         try {
-          const allAlbums = await safeMediaLibrary.getAlbumsAsync();
-          let total = 0;
-          if (albums.length === 0) {
-            total = allAlbums.reduce((sum, a) => sum + a.assetCount, 0);
-          } else {
-            albums.forEach((idOrTitle) => {
-              const match = allAlbums.find(
-                (a) => a.id === idOrTitle || a.title.toLowerCase() === idOrTitle.toLowerCase()
-              );
-              if (match) total += match.assetCount;
-            });
-          }
-          setFolderTotalItems(total);
+          const allAssets = await safeMediaLibrary.getAssetsAsync({ first: 50000 });
+          const filtered = filterAssetsBySelectedAlbums(allAssets, albums);
+          setFolderTotalItems(filtered.length);
         } catch {
           setFolderTotalItems(0);
         }
@@ -127,19 +139,24 @@ export default function BackupScreen() {
     setAutoSyncEnabled(config.autoSyncEnabled);
     setBatterySaverEnabled(config.pauseOnLowBattery);
     setShowSyncNotifications(config.showSyncNotifications !== false);
+    setWifiOnly(config.wifiOnly !== false);
     setSelectedAlbums(config.selectedAlbums);
-
-    const wifiVal = await appStorage.getItem('hbs_wifi_only');
-    if (wifiVal !== null) setWifiOnly(JSON.parse(wifiVal));
 
     yieldToInteractions().then(() => {
       calculateFolderItemsCount(config.selectedAlbums);
+      refreshStats();
     });
-  }, [calculateFolderItemsCount]);
+  }, [calculateFolderItemsCount, refreshStats]);
 
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
+
+  useEffect(() => {
+    if (isConnected) {
+      refreshStats();
+    }
+  }, [isConnected, refreshStats]);
 
   const handleToggleAutoSync = async (val: boolean) => {
     if (val) {
@@ -155,13 +172,20 @@ export default function BackupScreen() {
   };
 
   const handleToggleShowSyncNotifications = async (val: boolean) => {
+    if (val) {
+      const perm = await getAppPermissionsStatus();
+      if (!perm.notificationsGranted) {
+        setPermissionType('notification');
+        setShowPermissionModal(true);
+      }
+    }
     setShowSyncNotifications(val);
     await saveSyncConfig({ showSyncNotifications: val });
   };
 
   const handleToggleWifiOnly = async (val: boolean) => {
     setWifiOnly(val);
-    await appStorage.setItem('hbs_wifi_only', JSON.stringify(val));
+    await saveSyncConfig({ wifiOnly: val });
   };
 
   const handleToggleBatterySaver = async (val: boolean) => {
@@ -191,15 +215,54 @@ export default function BackupScreen() {
       }
     }
 
-    await syncTracker.startSync(1, 'Initializing background auto-sync...');
+    // Battery verification
+    const batteryCheck = await isBatteryOkForSync(batterySaverEnabled);
+    if (!batteryCheck.ok) {
+      const proceed = await new Promise<boolean>((resolve) => {
+        Alert.alert(
+          'Low Battery Warning',
+          `${batteryCheck.reason || 'Battery is low'}. Do you want to continue backup anyway?`,
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Continue', onPress: () => resolve(true) },
+          ]
+        );
+      });
+      if (!proceed) return;
+    }
+
+    // Network verification
+    const netCheck = await isNetworkOkForSync(wifiOnly);
+    if (!netCheck.ok) {
+      if (netCheck.isCellular) {
+        const proceed = await new Promise<boolean>((resolve) => {
+          Alert.alert(
+            'Cellular Data Notice',
+            'Wi-Fi Only Sync is enabled, but your device is currently on Cellular Data. Uploading photos may use mobile data allowance. Continue anyway?',
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Upload on Cellular', onPress: () => resolve(true) },
+            ]
+          );
+        });
+        if (!proceed) return;
+      } else {
+        Alert.alert('Device Offline', 'Please connect to Wi-Fi or Internet to back up photos.');
+        return;
+      }
+    }
+
+    await syncTracker.startSync(1, 'Initializing auto-sync...');
 
     asyncTaskQueue.enqueue(
       async () => {
         try {
-          const assets = await safeMediaLibrary.getAssetsAsync({ first: 50000 });
+          const allAssets = await safeMediaLibrary.getAssetsAsync({ first: 50000 });
+          const assets = filterAssetsBySelectedAlbums(allAssets, selectedAlbums);
+
           if (!assets || assets.length === 0) {
             await syncTracker.finishSync(0, 0);
-            Alert.alert('No Media Found', 'No photos or videos found on your device to sync.');
+            Alert.alert('No Media Found', 'No photos or videos found for the selected folders.');
             return;
           }
 
@@ -223,8 +286,9 @@ export default function BackupScreen() {
           );
 
           await syncTracker.finishSync(result.syncedCount, result.skippedCount);
-          setBackedUpCount((prev) => prev + result.syncedCount);
-          const msg = `Synced ${result.syncedCount} new items.${
+          await refreshStats();
+
+          const msg = `Synced ${result.syncedCount} new item${result.syncedCount === 1 ? '' : 's'}.${
             result.skippedCount > 0 ? ` ${result.skippedCount} duplicate items skipped via fast SQLite index.` : ''
           }`;
           Alert.alert('Auto-Sync Complete', msg);
@@ -253,6 +317,43 @@ export default function BackupScreen() {
       }
     }
 
+    // Battery verification
+    const batteryCheck = await isBatteryOkForSync(batterySaverEnabled);
+    if (!batteryCheck.ok) {
+      const proceed = await new Promise<boolean>((resolve) => {
+        Alert.alert(
+          'Low Battery Warning',
+          `${batteryCheck.reason || 'Battery is low'}. Do you want to continue backup anyway?`,
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Continue', onPress: () => resolve(true) },
+          ]
+        );
+      });
+      if (!proceed) return;
+    }
+
+    // Network verification
+    const netCheck = await isNetworkOkForSync(wifiOnly);
+    if (!netCheck.ok) {
+      if (netCheck.isCellular) {
+        const proceed = await new Promise<boolean>((resolve) => {
+          Alert.alert(
+            'Cellular Data Notice',
+            'Wi-Fi Only Sync is enabled, but your device is currently on Cellular Data. Uploading photos may use mobile data allowance. Continue anyway?',
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Upload on Cellular', onPress: () => resolve(true) },
+            ]
+          );
+        });
+        if (!proceed) return;
+      } else {
+        Alert.alert('Device Offline', 'Please connect to Wi-Fi or Internet to back up photos.');
+        return;
+      }
+    }
+
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images', 'videos'],
@@ -276,6 +377,7 @@ export default function BackupScreen() {
         const fileName = rawName || `manual_${Date.now()}_${i}.${ext}`;
         const mimeType =
           asset.mimeType || (asset.type === 'video' ? 'video/mp4' : 'image/jpeg');
+        const targetFilePath = `MobileBackups/${fileName}`;
 
         await syncTracker.updateProgress(
           i,
@@ -296,6 +398,14 @@ export default function BackupScreen() {
 
         if (dupCheck.isDuplicate) {
           dupCount++;
+          backupIndexDb.markAsUploaded(
+            asset.uri,
+            fileName,
+            dupCheck.fileHash || `hash_${fileName}`,
+            asset.fileSize || 0,
+            Date.now(),
+            targetFilePath
+          );
           await syncTracker.updateProgress(
             i + 1,
             result.assets.length,
@@ -323,16 +433,26 @@ export default function BackupScreen() {
             mimeType,
             'MobileBackups'
           );
+
+          backupIndexDb.markAsUploaded(
+            asset.uri,
+            fileName,
+            dupCheck.fileHash || `hash_${fileName}`,
+            asset.fileSize || 0,
+            Date.now(),
+            targetFilePath
+          );
+
           successCount++;
         } catch {
-          // continue next item
+          backupIndexDb.markAsFailed(asset.uri, fileName);
         }
       }
 
       await syncTracker.finishSync(successCount, dupCount);
-      setBackedUpCount((prev) => prev + successCount);
+      await refreshStats();
 
-      const msg = `Uploaded ${successCount} items.${
+      const msg = `Uploaded ${successCount} item${successCount === 1 ? '' : 's'}.${
         dupCount > 0 ? ` ${dupCount} duplicate items skipped.` : ''
       }`;
 

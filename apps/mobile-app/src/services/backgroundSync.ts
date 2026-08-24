@@ -1,12 +1,14 @@
 import * as TaskManager from 'expo-task-manager';
 import * as BackgroundTask from 'expo-background-task';
 import * as Battery from 'expo-battery';
+import * as Network from 'expo-network';
 import { appStorage } from '../utils/storage';
 import { safeNotifications } from '../utils/safeNotifications';
-import { safeMediaLibrary, SafeAsset } from '../utils/safeMediaLibrary';
+import { safeMediaLibrary, SafeAsset, filterAssetsBySelectedAlbums } from '../utils/safeMediaLibrary';
 import { hbsApi } from './api';
 import { checkFileDuplicate } from '../utils/dedupe';
 import { syncTracker } from './syncTracker';
+import { backupIndexDb } from '../utils/backupIndexDb';
 
 export const BACKGROUND_SYNC_TASK = 'HBS_BACKGROUND_AUTO_SYNC';
 
@@ -14,6 +16,7 @@ export interface SyncConfig {
   autoSyncEnabled: boolean;
   pauseOnLowBattery: boolean;
   showSyncNotifications: boolean;
+  wifiOnly: boolean;
   selectedAlbums: string[];
   lastSyncTimestamp?: string;
   totalSyncedCount?: number;
@@ -24,12 +27,16 @@ const CONFIG_STORAGE_KEY = 'hbs_sync_config_v1';
 export async function getSyncConfig(): Promise<SyncConfig> {
   try {
     const raw = await appStorage.getItem(CONFIG_STORAGE_KEY);
+    const wifiRaw = await appStorage.getItem('hbs_wifi_only');
+    const wifiFallback = wifiRaw !== null ? JSON.parse(wifiRaw) : true;
+
     if (raw) {
       const parsed = JSON.parse(raw);
       return {
         autoSyncEnabled: false,
         pauseOnLowBattery: true,
         showSyncNotifications: true,
+        wifiOnly: wifiFallback,
         selectedAlbums: [],
         ...parsed,
       };
@@ -41,6 +48,7 @@ export async function getSyncConfig(): Promise<SyncConfig> {
     autoSyncEnabled: false,
     pauseOnLowBattery: true,
     showSyncNotifications: true,
+    wifiOnly: true,
     selectedAlbums: [],
   };
 }
@@ -49,6 +57,10 @@ export async function saveSyncConfig(config: Partial<SyncConfig>): Promise<SyncC
   const current = await getSyncConfig();
   const updated = { ...current, ...config };
   await appStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(updated));
+
+  if (config.wifiOnly !== undefined) {
+    await appStorage.setItem('hbs_wifi_only', JSON.stringify(config.wifiOnly));
+  }
 
   if (config.autoSyncEnabled !== undefined) {
     await registerBackgroundSyncTask(config.autoSyncEnabled);
@@ -79,6 +91,29 @@ export async function isBatteryOkForSync(pauseOnLowBattery: boolean): Promise<{ 
   return { ok: true };
 }
 
+export async function isNetworkOkForSync(wifiOnly: boolean): Promise<{ ok: boolean; reason?: string; isCellular?: boolean }> {
+  if (!wifiOnly) return { ok: true };
+
+  try {
+    const netState = await Network.getNetworkStateAsync();
+    if (!netState.isConnected) {
+      return { ok: false, reason: 'Device is offline' };
+    }
+
+    if (netState.type === Network.NetworkStateType.CELLULAR) {
+      return {
+        ok: false,
+        reason: 'Connected to Cellular Data (Wi-Fi Only Sync is enabled)',
+        isCellular: true,
+      };
+    }
+  } catch (e) {
+    // Ignore network query error in unsupported environments
+  }
+
+  return { ok: true };
+}
+
 export async function sendLocalSyncNotification(title: string, body: string) {
   try {
     const config = await getSyncConfig();
@@ -97,7 +132,8 @@ export async function getEnabledSyncAssets(): Promise<SafeAsset[]> {
   if (!config.autoSyncEnabled) {
     return [];
   }
-  return safeMediaLibrary.getAssetsAsync({ first: 50000 });
+  const allAssets = await safeMediaLibrary.getAssetsAsync({ first: 50000 });
+  return filterAssetsBySelectedAlbums(allAssets, config.selectedAlbums);
 }
 
 export async function syncPhotosNow(
@@ -111,12 +147,19 @@ export async function syncPhotosNow(
     return { synced: 0, skipped: 0, total: 0 };
   }
 
+  const networkCheck = await isNetworkOkForSync(config.wifiOnly);
+  if (!networkCheck.ok) {
+    return { synced: 0, skipped: 0, total: 0 };
+  }
+
   const batteryCheck = await isBatteryOkForSync(config.pauseOnLowBattery);
   if (!batteryCheck.ok) {
     return { synced: 0, skipped: 0, total: 0 };
   }
 
-  const assets = await safeMediaLibrary.getAssetsAsync({ first: 50000 });
+  const allAssets = await safeMediaLibrary.getAssetsAsync({ first: 50000 });
+  const assets = filterAssetsBySelectedAlbums(allAssets, config.selectedAlbums);
+
   if (!assets || assets.length === 0) {
     return { synced: 0, skipped: 0, total: 0 };
   }
@@ -132,6 +175,7 @@ export async function syncPhotosNow(
     const ext = asset.mediaType === 'video' ? 'mp4' : 'jpg';
     const fileName = rawName || `auto_sync_${asset.creationTime || asset.id}.${ext}`;
     const mime = asset.mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
+    const targetFilePath = `MobileBackups/${fileName}`;
 
     await syncTracker.updateProgress(
       i + 1,
@@ -154,6 +198,14 @@ export async function syncPhotosNow(
 
       if (dup.isDuplicate) {
         skipped++;
+        backupIndexDb.markAsUploaded(
+          asset.uri,
+          fileName,
+          dup.fileHash || `hash_${fileName}`,
+          0,
+          asset.creationTime,
+          targetFilePath
+        );
         await syncTracker.updateProgress(
           i + 1,
           assets.length,
@@ -172,9 +224,19 @@ export async function syncPhotosNow(
         mime,
         'MobileBackups'
       );
+
+      backupIndexDb.markAsUploaded(
+        asset.uri,
+        fileName,
+        dup.fileHash || `hash_${fileName}`,
+        0,
+        asset.creationTime,
+        targetFilePath
+      );
+
       synced++;
     } catch {
-      // continue next
+      backupIndexDb.markAsFailed(asset.uri, fileName);
     }
   }
 
@@ -194,6 +256,11 @@ try {
     try {
       const config = await getSyncConfig();
       if (!config.autoSyncEnabled) {
+        return BackgroundTask.BackgroundTaskResult.Success;
+      }
+
+      const networkCheck = await isNetworkOkForSync(config.wifiOnly);
+      if (!networkCheck.ok) {
         return BackgroundTask.BackgroundTaskResult.Success;
       }
 

@@ -13,14 +13,17 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { name, size, checksum, path: reqPath } = body || {};
+    const name = body?.name || body?.fileName || "";
+    const size = body?.size ?? body?.fileSize;
+    const checksum = body?.checksum || body?.hash || "";
+    const reqPath = body?.path || body?.targetFilePath || body?.reqPath || "";
 
     if (!name && !reqPath) {
       return badRequest("File name or path required for duplicate check");
     }
 
     let targetPath = reqPath ? String(reqPath).trim() : "";
-    if (name && targetPath && !targetPath.endsWith(name)) {
+    if (name && targetPath && !targetPath.endsWith(String(name))) {
       targetPath = `${targetPath}/${name}`;
     } else if (!targetPath && name) {
       targetPath = String(name);
@@ -51,16 +54,24 @@ export async function POST(request: NextRequest) {
     }
 
     if (existing && !existing.isDir) {
+      const fileData = {
+        ...existing,
+        size: Number(existing.size),
+      };
       return ok({
         duplicate: true,
-        file: {
-          ...existing,
-          size: Number(existing.size),
-        },
+        isDuplicate: true,
+        file: fileData,
+        existingFile: fileData,
       });
     }
 
-    return ok({ duplicate: false, file: null });
+    return ok({
+      duplicate: false,
+      isDuplicate: false,
+      file: null,
+      existingFile: null,
+    });
   } catch (e) {
     return badRequest(e instanceof Error ? e.message : "Deduplication check failed");
   }

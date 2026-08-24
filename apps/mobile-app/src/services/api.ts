@@ -130,11 +130,30 @@ export const hbsApi = {
     hash?: string,
     targetFilePath?: string
   ): Promise<{ isDuplicate: boolean; existingFile?: BackupFileItem }> {
-    return request(serverUrl, sessionToken, '/api/user/upload/check', {
+    const res = await request<{
+      isDuplicate?: boolean;
+      duplicate?: boolean;
+      existingFile?: BackupFileItem | null;
+      file?: BackupFileItem | null;
+    }>(serverUrl, sessionToken, '/api/user/upload/check', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fileName, fileSize, hash, targetFilePath }),
+      body: JSON.stringify({
+        name: fileName,
+        fileName,
+        size: fileSize,
+        fileSize,
+        checksum: hash,
+        hash,
+        path: targetFilePath,
+        targetFilePath,
+      }),
     });
+
+    return {
+      isDuplicate: !!(res.isDuplicate ?? res.duplicate),
+      existingFile: (res.existingFile ?? res.file) || undefined,
+    };
   },
 
   async uploadFile(

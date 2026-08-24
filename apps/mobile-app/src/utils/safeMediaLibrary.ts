@@ -264,3 +264,55 @@ export const safeMediaLibrary = {
     return result;
   },
 };
+
+/**
+ * Filters a list of device media assets according to the user's selected album identifiers/categories.
+ * Returns all assets if selectedAlbums is empty or contains 'camera_roll' / 'all'.
+ */
+export function filterAssetsBySelectedAlbums(
+  assets: SafeAsset[],
+  selectedAlbums: string[]
+): SafeAsset[] {
+  if (!selectedAlbums || selectedAlbums.length === 0) {
+    return assets;
+  }
+
+  const lowerSelected = selectedAlbums.map((s) => s.toLowerCase());
+  if (lowerSelected.includes('camera_roll') || lowerSelected.includes('all')) {
+    return assets;
+  }
+
+  const selectedSet = new Set(selectedAlbums);
+
+  return assets.filter((asset) => {
+    if (asset.albumId && selectedSet.has(asset.albumId)) {
+      return true;
+    }
+
+    const pathLower = (asset.uri || asset.filename || '').toLowerCase();
+
+    if (lowerSelected.includes('whatsapp') && pathLower.includes('whatsapp')) {
+      return true;
+    }
+
+    if (lowerSelected.includes('screenshots') && pathLower.includes('screenshot')) {
+      return true;
+    }
+
+    if (lowerSelected.includes('downloads') && pathLower.includes('download')) {
+      return true;
+    }
+
+    if (
+      lowerSelected.includes('camera') &&
+      !pathLower.includes('whatsapp') &&
+      !pathLower.includes('screenshot') &&
+      !pathLower.includes('download')
+    ) {
+      return true;
+    }
+
+    return false;
+  });
+}
+
