@@ -614,8 +614,10 @@
      - Added `android.buildType = "apk"` to `preview` and `preview-apk` profiles to ensure EAS generates standalone installable `.apk` binaries.
   3. EAS Monorepo Isolation (`.easignore` & `apps/mobile-app/.easignore`):
      - Created `.easignore` at monorepo root and inside `apps/mobile-app` to prevent EAS bundling large non-mobile directories (`apps/server`, `packages/db/data`, `python`, `.next`, `data`).
-  4. ESLint Flat Config (`apps/mobile-app/eslint.config.mjs`):
-     - Added ESLint v9 flat config referencing `@workspace/eslint-config/base` for seamless `turbo lint` / `bun run --filter=mobile-app lint` execution.
+  4. ESLint Monorepo Resolution:
+     - Resolved `Script not found "eslint"` error in CI by adding `@workspace/eslint-config` and `eslint` to `apps/mobile-app` and root `package.json` devDependencies.
+     - Updated `packages/eslint-config/package.json` to place its exported plugins under `dependencies`.
+     - Updated `apps/mobile-app` lint script to invoke `eslint .` directly with flat config support.
 - Verified TypeScript compilation (`bun run --filter=mobile-app typecheck`) with 0 errors.
 - Verified ESLint validation (`bun run --filter=mobile-app lint`) with 0 errors.
 - Verified server Next.js build (`bun run build --filter=server`) with 100% success and 0 errors.
