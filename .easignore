@@ -1,0 +1,12 @@
+# Ignore non-mobile folders when EAS bundles the workspace
+apps/server/
+apps/web/
+packages/db/data/
+packages/db/prisma/
+python/
+data/
+.turbo/
+.next/
+*.log
+.git/
+node_modules/.cache/

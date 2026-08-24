@@ -600,8 +600,25 @@
      - Updated `AuthContext.tsx` with `autoAuthenticateUser(targetServerUrl)` and persistent credential management (`hbs_auth_credentials`, `hbs_user_logged_out`).
      - Updated `safeNotifications.ts` with `getExpoPushTokenAsync()` for safe push token retrieval.
      - Updated `_layout.tsx` with push notification listener triggering `runAutonomousSync({ force: true, source: 'push_wakeup' })`.
-     - Updated `backgroundSync.ts` to route `BACKGROUND_SYNC_TASK` directly through `runAutonomousSync`.
-- Verified TypeScript compilation across all packages (`bun run typecheck`) with zero errors.
-- Verified Next.js server production build (`bun run build --filter=server`) with 100% success and zero errors.
+     ## Session: 2026-08-25 (Expo Mobile APK GitHub Action Setup)
+- Configured GitHub Actions workflow for building Android APK files for `apps/mobile-app` in a Turborepo workspace:
+  1. Workflow File (`.github/workflows/build-mobile-apk.yml`):
+     - Configured triggers to fire strictly on git version tags matching `'v*'` (`push: tags: ['v*']`) and optional `workflow_dispatch` manual trigger with `tag_name` input.
+     - Switched from EAS Cloud to pure local GitHub Actions runner build using `npx expo prebuild --platform android --no-install` and `./gradlew assembleRelease --no-daemon` (100% free of EAS cloud credits and tokens).
+     - Added `permissions: contents: write` and integrated `softprops/action-gh-release@v2` to automatically publish the APK to GitHub Releases with release notes.
+     - Uploads `hbs-cloud-<tag>.apk` and `hbs-cloud.apk` to both GitHub Releases and Actions run artifacts.
+     - Configured Bun setup (`oven-sh/setup-bun@v2`), Node.js (`actions/setup-node@v4` with `node-version: 'latest'`), Java 17 (`actions/setup-java@v4`), Android SDK (`android-actions/setup-android@v3`), and workspace dependency installation (`bun install`).
+     - Added Turborepo filtered typecheck (`bun run --filter=mobile-app typecheck`) and linting (`bun run --filter=mobile-app lint`) checks before building.
+     - Uploads built `.apk` artifacts using `actions/upload-artifact@v4`.
+  2. EAS Configuration (`apps/mobile-app/eas.json`):
+     - Added `android.buildType = "apk"` to `preview` and `preview-apk` profiles to ensure EAS generates standalone installable `.apk` binaries.
+  3. EAS Monorepo Isolation (`.easignore` & `apps/mobile-app/.easignore`):
+     - Created `.easignore` at monorepo root and inside `apps/mobile-app` to prevent EAS bundling large non-mobile directories (`apps/server`, `packages/db/data`, `python`, `.next`, `data`).
+  4. ESLint Flat Config (`apps/mobile-app/eslint.config.mjs`):
+     - Added ESLint v9 flat config referencing `@workspace/eslint-config/base` for seamless `turbo lint` / `bun run --filter=mobile-app lint` execution.
+- Verified TypeScript compilation (`bun run --filter=mobile-app typecheck`) with 0 errors.
+- Verified ESLint validation (`bun run --filter=mobile-app lint`) with 0 errors.
+- Verified server Next.js build (`bun run build --filter=server`) with 100% success and 0 errors.
+
 
 

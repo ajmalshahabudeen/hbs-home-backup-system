@@ -1,0 +1,104 @@
+name: Build & Release Mobile APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag Name (e.g. v1.0.0)'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build APK & Publish Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'latest'
+
+      - name: Setup Java (JDK 17)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Expo
+        uses: expo/expo-github-action@v8
+        with:
+          expo-version: latest
+
+      - name: Install Workspace Dependencies
+        run: bun install
+
+      - name: Turborepo Typecheck
+        run: bun run --filter=mobile-app typecheck
+
+      - name: Turborepo Lint
+        run: bun run --filter=mobile-app lint
+
+      - name: Prebuild Native Android Project
+        run: |
+          cd apps/mobile-app
+          npx expo prebuild --platform android --no-install
+
+      - name: Build Android APK (Local Gradle Runner)
+        run: |
+          cd apps/mobile-app/android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          
+          mkdir -p ../output
+          APK_FILE=$(find app/build/outputs/apk -name "*.apk" | head -n 1)
+          if [ -n "$APK_FILE" ]; then
+            TAG="${{ github.ref_name || inputs.tag_name || 'latest' }}"
+            cp "$APK_FILE" "../output/hbs-cloud-${TAG}.apk"
+            cp "$APK_FILE" "../output/hbs-cloud.apk"
+            echo "Successfully generated APK: $APK_FILE"
+          else
+            echo "Error: No APK file generated!"
+            exit 1
+          fi
+
+      - name: Upload APK Run Artifact
+        uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: hbs-cloud-android-apk
+          path: apps/mobile-app/output/*.apk
+          if-no-files-found: ignore
+
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.tag_name != '')
+        with:
+          tag_name: ${{ github.ref_name || inputs.tag_name }}
+          name: Release ${{ github.ref_name || inputs.tag_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            apps/mobile-app/output/hbs-cloud-*.apk
+            apps/mobile-app/output/hbs-cloud.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
