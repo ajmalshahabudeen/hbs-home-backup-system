@@ -13,7 +13,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useAppTheme } from '../../context/ThemeContext';
 import { useTabBarStore } from '../../stores/useTabBarStore';
 import { ColorPalettes, PaletteKey } from '../../constants/theme';
@@ -21,7 +20,6 @@ import { useServer } from '../../context/ServerContext';
 import { useAuth } from '../../context/AuthContext';
 import { hbsApi, UserStats } from '../../services/api';
 import { LanScannerModal } from '../../components/LanScannerModal';
-import { GlassCard } from '../../components/ui/GlassCard';
 import { safeNotifications } from '../../utils/safeNotifications';
 import {
   getAppPermissionsStatus,
@@ -32,7 +30,6 @@ import { appStorage } from '../../utils/storage';
 import { backupIndexDb } from '../../utils/backupIndexDb';
 import { expoCache } from '../../utils/expoCache';
 import { runSilentIndexReconciliation } from '../../services/backgroundIndexReconciler';
-
 import { asyncTaskQueue, yieldToInteractions } from '../../utils/asyncTaskQueue';
 
 export default function SettingsScreen() {
@@ -139,6 +136,9 @@ export default function SettingsScreen() {
       ? Math.min(100, Math.max(2, Math.round((stats.totalBytes / stats.diskTotalBytes) * 100)))
       : 15;
 
+  const groupBg = isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.025)';
+  const dividerColor = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.05)';
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
       <ScrollView
@@ -150,89 +150,117 @@ export default function SettingsScreen() {
         onScrollEndDrag={startStopTimer}
         onMomentumScrollEnd={startStopTimer}
         scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
       >
+        {/* Screen Title */}
+        <View style={styles.headerRow}>
+          <Text style={[styles.screenTitle, { color: colors.text }]}>Settings</Text>
+        </View>
 
-        {/* Profile Card */}
+        {/* Profile Header */}
         {user && (
-          <GlassCard style={styles.profileCard} borderRadius={22}>
+          <View style={[styles.profileHeader, { backgroundColor: groupBg }]}>
             <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
               <Text style={styles.avatarText}>
                 {(user.name || user.email || 'U')[0].toUpperCase()}
               </Text>
             </View>
 
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.profileName, { color: colors.text }]}>{user.name}</Text>
-              <Text style={[styles.profileEmail, { color: colors.subtext }]}>{user.email}</Text>
+            <View style={styles.profileInfo}>
+              <Text style={[styles.profileName, { color: colors.text }]} numberOfLines={1}>
+                {user.name || 'HBS User'}
+              </Text>
+              <Text style={[styles.profileEmail, { color: colors.subtext }]} numberOfLines={1}>
+                {user.email}
+              </Text>
             </View>
 
-            <TouchableOpacity style={styles.logoutIconButton} onPress={handleSignOut}>
-              <Ionicons name="log-out-outline" size={20} color={colors.error} />
+            <TouchableOpacity
+              style={[styles.profileSignoutBtn, { backgroundColor: colors.error + '14' }]}
+              onPress={handleSignOut}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="log-out-outline" size={18} color={colors.error} />
             </TouchableOpacity>
-          </GlassCard>
+          </View>
         )}
 
-        {/* Cloud Storage Usage */}
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>
-          {stats?.driveName ? `Cloud Storage Usage (${stats.driveName})` : 'Cloud Storage Usage'}
-        </Text>
+        {/* Cloud Storage Usage Section */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+            {stats?.driveName ? `STORAGE (${stats.driveName.toUpperCase()})` : 'STORAGE'}
+          </Text>
+        </View>
 
-        <GlassCard style={styles.quotaCard} borderRadius={20}>
-          <View style={styles.quotaHeader}>
+        <View style={[styles.groupContainer, { backgroundColor: groupBg }]}>
+          <View style={styles.storageStatsHeader}>
             <View>
-              <Text style={[styles.quotaTitle, { color: colors.text }]}>Your Storage Used</Text>
-              <Text style={[styles.quotaValue, { color: colors.primary }]}>{formattedUsedStorage}</Text>
+              <Text style={[styles.storageMainValue, { color: colors.text }]}>{formattedUsedStorage}</Text>
+              <Text style={[styles.storageSubLabel, { color: colors.subtext }]}>
+                used of {formattedTotalStorage || 'server capacity'}
+              </Text>
             </View>
 
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={[styles.quotaTitle, { color: colors.text }]}>Server Space Free</Text>
-              <Text style={[styles.quotaValue, { color: colors.success || '#34A853' }]}>
-                {formattedFreeStorage} {formattedTotalStorage ? `of ${formattedTotalStorage}` : ''}
+            <View style={[styles.storagePercentageBadge, { backgroundColor: colors.primary + '18' }]}>
+              <Text style={[styles.storagePercentageText, { color: colors.primary }]}>
+                {usedPercentage}% Used
               </Text>
             </View>
           </View>
 
-          <View style={[styles.quotaBarBg, { backgroundColor: colors.border }]}>
+          <View style={[styles.storageTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
             <View
               style={[
-                styles.quotaBarFill,
+                styles.storageFill,
                 { width: `${usedPercentage}%`, backgroundColor: colors.primary },
               ]}
             />
           </View>
 
-          <View style={styles.statsDetailsRow}>
-            <View style={styles.statDetail}>
-              <View style={[styles.dot, { backgroundColor: '#1A73E8' }]} />
-              <Text style={[styles.statDetailText, { color: colors.textSecondary }]}>
+          <View style={styles.storageFreeInfoRow}>
+            <Text style={[styles.storageFreeText, { color: colors.subtext }]}>
+              <Text style={{ color: colors.success || '#16A34A', fontWeight: '600' }}>{formattedFreeStorage}</Text> free space available
+            </Text>
+          </View>
+
+          <View style={[styles.insetDivider, { backgroundColor: dividerColor, marginLeft: 0 }]} />
+
+          <View style={styles.mediaCountRow}>
+            <View style={styles.mediaCountItem}>
+              <View style={[styles.mediaDot, { backgroundColor: '#3B82F6' }]} />
+              <Text style={[styles.mediaCountLabel, { color: colors.textSecondary }]}>
                 Photos ({stats?.photoCount || 0})
               </Text>
             </View>
-            <View style={styles.statDetail}>
-              <View style={[styles.dot, { backgroundColor: '#D93025' }]} />
-              <Text style={[styles.statDetailText, { color: colors.textSecondary }]}>
+            <View style={styles.mediaCountItem}>
+              <View style={[styles.mediaDot, { backgroundColor: '#EF4444' }]} />
+              <Text style={[styles.mediaCountLabel, { color: colors.textSecondary }]}>
                 Videos ({stats?.videoCount || 0})
               </Text>
             </View>
-            <View style={styles.statDetail}>
-              <View style={[styles.dot, { backgroundColor: '#188038' }]} />
-              <Text style={[styles.statDetailText, { color: colors.textSecondary }]}>
+            <View style={styles.mediaCountItem}>
+              <View style={[styles.mediaDot, { backgroundColor: '#10B981' }]} />
+              <Text style={[styles.mediaCountLabel, { color: colors.textSecondary }]}>
                 Docs ({stats?.docCount || 0})
               </Text>
             </View>
           </View>
-        </GlassCard>
+        </View>
 
-        {/* App Permissions Diagnostic Panel */}
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>System Permissions & Diagnostic</Text>
+        {/* Permissions & Diagnostics */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>PERMISSIONS & DIAGNOSTICS</Text>
+        </View>
 
-        <GlassCard style={styles.permCard} borderRadius={20}>
-          <View style={styles.permRow}>
-            <Ionicons name="images-outline" size={20} color={colors.primary} />
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.permTitle, { color: colors.text }]}>Media Library Access</Text>
-              <Text style={[styles.permSub, { color: colors.textSecondary }]}>
-                {permissions?.mediaLibraryGranted ? 'Granted & Active' : 'Permission Required'}
+        <View style={[styles.groupContainer, { backgroundColor: groupBg }]}>
+          <View style={styles.itemRow}>
+            <View style={[styles.iconBadge, { backgroundColor: colors.primary + '16' }]}>
+              <Ionicons name="images-outline" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.itemInfo}>
+              <Text style={[styles.itemTitle, { color: colors.text }]}>Media Library Access</Text>
+              <Text style={[styles.itemSub, { color: colors.subtext }]}>
+                {permissions?.mediaLibraryGranted ? 'Full photo library access enabled' : 'Permission required for backup'}
               </Text>
             </View>
             <View
@@ -240,8 +268,8 @@ export default function SettingsScreen() {
                 styles.statusBadge,
                 {
                   backgroundColor: permissions?.mediaLibraryGranted
-                    ? colors.success + '20'
-                    : colors.error + '20',
+                    ? (colors.success || '#16A34A') + '18'
+                    : colors.error + '18',
                 },
               ]}
             >
@@ -249,7 +277,7 @@ export default function SettingsScreen() {
                 style={[
                   styles.statusBadgeText,
                   {
-                    color: permissions?.mediaLibraryGranted ? colors.success : colors.error,
+                    color: permissions?.mediaLibraryGranted ? (colors.success || '#16A34A') : colors.error,
                   },
                 ]}
               >
@@ -258,92 +286,128 @@ export default function SettingsScreen() {
             </View>
           </View>
 
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <View style={[styles.insetDivider, { backgroundColor: dividerColor }]} />
 
-          <View style={styles.permRow}>
-            <Ionicons name="notifications-outline" size={20} color={colors.primary} />
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.permTitle, { color: colors.text }]}>Push Notifications</Text>
-              <Text style={[styles.permSub, { color: colors.textSecondary }]}>
-                Receive auto-sync completion notifications
+          <View style={styles.itemRow}>
+            <View style={[styles.iconBadge, { backgroundColor: colors.primary + '16' }]}>
+              <Ionicons name="notifications-outline" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.itemInfo}>
+              <Text style={[styles.itemTitle, { color: colors.text }]}>Push Notifications</Text>
+              <Text style={[styles.itemSub, { color: colors.subtext }]}>
+                Auto-sync & backup completion alerts
               </Text>
             </View>
             <Switch
               value={notifEnabled}
               onValueChange={handleToggleNotif}
-              trackColor={{ false: colors.border, true: colors.primary }}
+              trackColor={{ false: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', true: colors.primary }}
+              thumbColor="#FFFFFF"
             />
           </View>
 
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <View style={[styles.insetDivider, { backgroundColor: dividerColor }]} />
 
-          <TouchableOpacity style={styles.permRow} onPress={openSystemAppSettings}>
-            <Ionicons name="settings-outline" size={20} color={colors.primary} />
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.permTitle, { color: colors.text }]}>Open OS App Settings</Text>
-              <Text style={[styles.permSub, { color: colors.textSecondary }]}>
-                Manage system permissions directly in Android/iOS settings
+          <TouchableOpacity style={styles.itemRow} onPress={openSystemAppSettings} activeOpacity={0.7}>
+            <View style={[styles.iconBadge, { backgroundColor: colors.primary + '16' }]}>
+              <Ionicons name="settings-outline" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.itemInfo}>
+              <Text style={[styles.itemTitle, { color: colors.text }]}>Open OS App Settings</Text>
+              <Text style={[styles.itemSub, { color: colors.subtext }]}>
+                Manage permissions in system settings
               </Text>
             </View>
-            <Ionicons name="open-outline" size={18} color={colors.textSecondary} />
+            <Ionicons name="chevron-forward" size={18} color={colors.subtext} />
           </TouchableOpacity>
-        </GlassCard>
-
-        {/* Appearance & Theme Selector */}
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Appearance & Theme</Text>
-
-        <View style={[styles.themeGroup, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          {[
-            { key: 'light', label: 'Light Mode', icon: 'sunny-outline' },
-            { key: 'dark', label: 'Dark Mode', icon: 'moon-outline' },
-            { key: 'system', label: 'System Default', icon: 'phone-portrait-outline' },
-          ].map((item, idx) => (
-            <TouchableOpacity
-              key={item.key}
-              style={[
-                styles.themeRow,
-                idx > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-              ]}
-              onPress={() => setThemeMode(item.key as any)}
-            >
-              <Ionicons name={item.icon as any} size={20} color={colors.textSecondary} />
-              <Text style={[styles.themeLabel, { color: colors.text }]}>{item.label}</Text>
-
-              {themeMode === item.key && (
-                <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
-              )}
-            </TouchableOpacity>
-          ))}
         </View>
 
-        {/* Color Palette Accent Selector */}
-        <Text style={[styles.subSectionTitle, { color: colors.textSecondary }]}>Color Accent</Text>
+        {/* Appearance & Theme */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>APPEARANCE</Text>
+        </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.paletteContainer}>
+        {/* Theme Segmented Switcher */}
+        <View style={[styles.themeSegmentContainer, { backgroundColor: groupBg }]}>
+          {[
+            { key: 'light', label: 'Light', icon: 'sunny-outline' },
+            { key: 'dark', label: 'Dark', icon: 'moon-outline' },
+            { key: 'system', label: 'System', icon: 'phone-portrait-outline' },
+          ].map((item) => {
+            const isSelected = themeMode === item.key;
+            return (
+              <TouchableOpacity
+                key={item.key}
+                style={[
+                  styles.themeSegmentItem,
+                  isSelected && [
+                    styles.themeSegmentActive,
+                    {
+                      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#FFFFFF',
+                      shadowColor: '#000000',
+                      shadowOffset: { width: 0, height: 2 },
+                      shadowOpacity: isDark ? 0 : 0.08,
+                      shadowRadius: 4,
+                      elevation: isSelected && !isDark ? 2 : 0,
+                    },
+                  ],
+                ]}
+                onPress={() => setThemeMode(item.key as any)}
+                activeOpacity={0.8}
+              >
+                <Ionicons
+                  name={item.icon as any}
+                  size={16}
+                  color={isSelected ? colors.primary : colors.subtext}
+                />
+                <Text
+                  style={[
+                    styles.themeSegmentText,
+                    {
+                      color: isSelected ? colors.text : colors.subtext,
+                      fontWeight: isSelected ? '700' : '500',
+                    },
+                  ]}
+                >
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Accent Color Palette */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>COLOR ACCENT</Text>
+        </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.paletteScrollContent}
+        >
           {Object.values(ColorPalettes).map((palette) => {
             const isSelected = paletteKey === palette.id;
             return (
               <TouchableOpacity
                 key={palette.id}
                 style={[
-                  styles.paletteCard,
+                  styles.palettePill,
                   {
-                    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : '#F8FAFC',
-                    borderColor: isSelected ? colors.primary : colors.border,
-                    borderWidth: isSelected ? 2 : 1,
+                    backgroundColor: isSelected ? colors.primary + '18' : groupBg,
                   },
                 ]}
                 onPress={() => setPaletteKey(palette.id as PaletteKey)}
                 activeOpacity={0.75}
               >
-                <View style={[styles.paletteCircle, { backgroundColor: palette.previewColor }]}>
-                  {isSelected && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
+                <View style={[styles.paletteDot, { backgroundColor: palette.previewColor }]}>
+                  {isSelected && <Ionicons name="checkmark" size={12} color="#FFFFFF" />}
                 </View>
                 <Text
                   style={[
-                    styles.paletteName,
+                    styles.paletteText,
                     {
-                      color: colors.text,
+                      color: isSelected ? colors.primary : colors.text,
                       fontWeight: isSelected ? '700' : '500',
                     },
                   ]}
@@ -356,11 +420,13 @@ export default function SettingsScreen() {
         </ScrollView>
 
         {/* Database & Cache Management */}
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Database & Cache Management</Text>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>DATA & STORAGE</Text>
+        </View>
 
-        <GlassCard style={styles.permCard} borderRadius={20}>
+        <View style={[styles.groupContainer, { backgroundColor: groupBg }]}>
           <TouchableOpacity
-            style={styles.permRow}
+            style={styles.itemRow}
             onPress={() => {
               Alert.alert(
                 'Purge & Rebuild Cache & Index',
@@ -389,66 +455,64 @@ export default function SettingsScreen() {
                 ]
               );
             }}
+            activeOpacity={0.7}
           >
-            <Ionicons name="trash-bin-outline" size={20} color={colors.error} />
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.permTitle, { color: colors.text }]}>Purge & Rebuild Cache & Index</Text>
-              <Text style={[styles.permSub, { color: colors.textSecondary }]}>
-                Clear SQLite index, reset caches, and re-sync database with server
+            <View style={[styles.iconBadge, { backgroundColor: colors.error + '16' }]}>
+              <Ionicons name="trash-bin-outline" size={18} color={colors.error} />
+            </View>
+            <View style={styles.itemInfo}>
+              <Text style={[styles.itemTitle, { color: colors.text }]}>Purge & Rebuild Index</Text>
+              <Text style={[styles.itemSub, { color: colors.subtext }]}>
+                Clear SQLite index, reset caches & resync
               </Text>
             </View>
             <Ionicons name="refresh-outline" size={18} color={colors.error} />
           </TouchableOpacity>
-        </GlassCard>
+        </View>
 
-        {/* Server Connection Card */}
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Server Connection</Text>
+        {/* Server Connection */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>CONNECTION</Text>
+        </View>
 
-        <TouchableOpacity onPress={() => setShowScannerModal(true)} activeOpacity={0.8}>
-          <GlassCard style={styles.serverCard} borderRadius={20}>
-            <LinearGradient
-              colors={isDark ? [colors.primary, colors.secondary || colors.primary] : [colors.primary, colors.secondary || colors.primary]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.cardIconBadge}
-            >
-              <Ionicons name="wifi" size={18} color="#FFFFFF" />
-            </LinearGradient>
-
-            <View style={{ flex: 1, justifyContent: 'center' }}>
-              <Text style={[styles.serverCardTitle, { color: colors.text }]}>
-                HBS LAN Server Settings
-              </Text>
-              <Text style={[styles.serverCardSub, { color: colors.textSecondary }]} numberOfLines={1}>
-                {serverUrl}
+        <View style={[styles.groupContainer, { backgroundColor: groupBg }]}>
+          <TouchableOpacity
+            style={styles.itemRow}
+            onPress={() => setShowScannerModal(true)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.iconBadge, { backgroundColor: colors.primary + '16' }]}>
+              <Ionicons name="wifi" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.itemInfo}>
+              <Text style={[styles.itemTitle, { color: colors.text }]}>HBS LAN Server</Text>
+              <Text style={[styles.itemSub, { color: colors.subtext }]} numberOfLines={1}>
+                {serverUrl || 'Not Connected'}
               </Text>
             </View>
-
-            <View
-              style={[
-                styles.actionChevronBadge,
-                {
-                  backgroundColor: isDark
-                    ? 'rgba(255, 255, 255, 0.08)'
-                    : colors.surfaceVariant,
-                  borderColor: isDark
-                    ? 'rgba(255, 255, 255, 0.12)'
-                    : colors.border,
-                },
-              ]}
-            >
-              <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+            <View style={styles.connectionStatusPill}>
+              <View
+                style={[
+                  styles.statusDot,
+                  { backgroundColor: isConnected ? (colors.success || '#16A34A') : colors.error },
+                ]}
+              />
+              <Text style={[styles.connectionStatusText, { color: colors.subtext }]}>
+                {isConnected ? 'Connected' : 'Offline'}
+              </Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.subtext} />
             </View>
-          </GlassCard>
-        </TouchableOpacity>
+          </TouchableOpacity>
+        </View>
 
-        {/* Sign Out Button */}
+        {/* Bottom Sign Out Button */}
         <TouchableOpacity
-          style={[styles.logoutBtn, { backgroundColor: colors.error + '15' }]}
+          style={[styles.logoutBtn, { backgroundColor: colors.error + '12' }]}
           onPress={handleSignOut}
+          activeOpacity={0.7}
         >
-          <Ionicons name="log-out-outline" size={20} color={colors.error} />
-          <Text style={[styles.logoutBtnText, { color: colors.error }]}>Sign Out</Text>
+          <Ionicons name="log-out-outline" size={18} color={colors.error} />
+          <Text style={[styles.logoutBtnText, { color: colors.error }]}>Sign Out of HBS</Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -465,16 +529,26 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
-    paddingBottom: 100,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 110,
   },
-
-  profileCard: {
+  headerRow: {
+    marginBottom: 16,
+    marginTop: 4,
+  },
+  screenTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  profileHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    gap: 14,
+    padding: 14,
+    borderRadius: 20,
     marginBottom: 20,
+    gap: 14,
   },
   avatar: {
     width: 48,
@@ -488,187 +562,207 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
   },
+  profileInfo: {
+    flex: 1,
+  },
   profileName: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '700',
   },
   profileEmail: {
     fontSize: 13,
     marginTop: 2,
   },
-  logoutIconButton: {
-    padding: 8,
+  profileSignoutBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sectionHeaderRow: {
+    marginTop: 6,
+    marginBottom: 8,
+    paddingHorizontal: 4,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 11,
     fontWeight: '700',
-    marginBottom: 10,
-    marginTop: 4,
-  },
-  subSectionTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    marginTop: 14,
-    marginBottom: 8,
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
-    letterSpacing: 0.6,
   },
-  paletteContainer: {
-    gap: 10,
-    paddingBottom: 16,
+  groupContainer: {
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginBottom: 18,
   },
-  paletteCard: {
+  itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-    gap: 10,
-  },
-  paletteCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  paletteName: {
-    fontSize: 14,
-  },
-  quotaCard: {
-    padding: 16,
-    marginBottom: 20,
-  },
-  quotaHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  quotaTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  quotaValue: {
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  quotaBarBg: {
-    height: 8,
-    borderRadius: 4,
-    overflow: 'hidden',
-    marginBottom: 12,
-  },
-  quotaBarFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  statsDetailsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  statDetail: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  statDetailText: {
-    fontSize: 12,
-  },
-  permCard: {
-    padding: 16,
-    marginBottom: 20,
-  },
-  permRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
     gap: 12,
   },
-  permTitle: {
+  iconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  itemInfo: {
+    flex: 1,
+  },
+  itemTitle: {
     fontSize: 14,
     fontWeight: '600',
   },
-  permSub: {
+  itemSub: {
     fontSize: 12,
     marginTop: 2,
+  },
+  insetDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginLeft: 48,
+    marginVertical: 1,
   },
   statusBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: 10,
   },
   statusBadgeText: {
     fontSize: 12,
     fontWeight: '700',
   },
-  themeGroup: {
-    borderRadius: 18,
-    borderWidth: 1,
-    paddingHorizontal: 16,
+  storageStatsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 6,
+    marginBottom: 12,
   },
-  themeRow: {
+  storageMainValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  storageSubLabel: {
+    fontSize: 12,
+    marginTop: 1,
+  },
+  storagePercentageBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+  },
+  storagePercentageText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  storageTrack: {
+    height: 7,
+    borderRadius: 3.5,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  storageFill: {
+    height: '100%',
+    borderRadius: 3.5,
+  },
+  storageFreeInfoRow: {
+    marginBottom: 10,
+  },
+  storageFreeText: {
+    fontSize: 12,
+  },
+  mediaCountRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+  },
+  mediaCountItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    gap: 12,
+    gap: 6,
   },
-  themeLabel: {
-    flex: 1,
-    fontSize: 15,
+  mediaDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+  },
+  mediaCountLabel: {
+    fontSize: 12,
     fontWeight: '500',
   },
-  serverCard: {
+  themeSegmentContainer: {
+    flexDirection: 'row',
+    padding: 4,
+    borderRadius: 16,
+    gap: 4,
+    marginBottom: 18,
+  },
+  themeSegmentItem: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    marginBottom: 20,
-    gap: 12,
-  },
-  cardIconBadge: {
-    width: 36,
-    height: 36,
+    justifyContent: 'center',
+    paddingVertical: 10,
     borderRadius: 12,
-    justifyContent: 'center',
+    gap: 6,
+  },
+  themeSegmentActive: {},
+  themeSegmentText: {
+    fontSize: 13,
+  },
+  paletteScrollContent: {
+    gap: 8,
+    paddingBottom: 18,
+  },
+  palettePill: {
+    flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    gap: 8,
   },
-  actionChevronBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1,
-    justifyContent: 'center',
+  paletteDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  serverCardTitle: {
-    fontSize: 14,
-    fontWeight: '600',
+  paletteText: {
+    fontSize: 13,
   },
-  serverCardSub: {
+  connectionStatusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  connectionStatusText: {
     fontSize: 12,
-    marginTop: 2,
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    marginVertical: 4,
+    fontWeight: '500',
   },
   logoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 14,
-    borderRadius: 18,
+    borderRadius: 16,
     gap: 8,
-    marginBottom: 30,
-    marginTop: 10,
+    marginTop: 6,
+    marginBottom: 20,
   },
   logoutBtnText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
   },
 });

@@ -526,3 +526,17 @@
   4. Cleaned unused `PYTHON_BIN` and `PYTHON_SCRIPTS_DIR` from `server` service environment in `docker-compose.yml`.
 - Verified TypeScript compilation across all 9 packages (`bun run typecheck`) with zero errors.
 - Fixed Docker build error (`/app/node_modules/@prisma: not found`): removed redundant `COPY node_modules/prisma` directives from `apps/server/Dockerfile` and streamlined `apps/server/docker-entrypoint.sh` to use Node's bundled `npx prisma db push`.
+
+## Session: 2026-08-24 (Settings & Backup Sleek Borderless UI Overhaul Completed)
+- Overhauled `apps/mobile-app/src/app/(tabs)/settings.tsx` and `apps/mobile-app/src/app/(tabs)/backup.tsx` to completely remove heavy card borders, boxy card containers, and harsh outlines in favor of a sleek, modern mobile design:
+  1. `settings.tsx`:
+     - Clean modern 28px header and borderless tone-on-tone profile header row with quick-action sign-out pill.
+     - Redesigned Storage dashboard with borderless group container, bold metrics, compact percentage pill, seamless progress bar track, and clean inline media category indicators (Photos, Videos, Docs).
+     - Modernized Permissions & Diagnostics list with soft squircle icon badges, title/subtext hierarchy, status badges, and inset hairline dividers.
+     - Replaced boxed theme group with a sleek 3-way segmented switcher (`Light`, `Dark`, `System`) and pill-based horizontal accent palette picker.
+     - Streamlined Data & Storage and Connection groups with borderless row layout and live connection status indicators.
+  2. `backup.tsx`:
+     - Transformed Hero section into a sleek borderless overview banner with centered icon badge, clean typography, live progress container with percentage badge, and borderless pill buttons (`Sync Now` / `Select Photos`).
+     - Replaced 3 floating boxed cards with a unified 3-column quick metrics bar with hairline vertical separators (`Uploaded`, `Duplicates`, `Server Status`).
+     - Streamlined Synced Folders, Destination Server, and Sync Preferences into borderless grouped sections with soft icon badges and inset hairline dividers.
+- Verified TypeScript compilation across workspace (`bun run typecheck`) and Next.js server production build (`bun run build --filter=server`) with 100% success and zero errors.

@@ -12,7 +12,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { safeMediaLibrary } from '../../utils/safeMediaLibrary';
 import { useAppTheme } from '../../context/ThemeContext';
@@ -20,19 +19,16 @@ import { useTabBarStore } from '../../stores/useTabBarStore';
 import { useServer } from '../../context/ServerContext';
 import { useAuth } from '../../context/AuthContext';
 import { hbsApi } from '../../services/api';
-import { GlassCard } from '../../components/ui/GlassCard';
 import { LanScannerModal } from '../../components/LanScannerModal';
 import { FolderSelectorModal } from '../../components/FolderSelectorModal';
 import { PermissionModal } from '../../components/PermissionModal';
 import { checkFileDuplicate } from '../../utils/dedupe';
 import { runParallelUploadQueue } from '../../utils/parallelUploadQueue';
 import { getAppPermissionsStatus } from '../../utils/permissions';
-import { sendLocalSyncNotification } from '../../utils/safeNotifications';
 import { getSyncConfig, saveSyncConfig } from '../../services/backgroundSync';
 import { syncTracker, SyncState } from '../../services/syncTracker';
 import { appStorage } from '../../utils/storage';
-
-import { asyncTaskQueue, yieldToUI, yieldToInteractions } from '../../utils/asyncTaskQueue';
+import { asyncTaskQueue, yieldToInteractions } from '../../utils/asyncTaskQueue';
 
 export default function BackupScreen() {
   const { colors, isDark } = useAppTheme();
@@ -195,7 +191,6 @@ export default function BackupScreen() {
       }
     }
 
-    // Immediately trigger Hero progress bar for instant visual feedback
     await syncTracker.startSync(1, 'Initializing background auto-sync...');
 
     asyncTaskQueue.enqueue(
@@ -355,9 +350,11 @@ export default function BackupScreen() {
   const syncStepMessage = syncState.syncStepMessage;
   const skippedDuplicatesCount = syncState.skippedCount;
 
+  const groupBg = isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.025)';
+  const dividerColor = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.05)';
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
-
       <ScrollView
         contentContainerStyle={styles.content}
         onScroll={handleScroll}
@@ -367,22 +364,27 @@ export default function BackupScreen() {
         onScrollEndDrag={startStopTimer}
         onMomentumScrollEnd={startStopTimer}
         scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
       >
+        {/* Screen Header */}
+        <View style={styles.headerRow}>
+          <Text style={[styles.screenTitle, { color: colors.text }]}>Backup</Text>
+        </View>
 
-        {/* Backup Status Hero Glass Card */}
-        <GlassCard variant="gradient" style={styles.heroCard}>
-          <View style={[styles.heroIconBadge, { backgroundColor: colors.primaryContainer }]}>
-            <Ionicons name="cloud-upload" size={36} color={colors.primary} />
+        {/* Hero Backup Overview Banner */}
+        <View style={[styles.heroContainer, { backgroundColor: groupBg }]}>
+          <View style={[styles.heroIconBadge, { backgroundColor: colors.primary + '16' }]}>
+            <Ionicons name="cloud-upload" size={30} color={colors.primary} />
           </View>
 
           <Text style={[styles.heroTitle, { color: colors.text }]}>Camera Roll Auto-Sync</Text>
-
           <Text style={[styles.heroSub, { color: colors.subtext }]}>
-            Deduplicated automatic photo and video backup directly to your private home cloud server.
+            Continuous deduplicated backup directly to your private home cloud.
           </Text>
 
+          {/* Dynamic Sync Progress */}
           {isSyncing && (
-            <View style={styles.syncProgressBox}>
+            <View style={[styles.syncProgressBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
               <View style={styles.syncProgressHeader}>
                 <Text style={[styles.syncStepText, { color: colors.primary }]} numberOfLines={1}>
                   {syncStepMessage || 'Syncing in progress...'}
@@ -392,7 +394,7 @@ export default function BackupScreen() {
                 </Text>
               </View>
 
-              <View style={[styles.progressBarBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }]}>
+              <View style={[styles.progressBarBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
                 <View
                   style={[
                     styles.progressBarFill,
@@ -412,186 +414,215 @@ export default function BackupScreen() {
             </View>
           )}
 
+          {/* Action Buttons */}
           <View style={styles.actionButtonsRow}>
             <TouchableOpacity
               style={[
-                styles.syncNowBtn,
-                { flex: 1, backgroundColor: isSyncing ? colors.border : colors.primary },
+                styles.primarySyncBtn,
+                { backgroundColor: isSyncing ? (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)') : colors.primary },
               ]}
               onPress={handleStartAutoSync}
               disabled={isSyncing}
+              activeOpacity={0.8}
             >
-              <Ionicons name="sync" size={18} color="#FFFFFF" />
-              <Text style={styles.syncNowBtnText}>
-                {isSyncing ? 'Syncing...' : 'Sync Folders Now'}
+              <Ionicons name="sync" size={17} color="#FFFFFF" />
+              <Text style={styles.primarySyncBtnText}>
+                {isSyncing ? 'Syncing...' : 'Sync Now'}
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[
-                styles.syncNowBtn,
-                {
-                  flex: 1,
-                  backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.surfaceVariant,
-                  borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : colors.border,
-                  borderWidth: 1,
-                },
+                styles.secondarySyncBtn,
+                { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.surfaceVariant },
               ]}
               onPress={handleStartManualBackup}
               disabled={isSyncing}
+              activeOpacity={0.7}
             >
-              <Ionicons name="images-outline" size={18} color={colors.primary} />
-              <Text style={[styles.syncNowBtnText, { color: colors.primary }]}>
+              <Ionicons name="images-outline" size={17} color={colors.primary} />
+              <Text style={[styles.secondarySyncBtnText, { color: colors.primary }]}>
                 Select Photos
               </Text>
             </TouchableOpacity>
           </View>
-        </GlassCard>
-
-        {/* Quick Stats Grid */}
-        <View style={styles.statsRow}>
-          <GlassCard style={styles.statBox}>
-            <Text style={[styles.statNumber, { color: colors.text }]}>
-              {backedUpCount}
-            </Text>
-            <Text style={[styles.statLabel, { color: colors.subtext }]}>
-              Uploaded Session
-            </Text>
-          </GlassCard>
-
-          <GlassCard style={styles.statBox}>
-            <Text style={[styles.statNumber, { color: colors.primary }]}>
-              {skippedDuplicatesCount}
-            </Text>
-            <Text style={[styles.statLabel, { color: colors.subtext }]}>
-              Duplicates Skipped
-            </Text>
-          </GlassCard>
-
-          <GlassCard style={styles.statBox}>
-            <Text style={[styles.statNumber, { color: isConnected ? colors.success : colors.error }]}>
-              {isConnected ? 'Online' : 'Offline'}
-            </Text>
-            <Text style={[styles.statLabel, { color: colors.subtext }]}>
-              Server Status
-            </Text>
-          </GlassCard>
         </View>
 
-        {/* Folders Selection Auto Sync Button */}
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Folder Management</Text>
+        {/* Quick Stats Metric Bar */}
+        <View style={[styles.statsGroupContainer, { backgroundColor: groupBg }]}>
+          <View style={styles.statColumn}>
+            <Text style={[styles.statNumber, { color: colors.text }]}>{backedUpCount}</Text>
+            <Text style={[styles.statLabel, { color: colors.subtext }]}>UPLOADED</Text>
+          </View>
 
-        <TouchableOpacity onPress={() => setShowFolderModal(true)} activeOpacity={0.8}>
-          <GlassCard style={styles.folderCard}>
-            <View style={styles.folderCardHeader}>
-              <View style={[styles.folderIconBg, { backgroundColor: colors.primaryContainer }]}>
-                <Ionicons name="folder-open" size={24} color={colors.primary} />
-              </View>
-              <View style={styles.folderCardTitleBox}>
-                <Text style={[styles.folderCardTitle, { color: colors.text }]}>
-                  {selectedAlbums.length === 0 ? 'All Device Albums Selected' : `${selectedAlbums.length} Albums Selected`}
-                </Text>
-                <Text style={[styles.folderCardSub, { color: colors.subtext }]}>
-                  {folderTotalItems > 0 ? `${folderTotalItems} total items ready for sync` : 'Tap to customize synced folders'}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.subtext} />
+          <View style={[styles.statVerticalDivider, { backgroundColor: dividerColor }]} />
+
+          <View style={styles.statColumn}>
+            <Text style={[styles.statNumber, { color: colors.primary }]}>{skippedDuplicatesCount}</Text>
+            <Text style={[styles.statLabel, { color: colors.subtext }]}>DUPLICATES</Text>
+          </View>
+
+          <View style={[styles.statVerticalDivider, { backgroundColor: dividerColor }]} />
+
+          <View style={styles.statColumn}>
+            <Text
+              style={[
+                styles.statNumber,
+                { color: isConnected ? (colors.success || '#16A34A') : colors.error, fontSize: 16 },
+              ]}
+            >
+              {isConnected ? 'Online' : 'Offline'}
+            </Text>
+            <Text style={[styles.statLabel, { color: colors.subtext }]}>STATUS</Text>
+          </View>
+        </View>
+
+        {/* Folders Management */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>FOLDERS & ALBUMS</Text>
+        </View>
+
+        <View style={[styles.groupContainer, { backgroundColor: groupBg }]}>
+          <TouchableOpacity
+            style={styles.itemRow}
+            onPress={() => setShowFolderModal(true)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.iconBadge, { backgroundColor: colors.primary + '16' }]}>
+              <Ionicons name="folder-open" size={18} color={colors.primary} />
             </View>
-          </GlassCard>
-        </TouchableOpacity>
+            <View style={styles.itemInfo}>
+              <Text style={[styles.itemTitle, { color: colors.text }]}>
+                {selectedAlbums.length === 0 ? 'All Device Albums Selected' : `${selectedAlbums.length} Albums Selected`}
+              </Text>
+              <Text style={[styles.itemSub, { color: colors.subtext }]}>
+                {folderTotalItems > 0 ? `${folderTotalItems} items ready to sync` : 'Customize synced folders'}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.subtext} />
+          </TouchableOpacity>
+        </View>
 
-        {/* Server Connection Card */}
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Backup Target</Text>
+        {/* Backup Target */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>DESTINATION</Text>
+        </View>
 
-        <GlassCard style={styles.settingCard}>
-          <View style={styles.settingRow}>
-            <View style={styles.settingTextGroup}>
-              <Text style={[styles.settingLabel, { color: colors.text }]}>Home Backup Server</Text>
-              <Text style={[styles.settingDesc, { color: colors.subtext }]}>
-                {isConnected && serverUrl ? serverUrl : 'No server connected. Connect on home Wi-Fi.'}
+        <View style={[styles.groupContainer, { backgroundColor: groupBg }]}>
+          <View style={styles.itemRow}>
+            <View style={[styles.iconBadge, { backgroundColor: colors.primary + '16' }]}>
+              <Ionicons name="server-outline" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.itemInfo}>
+              <Text style={[styles.itemTitle, { color: colors.text }]}>Home Backup Server</Text>
+              <Text style={[styles.itemSub, { color: colors.subtext }]} numberOfLines={1}>
+                {isConnected && serverUrl ? serverUrl : 'No server connected'}
               </Text>
             </View>
             <TouchableOpacity
-              style={[styles.connectBtn, { backgroundColor: isConnected ? colors.surfaceVariant : colors.primary }]}
+              style={[
+                styles.destinationBtn,
+                { backgroundColor: isConnected ? colors.primary + '18' : colors.primary },
+              ]}
               onPress={() => setShowScannerModal(true)}
+              activeOpacity={0.8}
             >
-              <Text style={[styles.connectBtnText, { color: isConnected ? colors.primary : '#FFFFFF' }]}>
+              <Text
+                style={[
+                  styles.destinationBtnText,
+                  { color: isConnected ? colors.primary : '#FFFFFF' },
+                ]}
+              >
                 {isConnected ? 'Change' : 'Connect'}
               </Text>
             </TouchableOpacity>
           </View>
-        </GlassCard>
+        </View>
 
         {/* Preferences */}
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Sync Preferences</Text>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>SYNC PREFERENCES</Text>
+        </View>
 
-        <GlassCard style={styles.settingCard}>
-          <View style={styles.settingRow}>
-            <View style={styles.settingTextGroup}>
-              <Text style={[styles.settingLabel, { color: colors.text }]}>Background Auto-Sync</Text>
-              <Text style={[styles.settingDesc, { color: colors.subtext }]}>
-                Automatically upload new camera roll photos and videos
+        <View style={[styles.groupContainer, { backgroundColor: groupBg }]}>
+          <View style={styles.itemRow}>
+            <View style={[styles.iconBadge, { backgroundColor: colors.primary + '16' }]}>
+              <Ionicons name="sync-outline" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.itemInfo}>
+              <Text style={[styles.itemTitle, { color: colors.text }]}>Background Auto-Sync</Text>
+              <Text style={[styles.itemSub, { color: colors.subtext }]}>
+                Upload new photos & videos automatically
               </Text>
             </View>
             <Switch
               value={autoSyncEnabled}
               onValueChange={handleToggleAutoSync}
-              trackColor={{ false: colors.border, true: colors.primary }}
+              trackColor={{ false: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', true: colors.primary }}
               thumbColor="#FFFFFF"
             />
           </View>
 
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <View style={[styles.insetDivider, { backgroundColor: dividerColor }]} />
 
-          <View style={styles.settingRow}>
-            <View style={styles.settingTextGroup}>
-              <Text style={[styles.settingLabel, { color: colors.text }]}>Sync Progress Notifications</Text>
-              <Text style={[styles.settingDesc, { color: colors.subtext }]}>
-                Show background sync notifications & percentage progress
+          <View style={styles.itemRow}>
+            <View style={[styles.iconBadge, { backgroundColor: colors.primary + '16' }]}>
+              <Ionicons name="notifications-outline" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.itemInfo}>
+              <Text style={[styles.itemTitle, { color: colors.text }]}>Sync Progress Notifications</Text>
+              <Text style={[styles.itemSub, { color: colors.subtext }]}>
+                Live progress in notification drawer
               </Text>
             </View>
             <Switch
               value={showSyncNotifications}
               onValueChange={handleToggleShowSyncNotifications}
-              trackColor={{ false: colors.border, true: colors.primary }}
+              trackColor={{ false: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', true: colors.primary }}
               thumbColor="#FFFFFF"
             />
           </View>
 
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <View style={[styles.insetDivider, { backgroundColor: dividerColor }]} />
 
-          <View style={styles.settingRow}>
-            <View style={styles.settingTextGroup}>
-              <Text style={[styles.settingLabel, { color: colors.text }]}>Wi-Fi Only Sync</Text>
-              <Text style={[styles.settingDesc, { color: colors.subtext }]}>
-                Only backup when connected to Wi-Fi network
+          <View style={styles.itemRow}>
+            <View style={[styles.iconBadge, { backgroundColor: colors.primary + '16' }]}>
+              <Ionicons name="wifi-outline" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.itemInfo}>
+              <Text style={[styles.itemTitle, { color: colors.text }]}>Wi-Fi Only Sync</Text>
+              <Text style={[styles.itemSub, { color: colors.subtext }]}>
+                Avoid mobile data usage
               </Text>
             </View>
             <Switch
               value={wifiOnly}
               onValueChange={handleToggleWifiOnly}
-              trackColor={{ false: colors.border, true: colors.primary }}
+              trackColor={{ false: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', true: colors.primary }}
               thumbColor="#FFFFFF"
             />
           </View>
 
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <View style={[styles.insetDivider, { backgroundColor: dividerColor }]} />
 
-          <View style={styles.settingRow}>
-            <View style={styles.settingTextGroup}>
-              <Text style={[styles.settingLabel, { color: colors.text }]}>Pause on Low Battery</Text>
-              <Text style={[styles.settingDesc, { color: colors.subtext }]}>
-                Pause background backup when battery is under 20%
+          <View style={styles.itemRow}>
+            <View style={[styles.iconBadge, { backgroundColor: colors.primary + '16' }]}>
+              <Ionicons name="battery-charging-outline" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.itemInfo}>
+              <Text style={[styles.itemTitle, { color: colors.text }]}>Pause on Low Battery</Text>
+              <Text style={[styles.itemSub, { color: colors.subtext }]}>
+                Pause sync when battery is under 20%
               </Text>
             </View>
             <Switch
               value={batterySaverEnabled}
               onValueChange={handleToggleBatterySaver}
-              trackColor={{ false: colors.border, true: colors.primary }}
+              trackColor={{ false: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', true: colors.primary }}
               thumbColor="#FFFFFF"
             />
           </View>
-        </GlassCard>
+        </View>
       </ScrollView>
 
       <FolderSelectorModal
@@ -620,41 +651,52 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
-    paddingBottom: 100,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 110,
   },
-
-  heroCard: {
+  headerRow: {
+    marginBottom: 16,
+    marginTop: 4,
+  },
+  screenTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  heroContainer: {
     padding: 20,
+    borderRadius: 22,
     alignItems: 'center',
     marginBottom: 16,
   },
   heroIconBadge: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
   },
   heroTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 6,
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 4,
     textAlign: 'center',
+    letterSpacing: -0.2,
   },
   heroSub: {
     fontSize: 13,
     textAlign: 'center',
     lineHeight: 18,
     marginBottom: 16,
+    paddingHorizontal: 10,
   },
   syncProgressBox: {
     width: '100%',
-    marginVertical: 12,
+    marginVertical: 10,
     padding: 12,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.04)',
+    borderRadius: 14,
   },
   syncProgressHeader: {
     flexDirection: 'row',
@@ -673,14 +715,14 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   progressBarBg: {
-    height: 8,
-    borderRadius: 4,
+    height: 6,
+    borderRadius: 3,
     overflow: 'hidden',
     marginBottom: 6,
   },
   progressBarFill: {
     height: '100%',
-    borderRadius: 4,
+    borderRadius: 3,
   },
   fileNameText: {
     fontSize: 11,
@@ -690,107 +732,114 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     width: '100%',
     gap: 10,
-    marginTop: 4,
   },
-  syncNowBtn: {
+  primarySyncBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 12,
-    gap: 8,
+    paddingVertical: 13,
+    borderRadius: 14,
+    gap: 7,
   },
-  syncNowBtnText: {
+  primarySyncBtnText: {
     color: '#FFFFFF',
-    fontWeight: '600',
+    fontWeight: '700',
     fontSize: 14,
   },
-  statsRow: {
+  secondarySyncBtn: {
+    flex: 1,
     flexDirection: 'row',
-    gap: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 13,
+    borderRadius: 14,
+    gap: 7,
+  },
+  secondarySyncBtnText: {
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  statsGroupContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 18,
+    paddingVertical: 14,
     marginBottom: 20,
   },
-  statBox: {
+  statColumn: {
     flex: 1,
-    padding: 12,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statVerticalDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 28,
   },
   statNumber: {
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: '800',
     marginBottom: 2,
   },
   statLabel: {
-    fontSize: 11,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.6,
     textAlign: 'center',
   },
+  sectionHeaderRow: {
+    marginTop: 4,
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
   sectionTitle: {
-    fontSize: 15,
+    fontSize: 11,
     fontWeight: '700',
-    marginBottom: 10,
-    marginTop: 8,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
-  folderCard: {
-    padding: 14,
-    marginBottom: 16,
+  groupContainer: {
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginBottom: 18,
   },
-  folderCardHeader: {
+  itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: 10,
     gap: 12,
   },
-  folderIconBg: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
+  iconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     justifyContent: 'center',
-  },
-  folderCardTitleBox: {
-    flex: 1,
-  },
-  folderCardTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  folderCardSub: {
-    fontSize: 12,
-  },
-  settingCard: {
-    padding: 14,
-    marginBottom: 16,
-  },
-  settingRow: {
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 6,
   },
-  settingTextGroup: {
+  itemInfo: {
     flex: 1,
-    marginRight: 12,
   },
-  settingLabel: {
+  itemTitle: {
     fontSize: 14,
     fontWeight: '600',
-    marginBottom: 2,
   },
-  settingDesc: {
+  itemSub: {
     fontSize: 12,
+    marginTop: 2,
   },
-  divider: {
-    height: 1,
-    marginVertical: 10,
-    opacity: 0.5,
+  insetDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginLeft: 48,
+    marginVertical: 1,
   },
-  connectBtn: {
+  destinationBtn: {
     paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 8,
+    paddingVertical: 7,
+    borderRadius: 10,
   },
-  connectBtnText: {
+  destinationBtnText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });
