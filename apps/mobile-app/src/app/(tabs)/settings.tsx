@@ -18,6 +18,7 @@ import { useTabBarStore } from '../../stores/useTabBarStore';
 import { ColorPalettes, PaletteKey } from '../../constants/theme';
 import { useServer } from '../../context/ServerContext';
 import { useAuth } from '../../context/AuthContext';
+import { useAppLock } from '../../context/AppLockContext';
 import { hbsApi, UserStats } from '../../services/api';
 import { LanScannerModal } from '../../components/LanScannerModal';
 import { safeNotifications } from '../../utils/safeNotifications';
@@ -86,6 +87,13 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { serverUrl, isConnected } = useServer();
   const { user, signOut, sessionToken } = useAuth();
+  const {
+    isAppLockEnabled,
+    securityStatus,
+    enableAppLock,
+    disableAppLock,
+    lockApp,
+  } = useAppLock();
 
   const [stats, setStats] = useState<UserStats | null>(null);
   const [showScannerModal, setShowScannerModal] = useState<boolean>(false);
@@ -112,6 +120,54 @@ export default function SettingsScreen() {
       await safeNotifications.requestPermissionsAsync();
     }
     await appStorage.setItem('hbs_notif_enabled', JSON.stringify(val));
+  };
+
+  const handleToggleAppLock = async (val: boolean) => {
+    if (val) {
+      const res = await enableAppLock();
+      if (!res.success) {
+        if (res.reason === 'not_enrolled') {
+          Alert.alert(
+            'No Screen Lock Found',
+            'Your device does not have a PIN, Pattern, or Biometric screen lock enabled. Please set up a screen lock in your device system settings to use App Lock.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Open Device Settings',
+                onPress: () => openSystemAppSettings(),
+              },
+            ]
+          );
+        } else if (res.reason && res.reason !== 'Authentication cancelled or failed') {
+          Alert.alert('Authentication Failed', res.reason);
+        }
+      }
+    } else {
+      const res = await disableAppLock();
+      if (!res.success && res.reason && res.reason !== 'Authentication cancelled or failed') {
+        Alert.alert('Authentication Failed', res.reason);
+      }
+    }
+  };
+
+  const getLockBiometricIcon = () => {
+    switch (securityStatus?.biometricType) {
+      case 'face':
+        return 'scan-outline';
+      case 'fingerprint':
+        return 'finger-print-outline';
+      case 'iris':
+        return 'eye-outline';
+      default:
+        return 'shield-checkmark-outline';
+    }
+  };
+
+  const getLockSubtitle = () => {
+    if (isAppLockEnabled) {
+      return `Protected by ${securityStatus?.securityLabel || 'Screen Lock'}`;
+    }
+    return 'Require screen lock or biometrics on launch';
   };
 
   const handleToggleAmoled = (val: boolean) => {
@@ -345,6 +401,56 @@ export default function SettingsScreen() {
             </View>
             <Ionicons name="chevron-forward" size={18} color={colors.subtext} />
           </TouchableOpacity>
+        </View>
+
+        {/* Security & Privacy */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>SECURITY & PRIVACY</Text>
+        </View>
+
+        <View style={[styles.groupContainer, { backgroundColor: groupBg }]}>
+          <View style={styles.itemRow}>
+            <View style={[styles.iconBadge, { backgroundColor: colors.primary + '16' }]}>
+              <Ionicons name={getLockBiometricIcon() as any} size={18} color={colors.primary} />
+            </View>
+            <View style={styles.itemInfo}>
+              <Text style={[styles.itemTitle, { color: colors.text }]}>App Lock (Screen Lock)</Text>
+              <Text style={[styles.itemSub, { color: colors.subtext }]}>
+                {getLockSubtitle()}
+              </Text>
+            </View>
+            <Switch
+              value={isAppLockEnabled}
+              onValueChange={handleToggleAppLock}
+              trackColor={{
+                false: isDark ? (isAmoled ? '#222222' : 'rgba(255,255,255,0.1)') : 'rgba(0,0,0,0.1)',
+                true: colors.primary,
+              }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+
+          {isAppLockEnabled && (
+            <>
+              <View style={[styles.insetDivider, { backgroundColor: dividerColor }]} />
+              <TouchableOpacity
+                style={styles.itemRow}
+                onPress={() => lockApp()}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.iconBadge, { backgroundColor: colors.primary + '16' }]}>
+                  <Ionicons name="lock-closed-outline" size={18} color={colors.primary} />
+                </View>
+                <View style={styles.itemInfo}>
+                  <Text style={[styles.itemTitle, { color: colors.text }]}>Lock App Now</Text>
+                  <Text style={[styles.itemSub, { color: colors.subtext }]}>
+                    Instantly activate screen lock
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.subtext} />
+              </TouchableOpacity>
+            </>
+          )}
         </View>
 
         {/* Appearance & Theme */}

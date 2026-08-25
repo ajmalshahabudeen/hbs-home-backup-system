@@ -17,7 +17,9 @@ import * as SplashScreen from 'expo-splash-screen';
 import { ThemeProvider, useAppTheme } from '../context/ThemeContext';
 import { ServerProvider } from '../context/ServerContext';
 import { AuthProvider } from '../context/AuthContext';
+import { AppLockProvider } from '../context/AppLockContext';
 import { PermissionChecker } from '../components/PermissionChecker';
+import { AppLockOverlay } from '../components/AppLockOverlay';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -70,15 +72,18 @@ function AppContent() {
       <SafeAreaProvider>
         <ServerProvider>
           <AuthProvider>
-            <StatusBar style={isDark ? 'light' : 'dark'} />
-            <PermissionChecker />
-            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
-              <Stack.Screen name="index" />
-              <Stack.Screen name="(auth)/login" />
-              <Stack.Screen name="(auth)/register" />
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="search" options={{ headerShown: false, animation: 'fade' }} />
-            </Stack>
+            <AppLockProvider>
+              <StatusBar style={isDark ? 'light' : 'dark'} />
+              <PermissionChecker />
+              <AppLockOverlay />
+              <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
+                <Stack.Screen name="index" />
+                <Stack.Screen name="(auth)/login" />
+                <Stack.Screen name="(auth)/register" />
+                <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="search" options={{ headerShown: false, animation: 'fade' }} />
+              </Stack>
+            </AppLockProvider>
           </AuthProvider>
         </ServerProvider>
       </SafeAreaProvider>

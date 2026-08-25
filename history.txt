@@ -627,5 +627,23 @@
 - Verified workspace TypeScript compilation (`bun run typecheck`) across all 9 packages with 0 errors.
 - Verified Next.js server production build (`bun run build --filter=server`) with 100% success.
 
-
-
+## Session: 2026-08-25 (App Lock with Device Screen Lock & Biometrics Completed)
+- Implemented App Lock using device Screen Lock (Face ID, Touch ID, Fingerprint, Iris, or Device Passcode / PIN / Pattern) for `apps/mobile-app`:
+  1. Installed `expo-local-authentication@57.0.2` via Bun.
+  2. Configured `app.json` with `expo-local-authentication` plugin (`faceIDPermission`) and Android biometric permissions (`USE_BIOMETRIC`, `USE_FINGERPRINT`).
+  3. Created `apps/mobile-app/src/utils/appLock.ts`:
+     - Built `getDeviceSecurityStatus` to query hardware availability, enrollment status, and supported biometric types.
+     - Built `authenticateWithScreenLock` with seamless fallback to device Passcode / PIN / Pattern.
+  4. Created `apps/mobile-app/src/context/AppLockContext.tsx`:
+     - Persistent storage under `hbs_app_lock_enabled`.
+     - AppState lifecycle tracking: auto-locks and prompts for biometric/screen lock verification when returning from background.
+     - Protected enable/disable workflows: requires user to authenticate with screen lock before toggling on or off.
+     - Handles unenrolled devices gracefully with guidance alerts to set up a device PIN/passcode in system settings.
+  5. Created `apps/mobile-app/src/components/AppLockOverlay.tsx`:
+     - Fullscreen glassmorphic lock screen protecting user photos, drives, and sensitive data from glance/unauthorized inspection.
+     - Dynamic biometric indicators (Face ID, Fingerprint, or PIN), "Unlock App" interactive button, and "Sign Out" alternative.
+  6. Updated `apps/mobile-app/src/app/_layout.tsx`:
+     - Wrapped root stack in `AppLockProvider` and mounted `AppLockOverlay`.
+  7. Updated `apps/mobile-app/src/app/(tabs)/settings.tsx`:
+     - Added dedicated **SECURITY & PRIVACY** section with **App Lock (Screen Lock)** toggle and instant **Lock App Now** action.
+- Verified TypeScript compilation across workspace (`bun run typecheck`) with zero errors.
