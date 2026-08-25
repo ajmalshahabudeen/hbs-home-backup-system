@@ -370,11 +370,6 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
 
   const gridRows = groupMediaToGridRows(sortedMedia);
 
-  // Render skeleton while initial fetch is loading and media is empty
-  if (loading && media.length === 0) {
-    return <SkeletonPhotoGrid columns={columns} itemCount={18} />;
-  }
-
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Floating Animated Header Bar */}
@@ -402,7 +397,9 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
         />
       </Animated.View>
 
-      {sortedMedia.length === 0 ? (
+      {loading && media.length === 0 ? (
+        <SkeletonPhotoGrid columns={columns} itemCount={30} />
+      ) : sortedMedia.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Ionicons name="images-outline" size={56} color={colors.textSecondary} />
           <Text style={[styles.emptyTitle, { color: colors.text }]}>No Media Found</Text>

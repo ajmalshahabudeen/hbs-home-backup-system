@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
+import { View, StyleSheet, Dimensions, ScrollView } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -15,17 +15,18 @@ interface SkeletonPhotoGridProps {
 }
 
 const windowWidth = Dimensions.get('window').width;
+const GAP = 1;
 
 export const SkeletonPhotoGrid: React.FC<SkeletonPhotoGridProps> = ({
   columns = 3,
-  itemCount = 18,
+  itemCount = 30,
 }) => {
   const { colors } = useAppTheme();
-  const opacity = useSharedValue(0.3);
+  const opacity = useSharedValue(0.35);
 
   useEffect(() => {
     opacity.value = withRepeat(
-      withTiming(0.8, { duration: 800, easing: Easing.inOut(Easing.ease) }),
+      withTiming(0.75, { duration: 800, easing: Easing.inOut(Easing.ease) }),
       -1,
       true
     );
@@ -35,76 +36,58 @@ export const SkeletonPhotoGrid: React.FC<SkeletonPhotoGridProps> = ({
     opacity: opacity.value,
   }));
 
-  const itemSize = (windowWidth - 32 - (columns - 1) * 4) / columns;
+  const itemSize = Math.floor((windowWidth - (columns - 1) * GAP) / columns);
   const items = Array.from({ length: itemCount }, (_, i) => i);
 
   return (
-    <View style={styles.container}>
-      {/* Fake Header Bar Skeleton */}
-      <View style={styles.headerSkeleton}>
-        <Animated.View
-          style={[
-            styles.headerPill,
-            { backgroundColor: colors.surfaceVariant },
-            animatedStyle,
-          ]}
-        />
-        <Animated.View
-          style={[
-            styles.headerPillSmall,
-            { backgroundColor: colors.surfaceVariant },
-            animatedStyle,
-          ]}
-        />
-      </View>
-
-      {/* Grid Skeleton */}
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.scrollContent}
+      showsVerticalScrollIndicator={false}
+      scrollEnabled={false}
+    >
       <View style={styles.gridContainer}>
-        {items.map((key) => (
-          <Animated.View
-            key={key}
-            style={[
-              styles.skeletonCard,
-              {
-                width: itemSize,
-                height: itemSize,
-                backgroundColor: colors.surfaceVariant,
-              },
-              animatedStyle,
-            ]}
-          />
-        ))}
+        {items.map((key) => {
+          const isRowEnd = (key + 1) % columns === 0;
+          return (
+            <Animated.View
+              key={key}
+              style={[
+                styles.skeletonCard,
+                {
+                  width: itemSize,
+                  height: itemSize,
+                  marginRight: isRowEnd ? 0 : GAP,
+                  marginBottom: GAP,
+                  backgroundColor: colors.surfaceVariant,
+                },
+                animatedStyle,
+              ]}
+            />
+          );
+        })}
       </View>
-    </View>
+    </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
+    flex: 1,
   },
-  headerSkeleton: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-  headerPill: {
-    width: 120,
-    height: 32,
-    borderRadius: 16,
-  },
-  headerPillSmall: {
-    width: 80,
-    height: 32,
-    borderRadius: 16,
+  scrollContent: {
+    paddingTop: 48,
+    paddingBottom: 110,
+    paddingHorizontal: 0,
   },
   gridContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 4,
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
   },
   skeletonCard: {
-    borderRadius: 10,
+    borderRadius: 0,
+    overflow: 'hidden',
   },
 });

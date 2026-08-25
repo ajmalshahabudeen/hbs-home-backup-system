@@ -647,3 +647,12 @@
   7. Updated `apps/mobile-app/src/app/(tabs)/settings.tsx`:
      - Added dedicated **SECURITY & PRIVACY** section with **App Lock (Screen Lock)** toggle and instant **Lock App Now** action.
 - Verified TypeScript compilation across workspace (`bun run typecheck`) with zero errors.
+
+## Session: 2026-08-25 (Edge-to-Edge Photo Loading Skeleton Overhaul)
+- Overhauled `SkeletonPhotoGrid.tsx` and `PhotoGrid.tsx` in `apps/mobile-app`:
+  1. Removed horizontal padding (`paddingHorizontal: 0`) and fake header pill shapes from `SkeletonPhotoGrid.tsx`.
+  2. Realigned skeleton tile geometry with the real photo grid: `GAP = 1`, `borderRadius: 0`, and `itemSize = Math.floor((windowWidth - (columns - 1) * GAP) / columns)`.
+  3. Preserved floating `FilterSortBar` header in place during loading state in `PhotoGrid.tsx`, mounting the skeleton seamlessly with `paddingTop: 48, paddingBottom: 110`.
+  4. Eliminates layout jumping and padding flicker when transitioning from skeleton loader to loaded media.
+- Verified TypeScript compilation across workspace (`bun run typecheck`) with 0 errors.
+
