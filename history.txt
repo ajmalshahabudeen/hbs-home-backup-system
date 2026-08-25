@@ -663,4 +663,22 @@
   3. Optimized `PhotoGrid.tsx` with `React.useMemo` for filtering, sorting, and grouping, plus an O(1) cached date label formatter, eliminating thousands of repeated `Intl` string allocations and preventing UI stutter on large media libraries.
 - Verified TypeScript compilation across workspace (`bun run typecheck`) with 0 errors.
 
+## Session: 2026-08-25 (Native Gallery Memory Downscaling & Blank Scroll Fix)
+- Resolved blank / disappearing media tiles when scrolling down and back up in `PhotoGrid.tsx` and `photos.tsx`:
+  1. Image Memory Throttling & Downscaling (`PhotoTile`): Enabled `allowDownscaling={true}` in `expo-image` so native Android Glide decodes photos to thumbnail grid dimensions (~130x130) instead of loading full 48MP raw bitmaps into RAM. Changed `transition` from 100 to 0 to prevent fade-in blinking on recycled cells.
+  2. Absolute Server Thumbnail Resolution (`photos.tsx`): Prepend `serverUrl` on all server `url` and `thumbUrl` paths (`http://<ip>:<port>/api/user/media/...`) so cloud photos and backup status thumbnails load directly without failing.
+  3. 2-Stage Clean Batch Hydration: Render initial 80 items in <15ms, then concurrently hydrate full device assets and server cloud media in parallel, eliminating repeated 35x array resets that were resetting FlashList while scrolling.
+  4. FlashList Virtualization Buffer (`PhotoGrid.tsx`): Configured `drawDistance={1500}` on `FlashList` so 2 screen heights of buffer are pre-rendered ahead of the user, preventing unrendered empty areas during fast scroll.
+  5. Disk Cache Save Debouncing (`useMediaStore.ts`): Debounced `saveToCache` with a 1500ms timer to prevent continuous synchronous disk writes while the user is actively scrolling.
+- Verified TypeScript compilation across workspace (`bun run typecheck`) with 0 errors.
+
+## Session: 2026-08-25 (Flutter Migration Plan Initialization)
+- Analyzed request to migrate Expo mobile app (`apps/mobile-app`) to a high-performance native Flutter app (`apps/hbs-app-flutter`) without deleting existing code.
+- Discovered Flutter SDK 3.44.1 (Dart 3.12.1) installed at `C:\programming\Flutter\flutter\bin\flutter.bat`.
+- Mapped all Expo systems, theming (5 color palettes, glassmorphism), API & Better-Auth endpoints, LAN auto-discovery, SQLite deduplication index, parallel worker upload pool, biometric app lock, and media gallery virtualization to native Flutter/Riverpod equivalents.
+- Created comprehensive `implementation_plan.md` artifact detailing phased roadmap from project initialization to full feature migration and verification.
+
+
+
+
 

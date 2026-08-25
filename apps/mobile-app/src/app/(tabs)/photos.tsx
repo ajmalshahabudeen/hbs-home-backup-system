@@ -79,108 +79,112 @@ export default function PhotosScreen() {
             return;
           }
 
-          // 2. ON-THE-FLY STREAMING: Stream local gallery photos in progressive chunks
-          // First batch (<60 items) renders instantly (<15ms), then background chunks stream in
-          const localMediaMap = new Map<string, PhotoMediaItem>();
-          const localMediaItems: PhotoMediaItem[] = [];
-          let hasRenderedFirstBatch = false;
-
-          await safeMediaLibrary.streamAssetsAsync({
-            first: 50000,
-            initialBatchSize: 60,
-            subsequentBatchSize: 150,
-            signal: abortSignal,
-            onBatch: (batch, isInitialBatch) => {
-              if (abortSignal.isCancelled || !isMounted.current) return;
-
-              for (let i = 0; i < batch.length; i++) {
-                const asset = batch[i];
-                const uriKey = (asset.uri || asset.filename).toLowerCase();
-                if (!localMediaMap.has(uriKey)) {
-                  const mediaItem: PhotoMediaItem = {
-                    id: `local_${asset.id}`,
-                    userId: 'local',
-                    path: asset.filename,
-                    name: asset.filename,
-                    parentPath: '',
-                    mimeType: asset.mediaType === 'video' ? 'video/mp4' : 'image/jpeg',
-                    size: 0,
-                    createdAt: new Date(asset.creationTime).toISOString(),
-                    updatedAt: new Date(asset.creationTime).toISOString(),
-                    isVideo: asset.mediaType === 'video',
-                    url: asset.uri,
-                    localUri: asset.uri,
-                    isLocalOnly: true,
-                    isBackedUp: false,
-                  };
-                  localMediaMap.set(uriKey, mediaItem);
-                  localMediaItems.push(mediaItem);
-                }
-              }
-
-              // On the very first batch, render immediately & dismiss skeleton!
-              if (isInitialBatch || !hasRenderedFirstBatch) {
-                hasRenderedFirstBatch = true;
-                setMediaList([...localMediaItems]);
-                setLoading(false);
-              } else {
-                // Progressive stream: update mediaList in chunks
-                setMediaList([...localMediaItems]);
-              }
-            },
-          });
-
+          // 2. PHASE 1 (INSTANT FIRST FRAME): Query first 80 assets (<15ms) for immediate display
+          const initialAssets = await safeMediaLibrary.getAssetsAsync({ first: 80 });
           if (abortSignal.isCancelled || !isMounted.current) return;
 
-          // If no local assets found at all
-          if (localMediaItems.length === 0) {
-            setMediaList([]);
+          const initialMediaItems: PhotoMediaItem[] = initialAssets.map((asset) => ({
+            id: `local_${asset.id}`,
+            userId: 'local',
+            path: asset.filename,
+            name: asset.filename,
+            parentPath: '',
+            mimeType: asset.mediaType === 'video' ? 'video/mp4' : 'image/jpeg',
+            size: 0,
+            createdAt: new Date(asset.creationTime).toISOString(),
+            updatedAt: new Date(asset.creationTime).toISOString(),
+            isVideo: asset.mediaType === 'video',
+            url: asset.uri,
+            localUri: asset.uri,
+            isLocalOnly: true,
+            isBackedUp: false,
+          }));
+
+          if (initialMediaItems.length > 0 && isMounted.current) {
+            setMediaList(initialMediaItems);
             setLoading(false);
           }
 
-          // 3. ASYNCHRONOUS CLOUD SYNC: Fetch server cloud photos in background once device files load
-          if (serverUrl && sessionToken) {
-            try {
-              const res = await hbsApi.getPhotos(serverUrl, sessionToken, 'all');
-              if (abortSignal.isCancelled || !isMounted.current) return;
+          // 3. PHASE 2 (PARALLEL FULL SYNC): Load full device library + server cloud photos concurrently
+          const [fullLocalAssets, serverRes] = await Promise.all([
+            safeMediaLibrary.getAssetsAsync({ first: 25000 }),
+            serverUrl && sessionToken
+              ? hbsApi.getPhotos(serverUrl, sessionToken, 'all').catch(() => null)
+              : Promise.resolve(null),
+          ]);
 
-              const serverMedia = (res.media || [])
-                .filter((m) => !m.name.includes('.hbs-thumb') && !m.path.includes('.hbs-thumb'))
-                .map((m) => ({
+          if (abortSignal.isCancelled || !isMounted.current) return;
+
+          // Map full local assets
+          const localMap = new Map<string, PhotoMediaItem>();
+          const localItems: PhotoMediaItem[] = new Array(fullLocalAssets.length);
+
+          for (let i = 0; i < fullLocalAssets.length; i++) {
+            const asset = fullLocalAssets[i];
+            const item: PhotoMediaItem = {
+              id: `local_${asset.id}`,
+              userId: 'local',
+              path: asset.filename,
+              name: asset.filename,
+              parentPath: '',
+              mimeType: asset.mediaType === 'video' ? 'video/mp4' : 'image/jpeg',
+              size: 0,
+              createdAt: new Date(asset.creationTime).toISOString(),
+              updatedAt: new Date(asset.creationTime).toISOString(),
+              isVideo: asset.mediaType === 'video',
+              url: asset.uri,
+              localUri: asset.uri,
+              isLocalOnly: true,
+              isBackedUp: false,
+            };
+            localItems[i] = item;
+            localMap.set(asset.filename.toLowerCase(), item);
+          }
+
+          // Process server cloud media with absolute URLs
+          const serverItems: PhotoMediaItem[] = [];
+          if (serverRes && serverRes.media && serverUrl) {
+            const rawServerMedia = serverRes.media.filter(
+              (m) => !m.name.includes('.hbs-thumb') && !m.path.includes('.hbs-thumb')
+            );
+
+            for (let i = 0; i < rawServerMedia.length; i++) {
+              const m = rawServerMedia[i];
+              const fullUrl = m.url?.startsWith('http') ? m.url : `${serverUrl}${m.url}`;
+              const fullThumb = m.thumbUrl
+                ? m.thumbUrl.startsWith('http')
+                  ? m.thumbUrl
+                  : `${serverUrl}${m.thumbUrl}`
+                : fullUrl;
+
+              const matchedLocal = localMap.get(m.name.toLowerCase());
+              if (matchedLocal) {
+                // Device photo is backed up to server!
+                matchedLocal.isBackedUp = true;
+                matchedLocal.id = m.id;
+                matchedLocal.url = fullUrl;
+                matchedLocal.thumbUrl = fullThumb;
+              } else {
+                // Cloud-only photo (not on this device)
+                serverItems.push({
                   ...m,
+                  url: fullUrl,
+                  thumbUrl: fullThumb,
                   isBackedUp: true,
                   isLocalOnly: false,
-                }));
-
-              // Build O(1) filename lookup map for cloud backup status
-              const localNameMap = new Map<string, number>();
-              localMediaItems.forEach((m, idx) => {
-                localNameMap.set(m.name.toLowerCase(), idx);
-              });
-
-              const mergedList: PhotoMediaItem[] = [...localMediaItems];
-
-              serverMedia.forEach((sItem) => {
-                const localIdx = localNameMap.get(sItem.name.toLowerCase());
-                if (localIdx !== undefined) {
-                  mergedList[localIdx].isBackedUp = true;
-                  mergedList[localIdx].id = sItem.id;
-                  mergedList[localIdx].url = sItem.url;
-                } else {
-                  mergedList.push(sItem);
-                }
-              });
-
-              mergedList.sort(
-                (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-              );
-
-              if (!abortSignal.isCancelled && isMounted.current) {
-                setMediaList(mergedList);
+                });
               }
-            } catch {
-              // Server offline or unreachable, keep local photos
             }
+          }
+
+          const unifiedList = [...localItems, ...serverItems];
+          unifiedList.sort(
+            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+
+          if (!abortSignal.isCancelled && isMounted.current) {
+            setMediaList(unifiedList);
+            setLoading(false);
           }
         } catch {
           // fallback

@@ -63,6 +63,7 @@ const PhotoTile = memo(
     colors: any;
     onPress: (item: PhotoMediaItem) => void;
   }) => {
+    const imageUri = item.thumbUrl || item.localUri || item.url;
     return (
       <TouchableOpacity
         style={[
@@ -77,13 +78,14 @@ const PhotoTile = memo(
         onPress={() => onPress(item)}
       >
         <Image
-          source={{ uri: item.localUri || item.thumbUrl || item.url }}
+          source={{ uri: imageUri }}
           style={styles.thumbnailImage}
           contentFit="cover"
-          transition={100}
+          transition={0}
           cachePolicy="memory-disk"
           recyclingKey={item.id}
-          placeholder={null}
+          allowDownscaling={true}
+          priority="high"
         />
 
         {item.isBackedUp && (
@@ -448,6 +450,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
               data={gridRows}
               keyExtractor={(item) => item.id}
               getItemType={(item) => item.type}
+              drawDistance={1500}
               refreshControl={
                 <RefreshControl
                   refreshing={isPinchingRef.current ? false : refreshing}

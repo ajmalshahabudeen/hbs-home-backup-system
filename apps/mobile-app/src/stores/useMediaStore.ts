@@ -23,6 +23,8 @@ interface MediaState {
   saveToCache: (items: PhotoMediaItem[]) => Promise<void>;
 }
 
+let cacheSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
 export const useMediaStore = create<MediaState>((set, get) => ({
   mediaList: [],
   loading: true,
@@ -33,7 +35,10 @@ export const useMediaStore = create<MediaState>((set, get) => ({
 
   setMediaList: (mediaList) => {
     set({ mediaList });
-    get().saveToCache(mediaList);
+    if (cacheSaveTimer) clearTimeout(cacheSaveTimer);
+    cacheSaveTimer = setTimeout(() => {
+      get().saveToCache(mediaList);
+    }, 1500);
   },
 
   setLoading: (loading) => set({ loading }),
