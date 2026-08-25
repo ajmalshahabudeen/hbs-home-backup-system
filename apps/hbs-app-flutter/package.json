@@ -1,0 +1,9 @@
+{
+  "name": "hbs-app-flutter",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "analyze": "flutter analyze",
+    "test": "flutter test"
+  }
+}

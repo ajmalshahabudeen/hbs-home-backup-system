@@ -29,7 +29,8 @@
     "node": ">=20"
   },
   "workspaces": [
-    "apps/*",
+    "apps/server",
+    "apps/mobile-app",
     "packages/*"
   ]
 }
