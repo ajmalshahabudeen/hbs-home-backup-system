@@ -685,6 +685,13 @@
 - Verified `flutter test` with 100% passing unit tests.
 - Verified Turborepo workspace typecheck (`bun run typecheck`) with 3/3 successful builds and zero errors.
 
+## Session: 2026-08-25 (Flutter Run Command & Device Target Guidance)
+- User encountered `Target file "android" not found` when running `flutter run android`.
+- Clarified that `-d` or `--device` flag is required when specifying target devices in Flutter CLI (e.g. `flutter run -d android` or `flutter run -d <device-id>`).
+- Discovered active wireless Android device `SM A528B` (Android 14) and desktop/web targets.
+
+
+
 
 
 
