@@ -3,6 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 import { useServer } from './ServerContext';
 import { createHbsAuthClient } from '../utils/authClient';
 import { appStorage } from '../utils/storage';
+import { cleanSessionToken } from '../services/api';
 
 export interface UserProfile {
   id: string;
@@ -46,7 +47,8 @@ export async function autoAuthenticateUser(targetServerUrl: string): Promise<{ t
     try {
       const res: any = await client.getSession();
       if (res?.data?.user) {
-        const token = res.data.session?.token || res.data.session?.id || (client as any).getCookie?.();
+        const rawToken = res.data.session?.token || res.data.session?.id || (client as any).getCookie?.();
+        const token = cleanSessionToken(rawToken);
         if (token) {
           await SecureStore.setItemAsync('hbs_auth_session_token', token);
         }
@@ -63,7 +65,8 @@ export async function autoAuthenticateUser(targetServerUrl: string): Promise<{ t
       if (email && password) {
         const loginRes: any = await client.signIn.email({ email, password });
         if (loginRes?.data?.user) {
-          const token = loginRes.data.session?.token || loginRes.data.session?.id || (client as any).getCookie?.();
+          const rawToken = loginRes.data.session?.token || loginRes.data.session?.id || (client as any).getCookie?.();
+          const token = cleanSessionToken(rawToken);
           if (token) {
             await SecureStore.setItemAsync('hbs_auth_session_token', token);
           }
@@ -122,7 +125,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const res: any = await authClient.getSession();
       if (res?.data?.user) {
         setUser(res.data.user as UserProfile);
-        const token = res.data.session?.token || res.data.session?.id || (authClient as any).getCookie?.();
+        const rawToken = res.data.session?.token || res.data.session?.id || (authClient as any).getCookie?.();
+        const token = cleanSessionToken(rawToken);
         setSessionToken(token || null);
         if (token) {
           await SecureStore.setItemAsync('hbs_auth_session_token', token);
@@ -169,7 +173,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (res?.data?.user) {
         setUser(res.data.user as UserProfile);
-        const token = res.data.session?.token || res.data.session?.id || (authClient as any).getCookie?.();
+        const rawToken = res.data.session?.token || res.data.session?.id || (authClient as any).getCookie?.();
+        const token = cleanSessionToken(rawToken);
         setSessionToken(token || null);
 
         // Securely persist credentials & session for auto background re-auth
@@ -208,7 +213,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (res?.data?.user) {
         setUser(res.data.user as UserProfile);
-        const token = res.data.session?.token || res.data.session?.id || (authClient as any).getCookie?.();
+        const rawToken = res.data.session?.token || res.data.session?.id || (authClient as any).getCookie?.();
+        const token = cleanSessionToken(rawToken);
         setSessionToken(token || null);
 
         await SecureStore.setItemAsync(AUTH_CREDENTIALS_KEY, JSON.stringify({ email, password }));

@@ -45,22 +45,77 @@ export interface UserStats {
   driveName?: string;
 }
 
+/**
+ * Clean session tokens/cookies into a sanitized raw session token.
+ * Strips cookie prefixes, nested headers, URL encoding, signed cookie suffixes, and quotes.
+ */
+export function cleanSessionToken(raw: string | null): string | null {
+  if (!raw) return null;
+  let s = raw.trim();
+  if (!s) return null;
+
+  // Strip wrapping quotes
+  s = s.replace(/^["']|["']$/g, '').trim();
+
+  // If full cookie string (e.g. better-auth.session_token=xyz; Path=/...)
+  const match = s.match(/(?:^|;\s*)(?:__Secure-)?(?:better-auth\.session_token|session_token|token)=([^;]+)/i);
+  if (match?.[1]) {
+    s = match[1].trim();
+  }
+
+  // URL decode if percent-encoded
+  try {
+    s = decodeURIComponent(s);
+  } catch {
+    // ignore
+  }
+
+  // Strip repeated prefixes
+  s = s.replace(/^(?:__Secure-)?(?:better-auth\.session_token=|session_token=|token=)+/i, '').trim();
+
+  // Strip signed cookie 's:' or 's%3A' prefix
+  s = s.replace(/^s%3A|^s:/i, '').trim();
+
+  // If signed token with dot (raw_token.signature), extract raw token
+  if (s.includes('.')) {
+    const dotParts = s.split('.');
+    if (dotParts[0] && dotParts[0].length >= 5) {
+      s = dotParts[0].trim();
+    }
+  }
+
+  return s.length >= 5 ? s : null;
+}
+
 async function getValidToken(sessionToken: string | null): Promise<string | null> {
-  if (sessionToken) return sessionToken;
+  const cleanedDirect = cleanSessionToken(sessionToken);
+  if (cleanedDirect) return cleanedDirect;
+
   try {
     const val = await SecureStore.getItemAsync('hbs_auth_session_token');
-    if (val) return val;
-    return await SecureStore.getItemAsync('hbs_auth_cookie');
+    const cleanedStored = cleanSessionToken(val);
+    if (cleanedStored) return cleanedStored;
+
+    const cookie = await SecureStore.getItemAsync('hbs_auth_cookie');
+    const cleanedCookie = cleanSessionToken(cookie);
+    if (cleanedCookie) {
+      // Cache the clean token for fast future lookups
+      await SecureStore.setItemAsync('hbs_auth_session_token', cleanedCookie).catch(() => {});
+      return cleanedCookie;
+    }
   } catch {
     return null;
   }
+  return null;
 }
 
-function authHeaders(token: string | null): Record<string, string> {
-  if (!token) return {};
+export function authHeaders(token: string | null): Record<string, string> {
+  const cleaned = cleanSessionToken(token);
+  if (!cleaned) return {};
   return {
-    Authorization: `Bearer ${token}`,
-    Cookie: `better-auth.session_token=${token}`,
+    Authorization: `Bearer ${cleaned}`,
+    Cookie: `better-auth.session_token=${cleaned}`,
+    'x-session-token': cleaned,
   };
 }
 

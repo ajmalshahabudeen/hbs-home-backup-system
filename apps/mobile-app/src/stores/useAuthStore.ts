@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { UserProfile } from '../context/AuthContext';
 import { expoSecureStorage, SECURE_SESSION_KEY } from '../utils/authClient';
+import { cleanSessionToken, authHeaders } from '../services/api';
 
 interface AuthState {
   user: UserProfile | null;
@@ -48,7 +49,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isLoading: true });
     try {
       const storedToken = await expoSecureStorage.getItem(SECURE_SESSION_KEY);
-      if (!storedToken || !serverUrl) {
+      const cleanToken = cleanSessionToken(storedToken);
+      if (!cleanToken || !serverUrl) {
         set({ isLoading: false, isAuthenticated: false });
         return false;
       }
@@ -56,8 +58,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const res = await fetch(`${serverUrl}/api/auth/get-session`, {
         headers: {
           Accept: 'application/json',
-          Authorization: `Bearer ${storedToken}`,
-          Cookie: `better-auth.session_token=${storedToken}`,
+          ...authHeaders(cleanToken),
         },
       });
 
@@ -66,7 +67,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         if (data?.user) {
           set({
             user: data.user,
-            sessionToken: storedToken,
+            sessionToken: cleanToken,
             isAuthenticated: true,
             isLoading: false,
           });

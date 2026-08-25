@@ -1,45 +1,131 @@
-import { headers } from "next/headers";
-import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@workspace/auth";
 import { prisma } from "@workspace/db";
+import { headers } from "next/headers";
+import { type NextRequest, NextResponse } from "next/server";
 
 export type AppSession = NonNullable<
   Awaited<ReturnType<typeof auth.api.getSession>>
 >;
 
-/** Extract session token from Authorization Bearer, Cookie, or ?token= query. */
-export function extractSessionToken(
+/** Extract all candidate session tokens from Authorization Bearer, custom headers, Cookies, and query params. */
+export function extractCandidateSessionTokens(
   request?: NextRequest,
-  headerBag?: Headers
-): string | null {
+  headerBag?: Headers,
+): string[] {
   const h = headerBag || request?.headers;
-  if (!h) return null;
+  const rawValues: string[] = [];
 
-  const authz = h.get("authorization") || h.get("Authorization");
-  if (authz) {
-    const m = authz.match(/^Bearer\s+(.+)$/i);
-    if (m?.[1]) return m[1].trim();
-  }
+  if (h) {
+    // 1. Authorization header (Bearer ...)
+    const authz = h.get("authorization") || h.get("Authorization");
+    if (authz) {
+      const match = authz.match(/^(?:Bearer\s+)+(.+)$/i);
+      if (match?.[1]) {
+        rawValues.push(match[1].trim());
+      } else {
+        rawValues.push(authz.trim());
+      }
+    }
 
-  const cookie = h.get("cookie") || "";
-  // better-auth may use better-auth.session_token or __Secure-...
-  const cookieMatch = cookie.match(
-    /(?:^|;\s*)(?:__Secure-)?better-auth\.session_token=([^;]+)/i
-  );
-  if (cookieMatch?.[1]) {
-    try {
-      return decodeURIComponent(cookieMatch[1]);
-    } catch {
-      return cookieMatch[1];
+    // 2. Custom header if provided
+    const xToken =
+      h.get("x-session-token") ||
+      h.get("x-auth-token") ||
+      h.get("x-better-auth-token");
+    if (xToken) {
+      rawValues.push(xToken.trim());
+    }
+
+    // 3. Cookie header
+    const cookie = h.get("cookie") || "";
+    if (cookie) {
+      // Find all better-auth.session_token cookies or custom auth cookies
+      const cookieMatches = cookie.matchAll(
+        /(?:^|;\s*)(?:__Secure-)?(?:better-auth\.session_token|session_token|auth_token|token)=([^;]+)/gi,
+      );
+      for (const m of cookieMatches) {
+        if (m[1]) {
+          rawValues.push(m[1].trim());
+        }
+      }
+      if (!cookie.includes("=") && cookie.length >= 10) {
+        rawValues.push(cookie.trim());
+      }
     }
   }
 
   if (request) {
-    const q = request.nextUrl?.searchParams?.get("token");
-    if (q) return q.trim();
+    const q =
+      request.nextUrl?.searchParams?.get("token") ||
+      request.nextUrl?.searchParams?.get("sessionToken") ||
+      request.nextUrl?.searchParams?.get("auth_token");
+    if (q) rawValues.push(q.trim());
   }
 
-  return null;
+  // Normalize and extract all valid candidates
+  const candidates = new Set<string>();
+
+  for (let val of rawValues) {
+    if (!val) continue;
+
+    // Handle quoted strings: "token" -> token
+    val = val.replace(/^["']|["']$/g, "").trim();
+    if (!val) continue;
+
+    candidates.add(val);
+
+    // Try URL decoding
+    let decoded = val;
+    try {
+      decoded = decodeURIComponent(val);
+      candidates.add(decoded);
+    } catch {
+      // ignore
+    }
+
+    // Strip nested cookie prefix: better-auth.session_token=...
+    const rawPrefix = decoded.replace(
+      /^(?:__Secure-)?(?:better-auth\.session_token=|session_token=|auth_token=|token=)+/i,
+      "",
+    );
+    const strippedPrefix = (rawPrefix.split(";")[0] ?? "").trim();
+    if (strippedPrefix) {
+      candidates.add(strippedPrefix);
+
+      // Strip signed cookie 's:' or 's%3A' prefix (Express / better-auth signed cookie convention)
+      const withoutS = strippedPrefix.replace(/^s%3A|^s:/i, "").trim();
+      candidates.add(withoutS);
+
+      // If signed cookie (e.g. raw_token.signature), extract raw_token before the dot
+      if (withoutS.includes(".")) {
+        const dotParts = withoutS.split(".");
+        const p0 = dotParts[0]?.trim();
+        if (p0 && p0.length >= 5) {
+          candidates.add(p0);
+        }
+      }
+    }
+
+    // Direct check for signed cookie in original decoded value
+    if (decoded.includes(".")) {
+      const parts = decoded.split(".");
+      const p0 = parts[0]?.replace(/^s%3A|^s:/i, "").trim();
+      if (p0 && p0.length >= 5) {
+        candidates.add(p0);
+      }
+    }
+  }
+
+  return Array.from(candidates).filter((c) => c.length >= 5);
+}
+
+/** Extract primary session token (for backwards compatibility). */
+export function extractSessionToken(
+  request?: NextRequest,
+  headerBag?: Headers,
+): string | null {
+  const candidates = extractCandidateSessionTokens(request, headerBag);
+  return candidates[0] || null;
 }
 
 /**
@@ -56,15 +142,17 @@ export async function getSession(request?: NextRequest) {
     // continue to token fallback
   }
 
-  const token = extractSessionToken(
+  const candidates = extractCandidateSessionTokens(
     request,
-    request ? request.headers : h
+    request ? request.headers : h,
   );
-  if (!token) return null;
+  if (candidates.length === 0) return null;
 
   try {
-    const row = await prisma.session.findUnique({
-      where: { token },
+    const row = await prisma.session.findFirst({
+      where: {
+        OR: [{ token: { in: candidates } }, { id: { in: candidates } }],
+      },
       include: { user: true },
     });
     if (!row) return null;
@@ -94,7 +182,8 @@ export async function getSession(request?: NextRequest) {
         banned: row.user.banned,
       },
     } as AppSession;
-  } catch {
+  } catch (err) {
+    console.error("[HBS][AUTH-GUARD] session db lookup error", err);
     return null;
   }
 }

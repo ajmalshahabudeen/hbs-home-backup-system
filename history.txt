@@ -604,4 +604,28 @@
 - Verified TypeScript compilation across all packages (`bun run typecheck`) with zero errors.
 - Verified Next.js server production build (`bun run build --filter=server`) with 100% success and zero errors.
 
+## Session: 2026-08-25 (EAS Build Frozen Lockfile Fix Completed)
+- Diagnosed EAS build failure during `Install dependencies` (`bun install --frozen-lockfile` exited with error: `lockfile had changes, but lockfile is frozen`).
+- Root cause: `bun.lock` in repository was out-of-sync with dependencies across workspace packages.
+- Ran `bun install` across monorepo to cleanly regenerate and synchronize `bun.lock`.
+- Verified TypeScript compilation (`bun run --filter=mobile-app typecheck`) with zero errors.
+
+## Session: 2026-08-25 (Upload Authentication & Multi-Candidate Session Guard Fix Completed)
+- Investigated root cause of `[HBS][UPLOAD] auth failed has-bearer has-cookie` error when mobile client uploads files to `/api/user/upload`:
+  1. Header Formatting & Double-Prefixing (`apps/mobile-app`):
+     - When `hbs_auth_cookie` (containing `better-auth.session_token=s%3A...`) was passed into `authHeaders`, it generated malformed duplicate prefixes (`Cookie: better-auth.session_token=better-auth.session_token=...` and `Authorization: Bearer better-auth.session_token=...`).
+  2. Server Token Parsing & Signature Handling (`apps/server/lib/auth-guard.ts`):
+     - Better-Auth signed cookies format tokens as `s:<raw_token>.<signature>` or `<raw_token>.<signature>`.
+     - Direct Prisma session lookup (`prisma.session.findUnique({ where: { token } })`) previously queried for the full signed string or cookie string, which failed because the database table stores only the raw unsigned token or session ID.
+- Upgraded Server Session Guard (`apps/server/lib/auth-guard.ts`):
+  1. Built `extractCandidateSessionTokens`: parses `Authorization: Bearer ...`, `x-session-token`, `x-auth-token`, and `Cookie` headers, normalizes quotes, decodes URL components, strips nested cookie prefixes, strips `s:`/`s%3A` signed indicators, and extracts raw tokens before signatures.
+  2. Updated `getSession`: performs multi-candidate lookup with `where: { OR: [{ token: { in: candidates } }, { id: { in: candidates } }] }`, validating active session expiry and user ban status.
+- Upgraded Mobile Auth Client & Services (`apps/mobile-app`):
+  1. Built `cleanSessionToken` in `apps/mobile-app/src/services/api.ts` to sanitize stored tokens and cookies into clean session tokens.
+  2. Updated `authHeaders(token)` to attach clean `Authorization: Bearer <cleanToken>`, `Cookie: better-auth.session_token=<cleanToken>`, and `x-session-token: <cleanToken>`.
+  3. Updated `AuthContext.tsx` (`autoAuthenticateUser`, `refreshSession`, `signIn`, `signUp`) and `useAuthStore.ts` (`restoreSession`) to clean all tokens before caching in SecureStore or sending in request headers.
+- Verified workspace TypeScript compilation (`bun run typecheck`) across all 9 packages with 0 errors.
+- Verified Next.js server production build (`bun run build --filter=server`) with 100% success.
+
+
 
