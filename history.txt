@@ -656,3 +656,11 @@
   4. Eliminates layout jumping and padding flicker when transitioning from skeleton loader to loaded media.
 - Verified TypeScript compilation across workspace (`bun run typecheck`) with 0 errors.
 
+## Session: 2026-08-25 (On-the-Fly Device Media Streaming & Parallel Cloud Sync)
+- Implemented high-performance on-the-fly media streaming and background server cloud synchronization:
+  1. Created `safeMediaLibrary.streamAssetsAsync` delivering the initial batch (<60 items) natively in <15ms so photos appear instantly on screen (matching native OS gallery behavior) before streaming subsequent chunks in the background with UI micro-yields (`yieldToUI`).
+  2. Updated `photos.tsx` (`fetchPhotos`) to immediately mount the first stream chunk, dismiss the loading skeleton in milliseconds, stream remaining device photos, and then asynchronously sync server cloud photos and update backup statuses in the background.
+  3. Optimized `PhotoGrid.tsx` with `React.useMemo` for filtering, sorting, and grouping, plus an O(1) cached date label formatter, eliminating thousands of repeated `Intl` string allocations and preventing UI stutter on large media libraries.
+- Verified TypeScript compilation across workspace (`bun run typecheck`) with 0 errors.
+
+

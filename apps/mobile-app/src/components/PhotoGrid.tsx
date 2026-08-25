@@ -269,38 +269,48 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
     };
   });
 
-  // Filter items
-  const filteredMedia = media.filter((item) => {
-    if (search && !item.name.toLowerCase().includes(search.toLowerCase())) {
-      return false;
-    }
-    if (category === 'image') return !item.isVideo;
-    if (category === 'video') return item.isVideo;
-    return true;
-  });
+  // Filter items (memoized)
+  const filteredMedia = React.useMemo(() => {
+    if (!search && category === 'all') return media;
+    return media.filter((item) => {
+      if (search && !item.name.toLowerCase().includes(search.toLowerCase())) {
+        return false;
+      }
+      if (category === 'image') return !item.isVideo;
+      if (category === 'video') return item.isVideo;
+      return true;
+    });
+  }, [media, search, category]);
 
-  // Sort items
-  const sortedMedia = [...filteredMedia].sort((a, b) => {
-    let cmp = 0;
-    if (sortField === 'date') {
-      cmp = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    } else if (sortField === 'name') {
-      cmp = a.name.localeCompare(b.name);
-    } else if (sortField === 'size') {
-      cmp = b.size - a.size;
+  // Sort items (memoized)
+  const sortedMedia = React.useMemo(() => {
+    if (sortField === 'date' && sortOrder === 'desc') {
+      return filteredMedia;
     }
-    return sortOrder === 'desc' ? cmp : -cmp;
-  });
+    return [...filteredMedia].sort((a, b) => {
+      let cmp = 0;
+      if (sortField === 'date') {
+        cmp = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      } else if (sortField === 'name') {
+        cmp = a.name.localeCompare(b.name);
+      } else if (sortField === 'size') {
+        cmp = b.size - a.size;
+      }
+      return sortOrder === 'desc' ? cmp : -cmp;
+    });
+  }, [filteredMedia, sortField, sortOrder]);
 
   // Calculate edge-to-edge item tile size
   const itemSize = Math.floor((windowWidth - (columns - 1) * GAP) / columns);
 
-  // Group media into section headers & row chunks
-  const groupMediaToGridRows = (items: PhotoMediaItem[]): GridRowItem[] => {
+  // Group media into section headers & row chunks (memoized + cached date labels)
+  const gridRows = React.useMemo((): GridRowItem[] => {
+    if (sortedMedia.length === 0) return [];
+
     if (groupBy === 'none') {
       const rows: GridRowItem[] = [];
-      for (let i = 0; i < items.length; i += columns) {
-        const chunk = items.slice(i, i + columns);
+      for (let i = 0; i < sortedMedia.length; i += columns) {
+        const chunk = sortedMedia.slice(i, i + columns);
         rows.push({
           type: 'row',
           id: `row_none_${chunk[0]?.id || i}`,
@@ -312,63 +322,85 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
     }
 
     const groups: Record<string, PhotoMediaItem[]> = {};
-    const todayStr = new Date().toDateString();
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toDateString();
+    const todayPrefix = new Date().toISOString().slice(0, 10);
+    const yesterdayDate = new Date();
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const yesterdayPrefix = yesterdayDate.toISOString().slice(0, 10);
 
-    items.forEach((item) => {
-      const d = new Date(item.createdAt);
+    const dayCache = new Map<string, string>();
+    const monthCache = new Map<string, string>();
+
+    for (let i = 0; i < sortedMedia.length; i++) {
+      const item = sortedMedia[i];
       let groupKey = '';
 
       if (groupBy === 'category') {
         groupKey = item.isVideo ? 'Videos' : 'Photos';
       } else if (groupBy === 'year') {
-        groupKey = String(d.getFullYear());
+        groupKey = item.createdAt ? item.createdAt.slice(0, 4) : 'Unknown';
       } else if (groupBy === 'month') {
-        groupKey = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        const monthKey = item.createdAt ? item.createdAt.slice(0, 7) : '';
+        let cachedMonth = monthCache.get(monthKey);
+        if (!cachedMonth) {
+          const d = new Date(item.createdAt);
+          cachedMonth = isNaN(d.getTime())
+            ? 'Unknown'
+            : d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+          monthCache.set(monthKey, cachedMonth);
+        }
+        groupKey = cachedMonth;
       } else {
-        if (d.toDateString() === todayStr) {
+        // Group by Day
+        const datePrefix = item.createdAt ? item.createdAt.slice(0, 10) : '';
+        if (datePrefix === todayPrefix) {
           groupKey = 'Today';
-        } else if (d.toDateString() === yesterdayStr) {
+        } else if (datePrefix === yesterdayPrefix) {
           groupKey = 'Yesterday';
         } else {
-          groupKey = d.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-          });
+          let cachedDay = dayCache.get(datePrefix);
+          if (!cachedDay) {
+            const d = new Date(item.createdAt);
+            cachedDay = isNaN(d.getTime())
+              ? 'Unknown'
+              : d.toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                });
+            dayCache.set(datePrefix, cachedDay);
+          }
+          groupKey = cachedDay;
         }
       }
 
       if (!groups[groupKey]) groups[groupKey] = [];
       groups[groupKey].push(item);
-    });
+    }
 
-    const gridRows: GridRowItem[] = [];
-    Object.keys(groups).forEach((title, groupIdx) => {
-      gridRows.push({
+    const rows: GridRowItem[] = [];
+    const groupKeys = Object.keys(groups);
+    for (let gIdx = 0; gIdx < groupKeys.length; gIdx++) {
+      const title = groupKeys[gIdx];
+      rows.push({
         type: 'header',
-        id: `header_${groupIdx}_${title}`,
+        id: `header_${gIdx}_${title}`,
         title,
       });
 
       const groupData = groups[title];
       for (let i = 0; i < groupData.length; i += columns) {
         const chunk = groupData.slice(i, i + columns);
-        gridRows.push({
+        rows.push({
           type: 'row',
-          id: `row_${groupIdx}_${chunk[0]?.id || i}`,
+          id: `row_${gIdx}_${chunk[0]?.id || i}`,
           items: chunk,
           itemSize,
         });
       }
-    });
+    }
 
-    return gridRows;
-  };
-
-  const gridRows = groupMediaToGridRows(sortedMedia);
+    return rows;
+  }, [sortedMedia, groupBy, columns, itemSize]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>

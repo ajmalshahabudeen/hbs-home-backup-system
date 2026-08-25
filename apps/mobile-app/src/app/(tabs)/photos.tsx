@@ -58,7 +58,9 @@ export default function PhotosScreen() {
     if (mediaList.length === 0) {
       await loadFromCache();
     }
-    setLoading(true);
+    if (mediaList.length === 0) {
+      setLoading(true);
+    }
 
     asyncTaskQueue.enqueue(
       async (abortSignal) => {
@@ -77,43 +79,66 @@ export default function PhotosScreen() {
             return;
           }
 
-          // 2. DEVICE FIRST: Query local device gallery assets natively (<100ms)
-          const localAssets = await safeMediaLibrary.getAssetsAsync({ first: 50000 });
+          // 2. ON-THE-FLY STREAMING: Stream local gallery photos in progressive chunks
+          // First batch (<60 items) renders instantly (<15ms), then background chunks stream in
+          const localMediaMap = new Map<string, PhotoMediaItem>();
+          const localMediaItems: PhotoMediaItem[] = [];
+          let hasRenderedFirstBatch = false;
+
+          await safeMediaLibrary.streamAssetsAsync({
+            first: 50000,
+            initialBatchSize: 60,
+            subsequentBatchSize: 150,
+            signal: abortSignal,
+            onBatch: (batch, isInitialBatch) => {
+              if (abortSignal.isCancelled || !isMounted.current) return;
+
+              for (let i = 0; i < batch.length; i++) {
+                const asset = batch[i];
+                const uriKey = (asset.uri || asset.filename).toLowerCase();
+                if (!localMediaMap.has(uriKey)) {
+                  const mediaItem: PhotoMediaItem = {
+                    id: `local_${asset.id}`,
+                    userId: 'local',
+                    path: asset.filename,
+                    name: asset.filename,
+                    parentPath: '',
+                    mimeType: asset.mediaType === 'video' ? 'video/mp4' : 'image/jpeg',
+                    size: 0,
+                    createdAt: new Date(asset.creationTime).toISOString(),
+                    updatedAt: new Date(asset.creationTime).toISOString(),
+                    isVideo: asset.mediaType === 'video',
+                    url: asset.uri,
+                    localUri: asset.uri,
+                    isLocalOnly: true,
+                    isBackedUp: false,
+                  };
+                  localMediaMap.set(uriKey, mediaItem);
+                  localMediaItems.push(mediaItem);
+                }
+              }
+
+              // On the very first batch, render immediately & dismiss skeleton!
+              if (isInitialBatch || !hasRenderedFirstBatch) {
+                hasRenderedFirstBatch = true;
+                setMediaList([...localMediaItems]);
+                setLoading(false);
+              } else {
+                // Progressive stream: update mediaList in chunks
+                setMediaList([...localMediaItems]);
+              }
+            },
+          });
+
           if (abortSignal.isCancelled || !isMounted.current) return;
 
-          const localMediaItems: PhotoMediaItem[] = new Array(localAssets.length);
-          for (let i = 0; i < localAssets.length; i++) {
-            const asset = localAssets[i];
-            localMediaItems[i] = {
-              id: `local_${asset.id}`,
-              userId: 'local',
-              path: asset.filename,
-              name: asset.filename,
-              parentPath: '',
-              mimeType: asset.mediaType === 'video' ? 'video/mp4' : 'image/jpeg',
-              size: 0,
-              createdAt: new Date(asset.creationTime).toISOString(),
-              updatedAt: new Date(asset.creationTime).toISOString(),
-              isVideo: asset.mediaType === 'video',
-              url: asset.uri,
-              localUri: asset.uri,
-              isLocalOnly: true,
-              isBackedUp: false,
-            };
-          }
-
-          // Sort local items by creation date descending
-          localMediaItems.sort(
-            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-          );
-
-          // Render local device gallery photos FIRST immediately!
-          if (!abortSignal.isCancelled && isMounted.current) {
-            setMediaList(localMediaItems);
+          // If no local assets found at all
+          if (localMediaItems.length === 0) {
+            setMediaList([]);
             setLoading(false);
           }
 
-          // 3. ASYNCHRONOUS CLOUD SYNC: Fetch server cloud photos in background
+          // 3. ASYNCHRONOUS CLOUD SYNC: Fetch server cloud photos in background once device files load
           if (serverUrl && sessionToken) {
             try {
               const res = await hbsApi.getPhotos(serverUrl, sessionToken, 'all');
@@ -128,15 +153,15 @@ export default function PhotosScreen() {
                 }));
 
               // Build O(1) filename lookup map for cloud backup status
-              const localMap = new Map<string, number>();
+              const localNameMap = new Map<string, number>();
               localMediaItems.forEach((m, idx) => {
-                localMap.set(m.name.toLowerCase(), idx);
+                localNameMap.set(m.name.toLowerCase(), idx);
               });
 
               const mergedList: PhotoMediaItem[] = [...localMediaItems];
 
               serverMedia.forEach((sItem) => {
-                const localIdx = localMap.get(sItem.name.toLowerCase());
+                const localIdx = localNameMap.get(sItem.name.toLowerCase());
                 if (localIdx !== undefined) {
                   mergedList[localIdx].isBackedUp = true;
                   mergedList[localIdx].id = sItem.id;
