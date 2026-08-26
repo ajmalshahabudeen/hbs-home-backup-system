@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import '../config/google_cred.dart';
 import '../core/utils/session_token_cleaner.dart';
 import '../models/saved_account.dart';
 import '../models/user_model.dart';
@@ -137,7 +138,10 @@ class AuthService {
         );
       }
 
-      await GoogleSignIn.instance.initialize(serverClientId: webClientId);
+      await GoogleSignIn.instance.initialize(
+        clientId: GoogleCred.androidClientIdOrNull,
+        serverClientId: webClientId,
+      );
       final account = await GoogleSignIn.instance.authenticate();
       final idToken = account.authentication.idToken;
       if (idToken == null || idToken.isEmpty) {

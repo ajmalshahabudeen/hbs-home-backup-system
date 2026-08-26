@@ -80,6 +80,11 @@ services:
         condition: service_healthy
     ports:
       - "${APP_PORT:-38480}:38480"
+    # Runtime only — do not bake Google IDs into the image.
+    # Loads apps/server/.env (GOOGLE_CLIENT_ID / SECRET). DATABASE_URL in that
+    # file is ignored because `environment:` below pins postgres hostname.
+    env_file:
+      - apps/server/.env
     environment:
       <<: *storage-env
       NODE_ENV: production
@@ -94,8 +99,6 @@ services:
       BETTER_AUTH_TRUSTED_ORIGINS: ${BETTER_AUTH_TRUSTED_ORIGINS:-}
       BETTER_AUTH_PROTOCOL: ${BETTER_AUTH_PROTOCOL:-auto}
       BETTER_AUTH_SECURE_COOKIES: ${BETTER_AUTH_SECURE_COOKIES:-false}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       QUEUE_BACKEND: ${QUEUE_BACKEND:-celery}
     volumes:
       - *storage-vol

@@ -39,6 +39,11 @@ app.*.symbols
 # Obfuscation related
 app.*.map.json
 
+# Flutter local env (unused — Google Android ID lives in lib/config/google_cred.dart)
+.env
+.env.*
+!.env.example
+
 # Android Studio will place build artifacts here
 /android/app/debug
 /android/app/profile

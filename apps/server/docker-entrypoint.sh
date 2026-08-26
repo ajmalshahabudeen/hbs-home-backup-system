@@ -3,6 +3,11 @@ set -euo pipefail
 
 echo "[hbs-server] boot"
 echo "[hbs-server] STORAGE_ROOT=${STORAGE_ROOT:-/data/storage}"
+if [[ -n "${GOOGLE_CLIENT_ID:-}" && -n "${GOOGLE_CLIENT_SECRET:-}" ]]; then
+  echo "[hbs-server] google oauth: configured"
+else
+  echo "[hbs-server] google oauth: missing (set GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET in apps/server/.env)"
+fi
 
 DB_HOST_HINT="$(echo "${DATABASE_URL:-}" | sed -E 's#.*@([^/:]+).*#\1#' || true)"
 echo "[hbs-server] DATABASE host=${DB_HOST_HINT:-unknown}"
