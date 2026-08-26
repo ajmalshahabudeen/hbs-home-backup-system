@@ -49,6 +49,8 @@ jobs:
           SRC="build/app/outputs/flutter-apk/app-release.apk"
           DEST="hbs-cloud-${TAG}.apk"
           cp "$SRC" "$DEST"
+          VERSION="${TAG#v}"
+          printf '{"version":"%s","tag":"%s","apk":"https://github.com/ajmalshahabudeen/hbs-home-backup-system/releases/download/%s/%s"}\n' "$VERSION" "$TAG" "$TAG" "$DEST" > latest.json
           echo "file=$DEST" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
@@ -57,6 +59,8 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: HBS Cloud ${{ github.ref_name }}
           generate_release_notes: true
-          files: apps/hbs-app-flutter/hbs-cloud-${{ github.ref_name }}.apk
+          files: |
+            apps/hbs-app-flutter/hbs-cloud-${{ github.ref_name }}.apk
+            apps/hbs-app-flutter/latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

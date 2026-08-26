@@ -7,6 +7,7 @@ import 'package:hbs_app_flutter/core/utils/vault_crypto.dart';
 import 'package:hbs_app_flutter/models/photo_media_item.dart';
 import 'package:hbs_app_flutter/models/saved_account.dart';
 import 'package:hbs_app_flutter/screens/photos/memories_screen.dart';
+import 'package:hbs_app_flutter/services/app_update_service.dart';
 import 'package:hbs_app_flutter/services/watch_folder_service.dart';
 
 void main() {
@@ -216,6 +217,14 @@ void main() {
       expect(WatchFolderService.shouldIgnore(r'C:\watch\photo.tmp', ignoreCsv: '*.tmp', extCsv: ''), isTrue);
       expect(WatchFolderService.shouldIgnore(r'C:\watch\notes.txt', ignoreCsv: '', extCsv: 'jpg,png'), isTrue);
       expect(WatchFolderService.shouldIgnore(r'C:\watch\shot.jpg', ignoreCsv: '*.tmp', extCsv: 'jpg,png'), isFalse);
+    });
+  });
+
+  group('AppUpdateService', () {
+    test('compares versions and strips v prefix', () {
+      expect(AppUpdateService.compare('v1.2.0', '1.1.9'), greaterThan(0));
+      expect(AppUpdateService.compare('1.0.0', 'v1.0.0'), 0);
+      expect(AppUpdateService.compare('1.0.0', '1.0.1'), lessThan(0));
     });
   });
 }

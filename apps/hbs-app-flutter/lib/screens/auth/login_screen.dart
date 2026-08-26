@@ -6,8 +6,10 @@ import '../../core/widgets/input_dialog.dart';
 import '../../models/saved_account.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/server_provider.dart';
+import '../../services/auth_service.dart';
 import '../../services/storage_service.dart';
 import '../settings/lan_scanner_modal.dart';
+import 'auth_webview_screen.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -341,6 +343,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         final ok = await ref.read(authProvider.notifier).signInWithGoogle();
                         if (ok && context.mounted) {
                           Navigator.of(context).popUntil((route) => route.isFirst);
+                          return;
+                        }
+                        if (context.mounted) {
+                          final err = ref.read(authProvider).errorMessage;
+                          if (err != null && err.isNotEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+                          }
                         }
                       },
                 style: OutlinedButton.styleFrom(
@@ -361,7 +370,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 onPressed: authState.isLoading
                     ? null
                     : () async {
-                        final ok = await ref.read(authProvider.notifier).signInWithPasskey();
+                        final url = AuthService().passkeySignInUrl(ref.read(serverProvider).url);
+                        final redirect = await AuthWebViewScreen.open(context, url: url, title: 'Passkey');
+                        if (redirect == null || !context.mounted) return;
+                        final ok = await ref.read(authProvider.notifier).signInWithPasskey(redirect);
                         if (ok && context.mounted) {
                           Navigator.of(context).popUntil((route) => route.isFirst);
                         }

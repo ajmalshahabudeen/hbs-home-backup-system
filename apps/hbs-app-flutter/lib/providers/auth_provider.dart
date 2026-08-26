@@ -188,10 +188,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
     return false;
   }
 
-  Future<bool> signInWithPasskey() async {
+  Future<bool> signInWithPasskey(Uri redirect) async {
     state = state.copyWith(isLoading: true, errorMessage: null);
     final serverUrl = ref.read(serverProvider).url;
-    final result = await AuthService().signInWithPasskey(serverUrl: serverUrl);
+    final result = await AuthService().finishOAuthRedirect(serverUrl: serverUrl, uri: redirect);
     if (result.success) {
       state = state.copyWith(
         isLoading: false,

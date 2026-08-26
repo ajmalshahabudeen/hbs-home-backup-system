@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'app_logo.dart';
 
-/// Instagram-style splash: mark in the center, wordmark pinned to the bottom.
+/// Centered logo + uppercase wordmark on the cream field.
 class AppSplashScreen extends StatelessWidget {
   static const background = Color(0xFFF2EDE5);
   static const wordmark = Color(0xFF3F2A1D);
@@ -13,24 +13,23 @@ class AppSplashScreen extends StatelessWidget {
     return const Scaffold(
       backgroundColor: background,
       body: SafeArea(
-        child: Column(
-          children: [
-            Spacer(),
-            AppLogo(size: 112, borderRadius: 32),
-            Spacer(),
-            Padding(
-              padding: EdgeInsets.only(bottom: 28),
-              child: Text(
-                'HBS Cloud',
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppLogo(size: 112, borderRadius: 32),
+              SizedBox(height: 20),
+              Text(
+                'HBS CLOUD',
                 style: TextStyle(
-                  fontSize: 18,
+                  fontSize: 22,
                   fontWeight: FontWeight.w800,
-                  letterSpacing: 0.6,
+                  letterSpacing: 2.4,
                   color: wordmark,
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

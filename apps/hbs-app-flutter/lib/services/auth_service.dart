@@ -1,5 +1,5 @@
 import 'package:dio/dio.dart';
-import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../core/utils/session_token_cleaner.dart';
 import '../models/saved_account.dart';
 import '../models/user_model.dart';
@@ -124,71 +124,100 @@ class AuthService {
   Future<AuthResult> signInWithGoogle({required String serverUrl}) async {
     try {
       final cleanUrl = serverUrl.endsWith('/') ? serverUrl.substring(0, serverUrl.length - 1) : serverUrl;
-      final callback = '$cleanUrl/auth/flutter-bridge';
-      final url =
-          '$cleanUrl/api/auth/sign-in/social?provider=google&callbackURL=${Uri.encodeComponent(callback)}';
-      final result = await FlutterWebAuth2.authenticate(
-        url: url,
-        callbackUrlScheme: 'hbscloud',
+      String? webClientId;
+      try {
+        final health = await _dio.get('$cleanUrl/api/health');
+        final google = health.data is Map ? health.data['google'] : null;
+        if (google is Map) webClientId = google['webClientId']?.toString();
+      } catch (_) {}
+      if (webClientId == null || webClientId.isEmpty) {
+        return const AuthResult(
+          success: false,
+          error: 'Google is not configured on the HBS server. Set GOOGLE_CLIENT_ID (Web client) and GOOGLE_CLIENT_SECRET.',
+        );
+      }
+
+      await GoogleSignIn.instance.initialize(serverClientId: webClientId);
+      final account = await GoogleSignIn.instance.authenticate();
+      final idToken = account.authentication.idToken;
+      if (idToken == null || idToken.isEmpty) {
+        return const AuthResult(
+          success: false,
+          error: 'Google did not return an ID token. Add an Android OAuth client with this app SHA-1 in Google Cloud Console.',
+        );
+      }
+
+      final res = await _dio.post(
+        '$cleanUrl/api/auth/sign-in/social',
+        data: {
+          'provider': 'google',
+          'idToken': {'token': idToken},
+        },
+        options: Options(
+          headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+          validateStatus: (status) => status != null && status < 500,
+        ),
       );
-      final parsed = Uri.parse(result);
-      final rawToken = parsed.queryParameters['token'] ?? '';
-      final cleanToken = SessionTokenCleaner.cleanSessionToken(rawToken) ?? rawToken;
+      if (res.statusCode != 200 && res.statusCode != 201) {
+        final err = res.data is Map ? (res.data['message'] ?? res.data['error'] ?? 'Google sign-in failed') : 'Google sign-in failed';
+        return AuthResult(success: false, error: err.toString());
+      }
+      final token = _extractTokenFromResponse(res);
+      final cleanToken = SessionTokenCleaner.cleanSessionToken(token) ?? token;
       if (cleanToken.isEmpty) {
-        return const AuthResult(success: false, error: 'Google sign-in did not return a session. Is Google configured on the server?');
+        return const AuthResult(success: false, error: 'Server accepted Google but did not return a session token.');
+      }
+      UserModel? user;
+      if (res.data is Map && res.data['user'] is Map) {
+        user = UserModel.fromJson(Map<String, dynamic>.from(res.data['user'] as Map));
       }
       await StorageService().saveSessionToken(cleanToken);
       await StorageService().setUserLoggedOut(false);
-      ApiService().updateConfig(serverUrl: serverUrl, sessionToken: cleanToken);
-      final user = await restoreSession(serverUrl: serverUrl);
       if (user != null) {
-        return AuthResult(success: true, user: user, token: cleanToken);
+        await StorageService().saveCurrentUser(user);
+        await StorageService().upsertSavedAccount(SavedAccount(
+          email: user.email,
+          password: '',
+          name: user.name,
+          serverUrl: serverUrl,
+        ));
       }
-      return AuthResult(success: true, token: cleanToken);
+      ApiService().updateConfig(serverUrl: serverUrl, sessionToken: cleanToken);
+      user ??= await restoreSession(serverUrl: serverUrl);
+      return AuthResult(success: true, user: user, token: cleanToken);
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled) {
+        return const AuthResult(success: false, error: 'Google sign-in cancelled');
+      }
+      return AuthResult(success: false, error: e.toString());
     } catch (e) {
       return AuthResult(success: false, error: e.toString());
     }
   }
 
-  Future<AuthResult> signInWithPasskey({required String serverUrl}) async {
+  String passkeySignInUrl(String serverUrl) {
+    final cleanUrl = serverUrl.endsWith('/') ? serverUrl.substring(0, serverUrl.length - 1) : serverUrl;
+    return '$cleanUrl/auth/passkey';
+  }
+
+  Future<String> passkeyRegisterUrl(String serverUrl) async {
+    final cleanUrl = serverUrl.endsWith('/') ? serverUrl.substring(0, serverUrl.length - 1) : serverUrl;
+    final token = await StorageService().getSessionToken() ?? '';
+    return '$cleanUrl/auth/passkey-register?token=${Uri.encodeComponent(token)}';
+  }
+
+  Future<AuthResult> finishOAuthRedirect({required String serverUrl, required Uri uri}) async {
     try {
-      final cleanUrl = serverUrl.endsWith('/') ? serverUrl.substring(0, serverUrl.length - 1) : serverUrl;
-      final result = await FlutterWebAuth2.authenticate(
-        url: '$cleanUrl/auth/passkey',
-        callbackUrlScheme: 'hbscloud',
-      );
-      final parsed = Uri.parse(result);
-      final rawToken = parsed.queryParameters['token'] ?? '';
+      final rawToken = uri.queryParameters['token'] ?? '';
       final cleanToken = SessionTokenCleaner.cleanSessionToken(rawToken) ?? rawToken;
       if (cleanToken.isEmpty) {
-        return const AuthResult(success: false, error: 'Passkey sign-in did not return a session');
+        return const AuthResult(success: false, error: 'Sign-in did not return a session');
       }
       await StorageService().saveSessionToken(cleanToken);
       await StorageService().setUserLoggedOut(false);
       ApiService().updateConfig(serverUrl: serverUrl, sessionToken: cleanToken);
       final user = await restoreSession(serverUrl: serverUrl);
       return AuthResult(success: true, user: user, token: cleanToken);
-    } catch (e) {
-      return AuthResult(success: false, error: e.toString());
-    }
-  }
-
-  Future<AuthResult> registerPasskey({required String serverUrl}) async {
-    try {
-      final cleanUrl = serverUrl.endsWith('/') ? serverUrl.substring(0, serverUrl.length - 1) : serverUrl;
-      final token = await StorageService().getSessionToken() ?? '';
-      final result = await FlutterWebAuth2.authenticate(
-        url: '$cleanUrl/auth/passkey-register?token=${Uri.encodeComponent(token)}',
-        callbackUrlScheme: 'hbscloud',
-      );
-      final parsed = Uri.parse(result);
-      final rawToken = parsed.queryParameters['token'] ?? token;
-      final cleanToken = SessionTokenCleaner.cleanSessionToken(rawToken) ?? rawToken;
-      if (cleanToken.isNotEmpty) {
-        await StorageService().saveSessionToken(cleanToken);
-        ApiService().updateConfig(serverUrl: serverUrl, sessionToken: cleanToken);
-      }
-      return const AuthResult(success: true);
     } catch (e) {
       return AuthResult(success: false, error: e.toString());
     }

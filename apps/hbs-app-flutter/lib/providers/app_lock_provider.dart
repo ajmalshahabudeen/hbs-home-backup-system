@@ -96,12 +96,9 @@ class AppLockNotifier extends StateNotifier<AppLockState> {
   }
 
   Future<bool> enableDeviceLock() async {
-    final available = await AppLockService().isDeviceAuthAvailable();
-    if (!available) {
-      state = state.copyWith(deviceAuthAvailable: false);
-      return false;
-    }
-    final ok = await AppLockService().authenticatePreferred();
+    // Always prompt the OS lock (PIN/pattern/bio). Do not require
+    // isDeviceSupported() first — some Androids report false even with a PIN.
+    final ok = await AppLockService().authenticateWithDevice(biometricOnly: false);
     if (!ok) return false;
     await AppLockService().setDeviceLockEnabled(true);
     await AppLockService().setLockEnabled(true);

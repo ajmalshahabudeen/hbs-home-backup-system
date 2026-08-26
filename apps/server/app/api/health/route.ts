@@ -81,5 +81,9 @@ export async function GET(_request: NextRequest) {
     pair: {
       qr: "/api/pair/qr",
     },
+    google: {
+      enabled: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+      webClientId: process.env.GOOGLE_CLIENT_ID || null,
+    },
   });
 }

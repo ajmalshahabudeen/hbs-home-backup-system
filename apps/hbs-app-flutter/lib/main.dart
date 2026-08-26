@@ -4,6 +4,7 @@ import 'core/theme/app_theme.dart';
 import 'core/utils/background_backup.dart';
 import 'core/utils/high_refresh_rate.dart';
 import 'core/widgets/app_splash_screen.dart';
+import 'core/widgets/app_update_gate.dart';
 import 'providers/auth_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/app_shell.dart';
@@ -47,9 +48,11 @@ class HBSCloudApp extends ConsumerWidget {
         paletteKey: themeState.paletteKey,
         systemBrightness: MediaQuery.platformBrightnessOf(context),
       ),
-      home: authState.isLoading
-          ? const AppSplashScreen()
-          : (authState.isAuthenticated ? const AppShell() : const LandingScreen()),
+      home: AppUpdateGate(
+        child: authState.isLoading
+            ? const AppSplashScreen()
+            : (authState.isAuthenticated ? const AppShell() : const LandingScreen()),
+      ),
     );
   }
 }

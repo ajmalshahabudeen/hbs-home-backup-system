@@ -1,4 +1,6 @@
 import 'package:local_auth/local_auth.dart';
+import 'package:local_auth/error_codes.dart' as auth_error;
+import 'package:flutter/services.dart';
 import '../core/utils/pin_validator.dart';
 import 'storage_service.dart';
 
@@ -9,6 +11,7 @@ class AppLockService {
 
   final LocalAuthentication _auth = LocalAuthentication();
   bool _isUnlockedForSession = false;
+  String? lastError;
 
   bool get isUnlockedForSession => _isUnlockedForSession;
   void markUnlocked() => _isUnlockedForSession = true;
@@ -59,7 +62,9 @@ class AppLockService {
 
   Future<bool> isDeviceAuthAvailable() async {
     try {
-      return await _auth.isDeviceSupported();
+      if (await _auth.isDeviceSupported()) return true;
+      if (await _auth.canCheckBiometrics) return true;
+      return (await _auth.getAvailableBiometrics()).isNotEmpty;
     } catch (_) {
       return false;
     }
@@ -67,9 +72,6 @@ class AppLockService {
 
   Future<bool> hasBiometrics() async {
     try {
-      final canCheck = await _auth.canCheckBiometrics;
-      final isSupported = await _auth.isDeviceSupported();
-      if (!canCheck || !isSupported) return false;
       final types = await _auth.getAvailableBiometrics();
       return types.isNotEmpty;
     } catch (_) {
@@ -77,22 +79,43 @@ class AppLockService {
     }
   }
 
-  /// Uses the OS lock screen (fingerprint / face / device PIN or pattern).
+  /// OS lock (fingerprint / face / device PIN or pattern).
   Future<bool> authenticateWithDevice({bool biometricOnly = false}) async {
+    lastError = null;
     try {
-      final supported = await _auth.isDeviceSupported();
-      if (!supported) return false;
-
       return await _auth.authenticate(
         localizedReason: 'Unlock HBS Cloud',
         options: AuthenticationOptions(
           stickyAuth: true,
           biometricOnly: biometricOnly,
           useErrorDialogs: true,
-          sensitiveTransaction: true,
+          sensitiveTransaction: false,
         ),
       );
-    } catch (_) {
+    } on PlatformException catch (e) {
+      lastError = e.message ?? e.code;
+      if (e.code == auth_error.notAvailable ||
+          e.code == auth_error.notEnrolled ||
+          e.code == auth_error.passcodeNotSet) {
+        lastError = 'Set a screen lock (PIN, pattern, or password) in Android settings, then try again.';
+      }
+      if (!biometricOnly) return false;
+      try {
+        return await _auth.authenticate(
+          localizedReason: 'Unlock HBS Cloud',
+          options: const AuthenticationOptions(
+            stickyAuth: true,
+            biometricOnly: false,
+            useErrorDialogs: true,
+            sensitiveTransaction: false,
+          ),
+        );
+      } catch (inner) {
+        lastError = inner.toString();
+        return false;
+      }
+    } catch (e) {
+      lastError = e.toString();
       return false;
     }
   }
