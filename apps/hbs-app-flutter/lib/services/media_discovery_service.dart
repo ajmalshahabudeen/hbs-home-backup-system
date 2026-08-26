@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:photo_manager/photo_manager.dart';
+import '../core/utils/media_path_filter.dart';
 import '../models/photo_media_item.dart';
 
 class LocalAlbum {
@@ -46,6 +47,7 @@ class MediaDiscoveryService {
 
     final List<LocalAlbum> albums = [];
     for (final path in paths) {
+      if (MediaPathFilter.isAndroidAppFolder(albumName: path.name)) continue;
       final count = await path.assetCountAsync;
       if (count > 0) {
         albums.add(LocalAlbum(
@@ -114,6 +116,12 @@ class MediaDiscoveryService {
       if (entities.isEmpty) break;
 
       for (final entity in entities) {
+        if (MediaPathFilter.isAndroidAppFolder(
+          relativePath: entity.relativePath,
+          albumName: targetAlbum.name,
+        )) {
+          continue;
+        }
         items.add(itemFromEntity(entity));
       }
       onPage?.call(List<PhotoMediaItem>.from(items));

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme/app_theme.dart';
-import 'core/widgets/app_logo.dart';
+import 'core/utils/high_refresh_rate.dart';
+import 'core/widgets/app_splash_screen.dart';
 import 'providers/auth_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/app_shell.dart';
@@ -12,6 +13,7 @@ import 'services/storage_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await enableHighestRefreshRate();
 
   // Initialize Core Services
   await StorageService().init();
@@ -42,18 +44,7 @@ class HBSCloudApp extends ConsumerWidget {
         systemBrightness: MediaQuery.platformBrightnessOf(context),
       ),
       home: authState.isLoading
-          ? const Scaffold(
-              body: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    AppLogo(size: 96, borderRadius: 28),
-                    SizedBox(height: 24),
-                    CircularProgressIndicator(),
-                  ],
-                ),
-              ),
-            )
+          ? const AppSplashScreen()
           : (authState.isAuthenticated ? const AppShell() : const LandingScreen()),
     );
   }

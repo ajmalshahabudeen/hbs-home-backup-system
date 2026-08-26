@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hbs_app_flutter/core/utils/media_merger.dart';
+import 'package:hbs_app_flutter/core/utils/media_path_filter.dart';
 import 'package:hbs_app_flutter/core/utils/pin_validator.dart';
 import 'package:hbs_app_flutter/models/photo_media_item.dart';
 import 'package:hbs_app_flutter/models/saved_account.dart';
@@ -111,6 +112,39 @@ void main() {
       expect(copy.password, account.password);
       expect(copy.displayName, 'Admin');
       expect(SavedAccount(email: 'x@y.z', password: 'p').displayName, 'x');
+    });
+  });
+
+  group('MediaPathFilter', () {
+    test('hides Android/data and Android/obb but keeps Android/media (WhatsApp)', () {
+      expect(
+        MediaPathFilter.isAndroidAppFolder(relativePath: 'Android/data/com.whatsapp/files'),
+        isTrue,
+      );
+      expect(
+        MediaPathFilter.isAndroidAppFolder(relativePath: 'Android/obb/com.game'),
+        isTrue,
+      );
+      expect(
+        MediaPathFilter.isAndroidAppFolder(
+          filePath: '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/IMG.jpg',
+        ),
+        isFalse,
+      );
+      expect(
+        MediaPathFilter.isAndroidAppFolder(relativePath: 'Android/media/com.whatsapp/WhatsApp Images'),
+        isFalse,
+      );
+      expect(MediaPathFilter.isAndroidAppFolder(albumName: 'WhatsApp'), isFalse);
+      expect(MediaPathFilter.isAndroidAppFolder(albumName: 'Android'), isFalse);
+    });
+
+    test('keeps Camera, DCIM, Pictures and Downloads', () {
+      expect(MediaPathFilter.isAndroidAppFolder(relativePath: 'DCIM/Camera'), isFalse);
+      expect(MediaPathFilter.isAndroidAppFolder(relativePath: 'Pictures/Screenshots'), isFalse);
+      expect(MediaPathFilter.isAndroidAppFolder(relativePath: 'Download'), isFalse);
+      expect(MediaPathFilter.isAndroidAppFolder(filePath: '/storage/emulated/0/DCIM/IMG_1.jpg'), isFalse);
+      expect(MediaPathFilter.isAndroidAppFolder(albumName: 'Camera'), isFalse);
     });
   });
 }
