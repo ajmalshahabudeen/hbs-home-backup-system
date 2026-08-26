@@ -122,7 +122,7 @@ class DriveScreen extends ConsumerWidget {
     return Scaffold(
       floatingActionButton: Padding(
         padding: EdgeInsets.only(
-          bottom: MediaQuery.paddingOf(context).bottom + 84,
+          bottom: MediaQuery.paddingOf(context).bottom,
         ),
         child: FloatingActionButton.extended(
           onPressed: () => UploadModal.show(context),

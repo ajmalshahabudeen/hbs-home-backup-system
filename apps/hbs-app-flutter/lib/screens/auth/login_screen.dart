@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/widgets/app_logo.dart';
 import '../../core/widgets/glass_card.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/server_provider.dart';
@@ -62,6 +63,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const AppLogo(size: 56, borderRadius: 16),
+            const SizedBox(height: 20),
             Text(
               'Welcome Back',
               style: theme.textTheme.headlineMedium?.copyWith(

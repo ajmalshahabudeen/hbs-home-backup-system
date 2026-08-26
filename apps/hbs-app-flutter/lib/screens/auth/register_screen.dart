@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/widgets/app_logo.dart';
 import '../../providers/auth_provider.dart';
 import 'login_screen.dart';
 
@@ -61,6 +62,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const AppLogo(size: 56, borderRadius: 16),
+            const SizedBox(height: 20),
             Text(
               'Create Account',
               style: theme.textTheme.headlineMedium?.copyWith(
