@@ -120,12 +120,18 @@ class DriveScreen extends ConsumerWidget {
     final breadcrumbParts = driveState.currentPath.isEmpty ? <String>[] : driveState.currentPath.split('/');
 
     return Scaffold(
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => UploadModal.show(context),
-        backgroundColor: primary,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Add', style: TextStyle(fontWeight: FontWeight.w700)),
+      floatingActionButton: Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.paddingOf(context).bottom + 84,
+        ),
+        child: FloatingActionButton.extended(
+          onPressed: () => UploadModal.show(context),
+          backgroundColor: primary,
+          foregroundColor: Colors.white,
+          elevation: 6,
+          icon: const Icon(Icons.add_rounded, size: 22),
+          label: const Text('Add', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+        ),
       ),
       body: Column(
         children: [
@@ -224,72 +230,147 @@ class DriveScreen extends ConsumerWidget {
                               ),
                             ],
                           )
-                        : ListView.separated(
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-                            itemCount: files.length,
-                            separatorBuilder: (_, __) => const SizedBox(height: 8),
-                            itemBuilder: (context, index) {
-                              final file = files[index];
-                              return GlassCard(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                borderRadius: 16,
-                                onTap: () {
-                                  if (file.isDir) {
-                                    driveNotifier.navigateToFolder(file.name);
-                                  } else {
-                                    _showFileActions(context, ref, file);
-                                  }
-                                },
-                                child: Row(
-                                  children: [
-                                    // Folder / File Icon
-                                    Container(
-                                      width: 40,
-                                      height: 40,
-                                      decoration: BoxDecoration(
-                                        color: file.isDir ? const Color(0xFFF59E0B).withValues(alpha: 0.15) : primary.withValues(alpha: 0.12),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Icon(
-                                        file.isDir ? Icons.folder_rounded : Icons.insert_drive_file_rounded,
-                                        color: file.isDir ? const Color(0xFFF59E0B) : primary,
-                                        size: 22,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-
-                                    // File Details
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            file.name,
-                                            style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            file.isDir ? 'Folder' : '${Formatters.formatBytes(file.size)} • ${Formatters.formatShortDate(file.createdAt)}',
-                                            style: theme.textTheme.bodySmall?.copyWith(
-                                              fontSize: 11,
-                                              color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-
-                                    IconButton(
-                                      icon: const Icon(Icons.more_vert_rounded, size: 18),
-                                      onPressed: () => _showFileActions(context, ref, file),
-                                    ),
-                                  ],
+                        : driveState.isGridView
+                            ? GridView.builder(
+                                padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.paddingOf(context).bottom + 160),
+                                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 2,
+                                  crossAxisSpacing: 10,
+                                  mainAxisSpacing: 10,
+                                  childAspectRatio: 1.05,
                                 ),
-                              );
-                            },
-                          ),
+                                itemCount: files.length,
+                                itemBuilder: (context, index) {
+                                  final file = files[index];
+                                  return GlassCard(
+                                    padding: const EdgeInsets.all(12),
+                                    borderRadius: 18,
+                                    onTap: () {
+                                      if (file.isDir) {
+                                        driveNotifier.navigateToFolder(file.name);
+                                      } else {
+                                        _showFileActions(context, ref, file);
+                                      }
+                                    },
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Container(
+                                              width: 42,
+                                              height: 42,
+                                              decoration: BoxDecoration(
+                                                color: file.isDir
+                                                    ? const Color(0xFFF59E0B).withValues(alpha: 0.15)
+                                                    : primary.withValues(alpha: 0.12),
+                                                borderRadius: BorderRadius.circular(14),
+                                              ),
+                                              child: Icon(
+                                                file.isDir ? Icons.folder_rounded : Icons.insert_drive_file_rounded,
+                                                color: file.isDir ? const Color(0xFFF59E0B) : primary,
+                                                size: 22,
+                                              ),
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(Icons.more_vert_rounded, size: 18),
+                                              padding: EdgeInsets.zero,
+                                              constraints: const BoxConstraints(),
+                                              onPressed: () => _showFileActions(context, ref, file),
+                                            ),
+                                          ],
+                                        ),
+                                        const Spacer(),
+                                        Text(
+                                          file.name,
+                                          style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          file.isDir
+                                              ? 'Folder'
+                                              : '${Formatters.formatBytes(file.size)} • ${Formatters.formatShortDate(file.createdAt)}',
+                                          style: theme.textTheme.bodySmall?.copyWith(
+                                            fontSize: 11,
+                                            color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6),
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              )
+                            : ListView.separated(
+                                padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.paddingOf(context).bottom + 160),
+                                itemCount: files.length,
+                                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                                itemBuilder: (context, index) {
+                                  final file = files[index];
+                                  return GlassCard(
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                    borderRadius: 16,
+                                    onTap: () {
+                                      if (file.isDir) {
+                                        driveNotifier.navigateToFolder(file.name);
+                                      } else {
+                                        _showFileActions(context, ref, file);
+                                      }
+                                    },
+                                    child: Row(
+                                      children: [
+                                        // Folder / File Icon
+                                        Container(
+                                          width: 40,
+                                          height: 40,
+                                          decoration: BoxDecoration(
+                                            color: file.isDir ? const Color(0xFFF59E0B).withValues(alpha: 0.15) : primary.withValues(alpha: 0.12),
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Icon(
+                                            file.isDir ? Icons.folder_rounded : Icons.insert_drive_file_rounded,
+                                            color: file.isDir ? const Color(0xFFF59E0B) : primary,
+                                            size: 22,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+
+                                        // File Details
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                file.name,
+                                                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                file.isDir ? 'Folder' : '${Formatters.formatBytes(file.size)} • ${Formatters.formatShortDate(file.createdAt)}',
+                                                style: theme.textTheme.bodySmall?.copyWith(
+                                                  fontSize: 11,
+                                                  color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+
+                                        IconButton(
+                                          icon: const Icon(Icons.more_vert_rounded, size: 18),
+                                          onPressed: () => _showFileActions(context, ref, file),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
                   ),
           ),
         ],

@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/user_model.dart';
 
 class StorageService {
   static final StorageService _instance = StorageService._internal();
@@ -15,20 +17,111 @@ class StorageService {
     _prefs ??= await SharedPreferences.getInstance();
   }
 
-  // Secure Token Storage
+  // ==================== Session Token Storage ====================
+
   Future<void> saveSessionToken(String token) async {
-    await _secureStorage.write(key: 'hbs_auth_session_token', value: token);
+    try {
+      await _secureStorage.write(key: 'hbs_auth_session_token', value: token);
+    } catch (_) {}
+    await _prefs?.setString('hbs_auth_session_token', token);
   }
 
   Future<String?> getSessionToken() async {
-    return await _secureStorage.read(key: 'hbs_auth_session_token');
+    try {
+      final token = await _secureStorage.read(key: 'hbs_auth_session_token');
+      if (token != null && token.isNotEmpty) return token;
+    } catch (_) {}
+    return _prefs?.getString('hbs_auth_session_token');
   }
 
   Future<void> clearSessionToken() async {
-    await _secureStorage.delete(key: 'hbs_auth_session_token');
+    try {
+      await _secureStorage.delete(key: 'hbs_auth_session_token');
+    } catch (_) {}
+    await _prefs?.remove('hbs_auth_session_token');
   }
 
-  // General Preferences
+  // ==================== Auth Credentials Storage ====================
+
+  Future<void> saveAuthCredentials(String email, String password) async {
+    final raw = jsonEncode({'email': email.trim(), 'password': password});
+    try {
+      await _secureStorage.write(key: 'hbs_auth_credentials', value: raw);
+    } catch (_) {}
+    await _prefs?.setString('hbs_auth_credentials', raw);
+  }
+
+  Future<Map<String, String>?> getAuthCredentials() async {
+    String? raw;
+    try {
+      raw = await _secureStorage.read(key: 'hbs_auth_credentials');
+    } catch (_) {}
+    raw ??= _prefs?.getString('hbs_auth_credentials');
+
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final map = jsonDecode(raw);
+      if (map is Map && map['email'] != null && map['password'] != null) {
+        return {
+          'email': map['email'].toString(),
+          'password': map['password'].toString(),
+        };
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> clearAuthCredentials() async {
+    try {
+      await _secureStorage.delete(key: 'hbs_auth_credentials');
+    } catch (_) {}
+    await _prefs?.remove('hbs_auth_credentials');
+  }
+
+  // ==================== User Profile Caching ====================
+
+  Future<void> saveCurrentUser(UserModel user) async {
+    final raw = jsonEncode(user.toJson());
+    await _prefs?.setString('hbs_auth_user', raw);
+  }
+
+  UserModel? getCurrentUser() {
+    final raw = _prefs?.getString('hbs_auth_user');
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final map = jsonDecode(raw);
+      if (map is Map<String, dynamic>) {
+        return UserModel.fromJson(map);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> clearCurrentUser() async {
+    await _prefs?.remove('hbs_auth_user');
+  }
+
+  // ==================== Logout State Tracking ====================
+
+  bool isUserLoggedOut() {
+    return _prefs?.getBool('hbs_user_logged_out') ?? false;
+  }
+
+  Future<void> setUserLoggedOut(bool loggedOut) async {
+    await _prefs?.setBool('hbs_user_logged_out', loggedOut);
+  }
+
+  // ==================== Clear All Auth Data ====================
+
+  Future<void> clearAllAuthData() async {
+    await clearSessionToken();
+    await clearAuthCredentials();
+    await clearCurrentUser();
+    await setUserLoggedOut(true);
+  }
+
+  // ==================== General Preferences ====================
+
   String getString(String key, {String defaultValue = ''}) {
     return _prefs?.getString(key) ?? defaultValue;
   }
@@ -66,7 +159,9 @@ class StorageService {
   }
 
   Future<void> clearAll() async {
-    await _secureStorage.deleteAll();
+    try {
+      await _secureStorage.deleteAll();
+    } catch (_) {}
     await _prefs?.clear();
   }
 }

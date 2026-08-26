@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme/app_theme.dart';
+import 'core/widgets/app_logo.dart';
 import 'providers/auth_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/app_shell.dart';
@@ -43,7 +44,14 @@ class HBSCloudApp extends ConsumerWidget {
       home: authState.isLoading
           ? const Scaffold(
               body: Center(
-                child: CircularProgressIndicator(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AppLogo(size: 96, borderRadius: 28),
+                    SizedBox(height: 24),
+                    CircularProgressIndicator(),
+                  ],
+                ),
               ),
             )
           : (authState.isAuthenticated ? const AppShell() : const LandingScreen()),

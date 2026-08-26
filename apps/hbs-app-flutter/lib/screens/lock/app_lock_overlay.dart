@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/widgets/app_logo.dart';
 import '../../providers/app_lock_provider.dart';
 
 class AppLockOverlay extends ConsumerStatefulWidget {
@@ -79,15 +80,7 @@ class _AppLockOverlayState extends ConsumerState<AppLockOverlay> {
                 child: Column(
                   children: [
                     const Spacer(),
-                    Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        color: primary.withValues(alpha: 0.2),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(Icons.lock_rounded, color: primary, size: 32),
-                    ),
+                    const AppLogo(size: 72, circular: true),
                     const SizedBox(height: 16),
                     Text(
                       'HBS Cloud Locked',

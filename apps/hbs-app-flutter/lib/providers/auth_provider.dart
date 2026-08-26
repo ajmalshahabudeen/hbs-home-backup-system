@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
+import '../services/storage_service.dart';
 import 'server_provider.dart';
 
 class AuthState {
@@ -39,26 +40,73 @@ class AuthNotifier extends StateNotifier<AuthState> {
   final Ref ref;
 
   AuthNotifier(this.ref) : super(const AuthState(isLoading: true)) {
-    restoreSession();
+    _initSession();
+  }
+
+  Future<void> _initSession() async {
+    final isLoggedOut = StorageService().isUserLoggedOut();
+    final cachedUser = StorageService().getCurrentUser();
+    final cachedToken = await StorageService().getSessionToken();
+
+    // Instant warm hydration from local disk
+    if (!isLoggedOut && (cachedUser != null || (cachedToken != null && cachedToken.isNotEmpty))) {
+      state = state.copyWith(
+        isLoading: false,
+        isAuthenticated: true,
+        user: cachedUser,
+        token: cachedToken,
+      );
+    }
+
+    // Asynchronously validate / refresh with server in background
+    await restoreSession();
   }
 
   Future<void> restoreSession() async {
-    state = state.copyWith(isLoading: true, errorMessage: null);
+    if (StorageService().isUserLoggedOut()) {
+      state = const AuthState(isLoading: false, isAuthenticated: false);
+      return;
+    }
+
     final serverUrl = ref.read(serverProvider).url;
     final user = await AuthService().restoreSession(serverUrl: serverUrl);
 
     if (user != null) {
+      final token = await StorageService().getSessionToken();
       state = state.copyWith(
         isLoading: false,
         isAuthenticated: true,
         user: user,
+        token: token,
       );
     } else {
-      state = state.copyWith(
-        isLoading: false,
-        isAuthenticated: false,
-        user: null,
-      );
+      if (StorageService().isUserLoggedOut()) {
+        state = const AuthState(
+          isLoading: false,
+          isAuthenticated: false,
+          user: null,
+          token: null,
+        );
+      } else {
+        // Retain cached session if server is offline or unreachable
+        final cachedUser = StorageService().getCurrentUser();
+        final cachedToken = await StorageService().getSessionToken();
+        if (cachedUser != null || cachedToken != null) {
+          state = state.copyWith(
+            isLoading: false,
+            isAuthenticated: true,
+            user: cachedUser,
+            token: cachedToken,
+          );
+        } else {
+          state = const AuthState(
+            isLoading: false,
+            isAuthenticated: false,
+            user: null,
+            token: null,
+          );
+        }
+      }
     }
   }
 
@@ -82,7 +130,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } else {
       state = state.copyWith(
         isLoading: false,
-        isAuthenticated: false,
         errorMessage: result.error ?? 'Sign in failed',
       );
       return false;
@@ -110,7 +157,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } else {
       state = state.copyWith(
         isLoading: false,
-        isAuthenticated: false,
         errorMessage: result.error ?? 'Sign up failed',
       );
       return false;
@@ -118,12 +164,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> signOut() async {
+    state = state.copyWith(isLoading: true);
     final serverUrl = ref.read(serverProvider).url;
     await AuthService().signOut(serverUrl: serverUrl);
     state = const AuthState(
       isLoading: false,
       isAuthenticated: false,
       user: null,
+      token: null,
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hbs_app_flutter/core/utils/formatters.dart';
 import 'package:hbs_app_flutter/core/utils/session_token_cleaner.dart';
+import 'package:hbs_app_flutter/models/user_model.dart';
 
 void main() {
   group('SessionTokenCleaner Tests', () {
@@ -19,6 +20,30 @@ void main() {
       expect(headers['Authorization'], 'Bearer token_12345');
       expect(headers['Cookie'], 'better-auth.session_token=token_12345');
       expect(headers['x-session-token'], 'token_12345');
+    });
+  });
+
+  group('UserModel Tests', () {
+    test('Serializes and deserializes UserModel accurately', () {
+      const user = UserModel(
+        id: 'usr_123',
+        email: 'test@hbs.local',
+        name: 'Test User',
+        role: 'user',
+        image: 'https://example.com/avatar.jpg',
+      );
+
+      final json = user.toJson();
+      expect(json['id'], 'usr_123');
+      expect(json['email'], 'test@hbs.local');
+      expect(json['name'], 'Test User');
+
+      final deserialized = UserModel.fromJson(json);
+      expect(deserialized.id, user.id);
+      expect(deserialized.email, user.email);
+      expect(deserialized.name, user.name);
+      expect(deserialized.role, user.role);
+      expect(deserialized.image, user.image);
     });
   });
 

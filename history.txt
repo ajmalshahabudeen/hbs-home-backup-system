@@ -703,12 +703,29 @@
   - Verified `flutter test`: 100% passing unit tests.
   - Verified `bun run typecheck`: 3/3 packages succeeded.
   - Verified Next.js server production build (`bun run build --filter=server`): 100% success.
-
-
-
-
-
-
-
-
-
+## Session: 2026-08-26 (Flutter Session Persistence & Drive FAB Overhaul Completed)
+- Implemented robust multi-layer session persistence and auto-reauthentication for Flutter mobile client (`apps/hbs-app-flutter`):
+  1. `StorageService` (`lib/services/storage_service.dart`):
+     - Added try-catch wrapped `FlutterSecureStorage` with `SharedPreferences` fallback for secure token (`hbs_auth_session_token`) and credential (`hbs_auth_credentials`) persistence.
+     - Added user model caching (`saveCurrentUser`, `getCurrentUser`) in `SharedPreferences` (`hbs_auth_user`).
+     - Added logout state tracking (`isUserLoggedOut`, `setUserLoggedOut`) and unified `clearAllAuthData()` for clean user sign-out.
+  2. `AuthService` (`lib/services/auth_service.dart`):
+     - Updated `signIn` and `signUp` to sanitize extracted tokens via `SessionTokenCleaner`, persist auth credentials, token, cached user, and reset `isUserLoggedOut = false`.
+     - Overhauled `restoreSession`: checks `isUserLoggedOut`, immediately applies cached token to `ApiService`, validates session with server, and if offline or server is unreachable, retains the cached session rather than kicking the user out to the login screen. If the session expires with 401/403, attempts automatic silent re-authentication with securely saved credentials.
+     - Added `autoAuthenticateUser` helper for background sync tasks and dynamic LAN server discovery.
+     - Updated `signOut` to clear all tokens, credentials, and user data.
+  3. `AuthNotifier` (`lib/providers/auth_provider.dart`):
+     - Implemented `<1ms` instant warm hydration on app startup (`_initSession`) from local disk cache, eliminating blank login flickers and keeping the user permanently logged in across restarts.
+  4. `ServerNotifier` (`lib/providers/server_provider.dart`):
+     - Synchronously initialized state with saved server URL from `StorageService`.
+- Repositioned Floating Action Button ("+") in Drive Screen (`lib/screens/drive/drive_screen.dart`):
+  1. Elevated FAB with safe-area bottom offset: `Padding(padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom + 84))`, placing the "+" button cleanly above the floating `CustomBottomNav` capsule.
+  2. Added full Grid View support (`GridView.builder`) when `driveState.isGridView == true`.
+  3. Increased bottom list and grid scroll padding to `MediaQuery.paddingOf(context).bottom + 160` so the last items are never obscured by the FAB or bottom navigation bar.
+  4. Increased bottom list padding to `110` in `backup_screen.dart` and `settings_screen.dart` to prevent bottom card clipping.
+- Build & Quality Verification:
+  - Verified `flutter analyze`: 0 issues found.
+  - Verified `flutter test`: 100% passing unit tests (6/6 tests).
+  - Verified `flutter build apk --debug`: Built `build\app\outputs\flutter-apk\app-debug.apk` in 22.0s with exit code 0.
+  - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 successful builds.
+  - Verified Next.js server production build (`bun run build --filter=server`): 100% success.

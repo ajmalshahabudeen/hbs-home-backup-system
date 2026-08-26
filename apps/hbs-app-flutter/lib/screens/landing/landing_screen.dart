@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/widgets/app_logo.dart';
 import '../../core/widgets/glass_card.dart';
 import '../../providers/server_provider.dart';
 import '../auth/login_screen.dart';
@@ -61,25 +62,16 @@ class LandingScreen extends ConsumerWidget {
                     width: 110,
                     height: 110,
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [primary, primary.withValues(alpha: 0.75)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
                       borderRadius: BorderRadius.circular(32),
                       boxShadow: [
                         BoxShadow(
-                          color: primary.withValues(alpha: 0.45),
+                          color: primary.withValues(alpha: 0.35),
                           blurRadius: 36,
                           offset: const Offset(0, 12),
                         ),
                       ],
                     ),
-                    child: const Icon(
-                      Icons.cloud_sync_rounded,
-                      color: Colors.white,
-                      size: 64,
-                    ),
+                    child: const AppLogo(size: 110, borderRadius: 32),
                   ),
 
                   const SizedBox(height: 32),

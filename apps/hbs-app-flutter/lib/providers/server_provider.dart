@@ -5,7 +5,10 @@ import '../services/lan_scanner_service.dart';
 import '../services/storage_service.dart';
 
 class ServerNotifier extends StateNotifier<ServerInfo> {
-  ServerNotifier() : super(const ServerInfo(url: 'http://192.168.1.100:38480')) {
+  ServerNotifier()
+      : super(ServerInfo(
+          url: StorageService().getString('hbs_server_url', defaultValue: 'http://192.168.1.100:38480'),
+        )) {
     _init();
   }
 

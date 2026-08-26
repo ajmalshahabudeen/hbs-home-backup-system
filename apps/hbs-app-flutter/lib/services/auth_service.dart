@@ -34,11 +34,18 @@ class AuthService {
     // 1. Check body token/session
     final data = res.data;
     if (data is Map) {
-      if (data['token'] != null) return data['token'].toString();
-      if (data['session'] is Map && data['session']['token'] != null) {
-        return data['session']['token'].toString();
+      if (data['token'] != null) {
+        final cleaned = SessionTokenCleaner.cleanSessionToken(data['token'].toString());
+        if (cleaned != null) return cleaned;
       }
-      if (data['sessionToken'] != null) return data['sessionToken'].toString();
+      if (data['session'] is Map && data['session']['token'] != null) {
+        final cleaned = SessionTokenCleaner.cleanSessionToken(data['session']['token'].toString());
+        if (cleaned != null) return cleaned;
+      }
+      if (data['sessionToken'] != null) {
+        final cleaned = SessionTokenCleaner.cleanSessionToken(data['sessionToken'].toString());
+        if (cleaned != null) return cleaned;
+      }
     }
 
     // 2. Check Set-Cookie headers
@@ -81,14 +88,21 @@ class AuthService {
 
       if (data['user'] is Map) {
         user = UserModel.fromJson(data['user'] as Map<String, dynamic>);
+      } else {
+        user = UserModel(id: '', email: email.trim(), name: email.split('@')[0]);
       }
 
-      if (token.isNotEmpty) {
-        await StorageService().saveSessionToken(token);
-        ApiService().updateConfig(serverUrl: serverUrl, sessionToken: token);
+      final cleanToken = SessionTokenCleaner.cleanSessionToken(token) ?? token;
+
+      if (cleanToken.isNotEmpty) {
+        await StorageService().saveSessionToken(cleanToken);
+        await StorageService().saveAuthCredentials(email, password);
+        await StorageService().saveCurrentUser(user);
+        await StorageService().setUserLoggedOut(false);
+        ApiService().updateConfig(serverUrl: serverUrl, sessionToken: cleanToken);
       }
 
-      return AuthResult(success: true, user: user, token: token);
+      return AuthResult(success: true, user: user, token: cleanToken);
     } catch (e) {
       return AuthResult(success: false, error: e.toString());
     }
@@ -126,46 +140,118 @@ class AuthService {
 
       if (data['user'] is Map) {
         user = UserModel.fromJson(data['user'] as Map<String, dynamic>);
+      } else {
+        user = UserModel(id: '', email: email.trim(), name: name.trim());
       }
 
-      if (token.isNotEmpty) {
-        await StorageService().saveSessionToken(token);
-        ApiService().updateConfig(serverUrl: serverUrl, sessionToken: token);
+      final cleanToken = SessionTokenCleaner.cleanSessionToken(token) ?? token;
+
+      if (cleanToken.isNotEmpty) {
+        await StorageService().saveSessionToken(cleanToken);
+        await StorageService().saveAuthCredentials(email, password);
+        await StorageService().saveCurrentUser(user);
+        await StorageService().setUserLoggedOut(false);
+        ApiService().updateConfig(serverUrl: serverUrl, sessionToken: cleanToken);
       }
 
-      return AuthResult(success: true, user: user, token: token);
+      return AuthResult(success: true, user: user, token: cleanToken);
     } catch (e) {
       return AuthResult(success: false, error: e.toString());
     }
   }
 
   Future<UserModel?> restoreSession({required String serverUrl}) async {
-    try {
-      final token = await StorageService().getSessionToken();
-      if (token == null || token.isEmpty) return null;
+    // 1. If user explicitly logged out, do not restore
+    if (StorageService().isUserLoggedOut()) {
+      return null;
+    }
 
+    final cachedToken = await StorageService().getSessionToken();
+    final cachedUser = StorageService().getCurrentUser();
+
+    // 2. If no token, check for saved credentials to auto-login
+    if (cachedToken == null || cachedToken.isEmpty) {
+      final creds = await StorageService().getAuthCredentials();
+      if (creds != null && creds['email'] != null && creds['password'] != null) {
+        final res = await signIn(
+          serverUrl: serverUrl,
+          email: creds['email']!,
+          password: creds['password']!,
+        );
+        if (res.success && res.user != null) {
+          return res.user;
+        }
+      }
+      return null;
+    }
+
+    // 3. Immediately configure ApiService with cached token
+    ApiService().updateConfig(serverUrl: serverUrl, sessionToken: cachedToken);
+
+    try {
       final cleanUrl = serverUrl.endsWith('/') ? serverUrl.substring(0, serverUrl.length - 1) : serverUrl;
-      final headers = SessionTokenCleaner.authHeaders(token);
+      final headers = SessionTokenCleaner.authHeaders(cachedToken);
 
       final res = await _dio.get(
         '$cleanUrl/api/auth/get-session',
         options: Options(
           headers: headers,
-          connectTimeout: const Duration(seconds: 5),
-          receiveTimeout: const Duration(seconds: 5),
-          validateStatus: (status) => status == 200,
+          connectTimeout: const Duration(seconds: 4),
+          receiveTimeout: const Duration(seconds: 4),
+          validateStatus: (status) => status != null && status < 500,
         ),
       );
 
-      final data = res.data;
-      if (data is Map && data['user'] is Map) {
-        ApiService().updateConfig(serverUrl: serverUrl, sessionToken: token);
-        return UserModel.fromJson(data['user'] as Map<String, dynamic>);
+      if (res.statusCode == 200) {
+        final data = res.data;
+        if (data is Map && data['user'] is Map) {
+          final user = UserModel.fromJson(data['user'] as Map<String, dynamic>);
+          final newToken = _extractTokenFromResponse(res);
+          final effectiveToken = newToken.isNotEmpty ? (SessionTokenCleaner.cleanSessionToken(newToken) ?? newToken) : cachedToken;
+          await StorageService().saveSessionToken(effectiveToken);
+          await StorageService().saveCurrentUser(user);
+          await StorageService().setUserLoggedOut(false);
+          ApiService().updateConfig(serverUrl: serverUrl, sessionToken: effectiveToken);
+          return user;
+        }
+      } else if (res.statusCode == 401 || res.statusCode == 403) {
+        // Token expired/invalidated on server: attempt auto re-login with stored credentials
+        final creds = await StorageService().getAuthCredentials();
+        if (creds != null && creds['email'] != null && creds['password'] != null) {
+          final reAuth = await signIn(
+            serverUrl: serverUrl,
+            email: creds['email']!,
+            password: creds['password']!,
+          );
+          if (reAuth.success && reAuth.user != null) {
+            return reAuth.user;
+          }
+        }
+        // Credentials invalid
+        await StorageService().clearAllAuthData();
+        return null;
       }
-      return null;
     } catch (_) {
-      return null;
+      // Network timeout / offline / connection refused:
+      // Return cached user so user remains authenticated offline without forced logout
+      if (cachedUser != null) {
+        return cachedUser;
+      }
     }
+
+    return cachedUser;
+  }
+
+  Future<AuthResult> autoAuthenticateUser(String targetServerUrl) async {
+    if (StorageService().isUserLoggedOut()) {
+      return const AuthResult(success: false, error: 'User is logged out');
+    }
+    final user = await restoreSession(serverUrl: targetServerUrl);
+    if (user != null) {
+      final token = await StorageService().getSessionToken();
+      return AuthResult(success: true, user: user, token: token);
+    }
+    return const AuthResult(success: false, error: 'Auto-authentication failed');
   }
 
   Future<void> signOut({required String serverUrl}) async {
@@ -180,7 +266,8 @@ class AuthService {
         ).catchError((_) => Response(requestOptions: RequestOptions()));
       }
     } finally {
-      await StorageService().clearSessionToken();
+      await StorageService().clearAllAuthData();
+      ApiService().updateConfig(serverUrl: serverUrl, sessionToken: null);
     }
   }
 }

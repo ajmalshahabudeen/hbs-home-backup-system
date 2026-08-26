@@ -59,7 +59,7 @@ class BackupScreen extends ConsumerWidget {
           // Main Backup Dashboard Content
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
               children: [
                 // Hero Sync Card
                 GlassCard(

@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../theme/color_palettes.dart';
+import 'app_logo.dart';
 
 class FloatingHeader extends StatefulWidget {
   final String title;
@@ -100,25 +101,16 @@ class _FloatingHeaderState extends State<FloatingHeader> with SingleTickerProvid
                     width: 38,
                     height: 38,
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [primary, primary.withValues(alpha: 0.8)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
-                          color: primary.withValues(alpha: 0.3),
+                          color: primary.withValues(alpha: 0.25),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
                       ],
                     ),
-                    child: const Icon(
-                      Icons.cloud_sync_rounded,
-                      color: Colors.white,
-                      size: 22,
-                    ),
+                    child: const AppLogo(size: 38, borderRadius: 12),
                   ),
                   const SizedBox(width: 10),
 
