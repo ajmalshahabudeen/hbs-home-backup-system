@@ -266,6 +266,7 @@ model FolderShare {
   sharedWith       User?    @relation("ShareWith", fields: [sharedWithUserId], references: [id], onDelete: Cascade)
   sharedWithEmail  String
   path             String   @default("")
+  canWrite         Boolean  @default(false)
   createdAt        DateTime @default(now())
 
   @@index([ownerId])

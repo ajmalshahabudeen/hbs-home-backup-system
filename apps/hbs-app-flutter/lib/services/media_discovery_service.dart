@@ -148,7 +148,7 @@ class MediaDiscoveryService {
       final ext = item.name.split('.').last.toLowerCase();
       if (ext != 'heic' && ext != 'heif' && ext != 'jpg' && ext != 'jpeg') return item;
       if (!videos.containsKey(stem(item.name))) return item;
-      return item.copyWith(isLive: true);
+      return item.copyWith(isLive: true, liveVideoAssetId: videos[stem(item.name)]!.assetId);
     }).toList();
   }
 

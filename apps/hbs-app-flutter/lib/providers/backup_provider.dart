@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/utils/background_backup.dart';
 import '../models/sync_state.dart';
+import '../services/api_service.dart';
 import '../services/backup_index_db.dart';
 import '../services/media_discovery_service.dart';
 import '../services/storage_service.dart';
@@ -138,6 +139,27 @@ class BackupNotifier extends StateNotifier<BackupState> {
       if (maxMb > 0 && item.size > maxMb * 1024 * 1024) return false;
       return true;
     }).toList();
+    try {
+      final stats = await ApiService().getUserStats();
+      final quota = stats.quotaBytes;
+      final used = stats.usedBytes ?? stats.totalBytes;
+      if (quota != null && quota > 0 && used >= quota) {
+        state = state.copyWith(
+          syncState: state.syncState.copyWith(
+            isSyncing: false,
+            syncStepMessage: 'Storage quota is full — backup paused',
+          ),
+        );
+        return;
+      }
+      if (quota != null && quota > 0 && used > (quota * 0.9)) {
+        state = state.copyWith(
+          syncState: state.syncState.copyWith(
+            syncStepMessage: 'Quota almost full (${((used / quota) * 100).toStringAsFixed(0)}%)',
+          ),
+        );
+      }
+    } catch (_) {}
     await UploadQueueService().startSync(
       items: itemsToSync,
       concurrency: state.batterySaverEnabled ? 2 : 4,

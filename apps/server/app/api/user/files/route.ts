@@ -12,6 +12,8 @@ import {
 } from "@/lib/auth-guard";
 import { rememberTrashOriginal, forgetTrashOriginal, originalPathForTrash } from "@/lib/trash-meta";
 import { ensureUserDir, resolveUserPath, toPosixRel } from "@/lib/storage";
+import { decryptAtRestToBuffer } from "@/lib/at-rest";
+import { resolveUploadTarget } from "@/lib/share-target";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -31,6 +33,7 @@ function serializeFile(f: {
   return {
     ...f,
     size: Number(f.size),
+    canWrite: false as boolean | undefined,
   };
 }
 
@@ -77,6 +80,20 @@ export async function GET(request: NextRequest) {
     try {
       const abs = resolveUserPath(row.userId, row.path);
       if (!fs.existsSync(abs)) return badRequest("File missing on disk");
+      const head = Buffer.alloc(4);
+      const fd = fs.openSync(abs, "r");
+      fs.readSync(fd, head, 0, 4, 0);
+      fs.closeSync(fd);
+      if (head.toString("utf8") === "HBS2") {
+        const plain = await decryptAtRestToBuffer(abs);
+        return new Response(new Uint8Array(plain), {
+          headers: {
+            "Content-Type": row.mimeType || "application/octet-stream",
+            "Content-Disposition": `attachment; filename="${encodeURIComponent(row.name)}"`,
+            "Content-Length": String(plain.length),
+          },
+        });
+      }
       const stat = fs.statSync(abs);
       const stream = fs.createReadStream(abs);
       return new Response(Readable.toWeb(stream) as ReadableStream, {
@@ -238,6 +255,7 @@ export async function GET(request: NextRequest) {
         size: 0,
         createdAt: share.createdAt,
         updatedAt: share.createdAt,
+        canWrite: share.canWrite,
       });
     }
   }
@@ -262,17 +280,30 @@ export async function POST(request: NextRequest) {
     return badRequest("Invalid JSON body");
   }
 
-  const parentPath = toPosixRel(body.parentPath || body.path || "");
+  const incomingParent = toPosixRel(body.parentPath || body.path || "");
   const name = (body.folderName || body.name)?.trim().replace(/[\\/]/g, "_");
   const isDir = body.isDir !== false;
 
   if (!name) return badRequest("Name required");
 
+  let ownerId = userId;
+  let parentPath = incomingParent;
+  try {
+    const target = await resolveUploadTarget(
+      { id: userId, email: session.user.email },
+      incomingParent,
+    );
+    ownerId = target.ownerId;
+    parentPath = target.parentPath;
+  } catch (e) {
+    return badRequest(e instanceof Error ? e.message : "Cannot write here");
+  }
+
   const rel = toPosixRel(parentPath ? `${parentPath}/${name}` : name);
-  ensureUserDir(userId);
+  ensureUserDir(ownerId);
 
   try {
-    const abs = resolveUserPath(userId, rel);
+    const abs = resolveUserPath(ownerId, rel);
     if (isDir) {
       fs.mkdirSync(abs, { recursive: true });
     } else {
@@ -281,9 +312,9 @@ export async function POST(request: NextRequest) {
     }
 
     const row = await prisma.backupFile.upsert({
-      where: { userId_path: { userId, path: rel } },
+      where: { userId_path: { userId: ownerId, path: rel } },
       create: {
-        userId,
+        userId: ownerId,
         path: rel,
         name,
         parentPath,

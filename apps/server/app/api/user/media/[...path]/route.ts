@@ -6,6 +6,7 @@ import { requireSession, badRequest } from "@/lib/auth-guard";
 import { resolveUserPath, toPosixRel } from "@/lib/storage";
 import { getOrCreateThumbnail } from "@/lib/thumbnails";
 import { logAction } from "@/lib/logger";
+import { decryptAtRestToBuffer } from "@/lib/at-rest";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -59,12 +60,22 @@ export async function GET(
       return badRequest("File missing on disk");
     }
 
+    const rawHead = Buffer.alloc(4);
+    const fd = fs.openSync(/* turbopackIgnore: true */ abs, "r");
+    fs.readSync(fd, rawHead, 0, 4, 0);
+    fs.closeSync(fd);
+    let plain: Buffer | null = null;
+    if (rawHead.toString("utf8") === "HBS2") {
+      plain = await decryptAtRestToBuffer(abs);
+    }
+
     if (wantThumb) {
       const thumb = await getOrCreateThumbnail({
         userId,
         relPath: file.path,
         absPath: abs,
         mimeType: file.mimeType,
+        plaintext: plain ?? undefined,
       });
       return new Response(new Uint8Array(thumb.buffer), {
         headers: {
@@ -84,7 +95,7 @@ export async function GET(
     if (isHeic && !wantOriginal) {
       try {
         const sharp = (await import("sharp")).default;
-        const jpeg = await sharp(/* turbopackIgnore: true */ abs, { failOn: "none" })
+        const jpeg = await sharp(plain ?? /* turbopackIgnore: true */ abs, { failOn: "none" })
           .rotate()
           .jpeg({ quality: 88, mozjpeg: true })
           .toBuffer();
@@ -102,9 +113,40 @@ export async function GET(
     }
 
     const stat = fs.statSync(/* turbopackIgnore: true */ abs);
-    const size = stat.size;
+    const size = plain ? plain.length : stat.size;
     const rangeHeader = request.headers.get("range");
     const contentType = file.mimeType || "application/octet-stream";
+
+    if (plain) {
+      if (rangeHeader) {
+        const range = parseRange(rangeHeader, size);
+        if (!range) {
+          return new Response(null, {
+            status: 416,
+            headers: { "Content-Range": `bytes */${size}` },
+          });
+        }
+        const slice = plain.subarray(range.start, range.end + 1);
+        return new Response(new Uint8Array(slice), {
+          status: 206,
+          headers: {
+            "Content-Type": contentType,
+            "Content-Length": String(slice.length),
+            "Content-Range": `bytes ${range.start}-${range.end}/${size}`,
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "private, max-age=86400",
+          },
+        });
+      }
+      return new Response(new Uint8Array(plain), {
+        headers: {
+          "Content-Type": contentType,
+          "Content-Length": String(size),
+          "Accept-Ranges": "bytes",
+          "Cache-Control": "private, max-age=86400",
+        },
+      });
+    }
 
     if (rangeHeader) {
       const range = parseRange(rangeHeader, size);

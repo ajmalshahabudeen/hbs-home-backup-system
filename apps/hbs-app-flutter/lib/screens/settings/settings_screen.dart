@@ -14,12 +14,15 @@ import '../../providers/backup_provider.dart';
 import '../../providers/server_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/api_service.dart';
+import '../../services/auth_service.dart';
+import '../../services/device_service.dart';
 import '../../services/storage_service.dart';
 import '../../services/watch_folder_service.dart';
 import '../search/search_screen.dart';
 import 'duplicates_screen.dart';
 import 'family_share_screen.dart';
 import 'lan_scanner_modal.dart';
+import 'public_links_screen.dart';
 import 'qr_pair_screen.dart';
 import 'two_factor_screen.dart';
 
@@ -489,6 +492,47 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           MaterialPageRoute(builder: (_) => const TwoFactorScreen()),
                         ),
                       ),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.key_rounded),
+                        title: const Text('Register a passkey'),
+                        onTap: () async {
+                          final result = await AuthService().registerPasskey(serverUrl: serverInfo.url);
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(result.success ? 'Passkey registered' : (result.error ?? 'Failed'))),
+                          );
+                        },
+                      ),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.link_rounded),
+                        title: const Text('Public links'),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const PublicLinksScreen()),
+                        ),
+                      ),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.notifications_active_rounded),
+                        title: const Text('Push topic (ntfy / FCM)'),
+                        subtitle: Text(StorageService().getString('hbs_ntfy_topic').isEmpty
+                            ? 'Subscribe in ntfy, or paste an FCM token'
+                            : StorageService().getString('hbs_ntfy_topic')),
+                        onTap: () async {
+                          final topic = await InputDialog.show(
+                            context,
+                            title: 'Push topic',
+                            placeholder: 'my-hbs-phone or ntfy:topic',
+                            initialValue: StorageService().getString('hbs_ntfy_topic'),
+                            confirmText: 'Save',
+                          );
+                          if (topic == null) return;
+                          await StorageService().setString('hbs_ntfy_topic', topic.trim());
+                          DeviceService().registerAndPing();
+                          setState(() {});
+                        },
+                      ),
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
                         secondary: const Icon(Icons.photo_rounded),
@@ -532,6 +576,46 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           if (dir == null) return;
                           await StorageService().setString('hbs_watch_folder', dir);
                           await WatchFolderService().start();
+                          setState(() {});
+                        },
+                      ),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.filter_alt_outlined),
+                        title: const Text('Watch ignore rules'),
+                        subtitle: Text(StorageService().getString('hbs_watch_ignore').isEmpty
+                            ? '*.tmp, *.part, thumbs.db'
+                            : StorageService().getString('hbs_watch_ignore')),
+                        onTap: () async {
+                          final rules = await InputDialog.show(
+                            context,
+                            title: 'Ignore patterns',
+                            placeholder: '*.tmp, *.part',
+                            initialValue: StorageService().getString('hbs_watch_ignore'),
+                            confirmText: 'Save',
+                          );
+                          if (rules == null) return;
+                          await StorageService().setString('hbs_watch_ignore', rules);
+                          setState(() {});
+                        },
+                      ),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.extension_outlined),
+                        title: const Text('Watch file types'),
+                        subtitle: Text(StorageService().getString('hbs_watch_exts').isEmpty
+                            ? 'All types (or jpg, png, mp4…)'
+                            : StorageService().getString('hbs_watch_exts')),
+                        onTap: () async {
+                          final exts = await InputDialog.show(
+                            context,
+                            title: 'Allowed extensions',
+                            placeholder: 'jpg, png, mp4',
+                            initialValue: StorageService().getString('hbs_watch_exts'),
+                            confirmText: 'Save',
+                          );
+                          if (exts == null) return;
+                          await StorageService().setString('hbs_watch_exts', exts);
                           setState(() {});
                         },
                       ),

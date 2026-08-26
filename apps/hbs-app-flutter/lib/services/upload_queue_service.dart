@@ -103,6 +103,11 @@ class UploadQueueService {
             final mime = row['mime_type']?.toString();
             final parent = row['parent_path']?.toString() ?? 'MobileBackups';
             var size = (row['file_size'] as num?)?.toInt() ?? 0;
+            var uploadId = row['upload_id']?.toString() ?? '';
+            if (uploadId.isEmpty) {
+              uploadId = 'q_$id';
+              await BackupIndexDb().saveUploadId(id, uploadId);
+            }
 
             _updateState(_currentState.copyWith(
               currentFileName: name,
@@ -164,6 +169,7 @@ class UploadQueueService {
                 fileName: name,
                 mimeType: mime,
                 parentPath: parent,
+                uploadId: uploadId,
                 cancelToken: _currentCancelToken,
                 onSendProgress: (sent, total) {
                   if (total > 0) {

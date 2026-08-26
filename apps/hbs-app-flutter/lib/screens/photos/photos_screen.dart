@@ -4,6 +4,7 @@ import '../../core/utils/formatters.dart';
 import '../../core/widgets/filter_sort_bar.dart';
 import '../../core/widgets/floating_header.dart';
 import '../../core/widgets/media_thumb.dart';
+import '../../core/widgets/live_motion_overlay.dart';
 import '../../core/widgets/skeleton_loader.dart';
 import '../../models/photo_media_item.dart';
 import '../../providers/auth_provider.dart';
@@ -14,6 +15,7 @@ import '../search/search_screen.dart';
 import '../settings/lan_scanner_modal.dart';
 import 'media_viewer_modal.dart';
 import 'memories_screen.dart';
+import 'albums_screen.dart';
 
 class PhotosScreen extends ConsumerWidget {
   const PhotosScreen({super.key});
@@ -74,12 +76,24 @@ class PhotosScreen extends ConsumerWidget {
           ),
           Align(
             alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const MemoriesScreen()),
-              ),
-              icon: const Icon(Icons.auto_awesome_rounded, size: 18),
-              label: const Text('On this day'),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton.icon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const MemoriesScreen()),
+                  ),
+                  icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+                  label: const Text('On this day'),
+                ),
+                TextButton.icon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const AlbumsScreen()),
+                  ),
+                  icon: const Icon(Icons.photo_album_outlined, size: 18),
+                  label: const Text('Albums'),
+                ),
+              ],
             ),
           ),
 
@@ -154,6 +168,9 @@ class PhotosScreen extends ConsumerWidget {
                                             if (!context.mounted) return;
                                             MediaViewerModal.show(context, resolved);
                                           },
+                                          onLongPress: item.isLive
+                                              ? () => LiveMotionOverlay.play(context, item)
+                                              : null,
                                           child: Stack(
                                             fit: StackFit.expand,
                                             children: [

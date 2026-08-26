@@ -64,13 +64,14 @@ class BackupIndexDb {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: (db, version) async {
         await _createV1(db);
         await _createQueue(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) await _createQueue(db);
+        if (oldVersion < 3) await _addUploadId(db);
       },
     );
   }
@@ -102,10 +103,17 @@ class BackupIndexDb {
             mime_type TEXT,
             parent_path TEXT NOT NULL,
             status TEXT NOT NULL,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            upload_id TEXT
           )
         ''');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_queue_status ON upload_queue (status)');
+  }
+
+  Future<void> _addUploadId(Database db) async {
+    try {
+      await db.execute('ALTER TABLE upload_queue ADD COLUMN upload_id TEXT');
+    } catch (_) {}
   }
 
   Future<void> recordUploaded({
@@ -217,6 +225,11 @@ class BackupIndexDb {
   Future<List<Map<String, dynamic>>> pendingUploads() async {
     final db = await database;
     return db.query('upload_queue', where: 'status = ?', whereArgs: ['pending'], orderBy: 'created_at ASC');
+  }
+
+  Future<void> saveUploadId(String id, String uploadId) async {
+    final db = await database;
+    await db.update('upload_queue', {'upload_id': uploadId}, where: 'id = ?', whereArgs: [id]);
   }
 
   Future<void> markQueueStatus(String id, String status) async {

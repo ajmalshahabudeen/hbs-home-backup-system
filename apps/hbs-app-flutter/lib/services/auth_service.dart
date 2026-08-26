@@ -173,6 +173,27 @@ class AuthService {
     }
   }
 
+  Future<AuthResult> registerPasskey({required String serverUrl}) async {
+    try {
+      final cleanUrl = serverUrl.endsWith('/') ? serverUrl.substring(0, serverUrl.length - 1) : serverUrl;
+      final token = await StorageService().getSessionToken() ?? '';
+      final result = await FlutterWebAuth2.authenticate(
+        url: '$cleanUrl/auth/passkey-register?token=${Uri.encodeComponent(token)}',
+        callbackUrlScheme: 'hbscloud',
+      );
+      final parsed = Uri.parse(result);
+      final rawToken = parsed.queryParameters['token'] ?? token;
+      final cleanToken = SessionTokenCleaner.cleanSessionToken(rawToken) ?? rawToken;
+      if (cleanToken.isNotEmpty) {
+        await StorageService().saveSessionToken(cleanToken);
+        ApiService().updateConfig(serverUrl: serverUrl, sessionToken: cleanToken);
+      }
+      return const AuthResult(success: true);
+    } catch (e) {
+      return AuthResult(success: false, error: e.toString());
+    }
+  }
+
   Future<AuthResult> signUp({
     required String serverUrl,
     required String name,

@@ -7,6 +7,7 @@ import 'package:hbs_app_flutter/core/utils/vault_crypto.dart';
 import 'package:hbs_app_flutter/models/photo_media_item.dart';
 import 'package:hbs_app_flutter/models/saved_account.dart';
 import 'package:hbs_app_flutter/screens/photos/memories_screen.dart';
+import 'package:hbs_app_flutter/services/watch_folder_service.dart';
 
 void main() {
   group('PinValidator', () {
@@ -198,6 +199,15 @@ void main() {
     test('detects HBS1 magic', () {
       expect(VaultCrypto.looksEncrypted([0x48, 0x42, 0x53, 0x31, 0]), isTrue);
       expect(VaultCrypto.looksEncrypted([1, 2, 3, 4]), isFalse);
+    });
+  });
+
+  group('WatchFolderService.shouldIgnore', () {
+    test('skips dotfiles, globs, and non-allowed extensions', () {
+      expect(WatchFolderService.shouldIgnore(r'C:\watch\.hidden', ignoreCsv: '', extCsv: ''), isTrue);
+      expect(WatchFolderService.shouldIgnore(r'C:\watch\photo.tmp', ignoreCsv: '*.tmp', extCsv: ''), isTrue);
+      expect(WatchFolderService.shouldIgnore(r'C:\watch\notes.txt', ignoreCsv: '', extCsv: 'jpg,png'), isTrue);
+      expect(WatchFolderService.shouldIgnore(r'C:\watch\shot.jpg', ignoreCsv: '*.tmp', extCsv: 'jpg,png'), isFalse);
     });
   });
 }

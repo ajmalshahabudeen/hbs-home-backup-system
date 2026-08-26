@@ -24,8 +24,9 @@ export async function getOrCreateThumbnail(opts: {
   relPath: string;
   absPath: string;
   mimeType: string | null;
+  plaintext?: Buffer;
 }): Promise<{ buffer: Buffer; contentType: string; cached: boolean }> {
-  const { userId, relPath, absPath, mimeType } = opts;
+  const { userId, relPath, absPath, mimeType, plaintext } = opts;
   const st = fs.statSync(/* turbopackIgnore: true */ absPath);
   const key = thumbKey(userId, relPath, st.mtimeMs);
 
@@ -40,7 +41,7 @@ export async function getOrCreateThumbnail(opts: {
   try {
     if (isImage) {
       const sharp = (await import("sharp")).default;
-      const buf = await sharp(/* turbopackIgnore: true */ absPath, {
+      const buf = await sharp(plaintext ?? /* turbopackIgnore: true */ absPath, {
         failOn: "none",
       })
         .rotate()

@@ -5,6 +5,9 @@ import os from "node:os";
 import { prisma } from "@workspace/db";
 import { requireSession, ok, badRequest, writeLog, clientMeta } from "@/lib/auth-guard";
 import { ensureUserDir, resolveUserPath, toPosixRel } from "@/lib/storage";
+import { assertQuota } from "@/lib/quota";
+import { resolveUploadTarget } from "@/lib/share-target";
+import { encryptAtRestFile } from "@/lib/at-rest";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -67,9 +70,15 @@ export async function POST(request: NextRequest) {
       return ok({ received: index, total, complete: false });
     }
 
-    ensureUserDir(userId);
-    const rel = toPosixRel(parentPath ? `${parentPath}/${fileName}` : fileName);
-    const abs = resolveUserPath(userId, rel);
+    const target = await resolveUploadTarget(
+      { id: userId, email: session.user.email },
+      parentPath,
+    );
+    const ownerId = target.ownerId;
+    const destParent = target.parentPath;
+    ensureUserDir(ownerId);
+    const rel = toPosixRel(destParent ? `${destParent}/${fileName}` : fileName);
+    const abs = resolveUserPath(ownerId, rel);
     fs.mkdirSync(/* turbopackIgnore: true */ path.dirname(abs), { recursive: true });
     const writer = fs.createWriteStream(/* turbopackIgnore: true */ abs);
     let bytes = 0;
@@ -84,14 +93,16 @@ export async function POST(request: NextRequest) {
       writer.on("error", reject);
     });
     fs.rmSync(/* turbopackIgnore: true */ dir, { recursive: true, force: true });
+    await encryptAtRestFile(abs);
+    await assertQuota(ownerId, bytes);
 
     const row = await prisma.backupFile.upsert({
-      where: { userId_path: { userId, path: rel } },
+      where: { userId_path: { userId: ownerId, path: rel } },
       create: {
-        userId,
+        userId: ownerId,
         path: rel,
         name: fileName,
-        parentPath,
+        parentPath: destParent,
         isDir: false,
         size: BigInt(bytes),
         mimeType: mime,

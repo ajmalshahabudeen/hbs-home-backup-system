@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:video_player/video_player.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/widgets/live_motion_overlay.dart';
 import '../../models/photo_media_item.dart';
 import '../../services/api_service.dart';
 
@@ -148,7 +149,9 @@ class _MediaViewerModalState extends State<MediaViewerModal> {
         children: [
           // Center Media Content
           Center(
-            child: widget.item.isVideo
+            child: GestureDetector(
+              onLongPress: widget.item.isLive ? () => LiveMotionOverlay.play(context, widget.item) : null,
+              child: widget.item.isVideo
                 ? (_isVideoInitialized && _chewieController != null
                     ? Chewie(controller: _chewieController!)
                     : const CircularProgressIndicator(color: Colors.white))
@@ -167,6 +170,7 @@ class _MediaViewerModalState extends State<MediaViewerModal> {
                             maxScale: PhotoViewComputedScale.covered * 3.0,
                             errorBuilder: (_, __, ___) => Formatters.heicFallback(),
                           ))),
+            ),
           ),
 
           // Top Action Bar

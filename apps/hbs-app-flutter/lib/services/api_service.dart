@@ -183,6 +183,7 @@ class ApiService {
     String parentPath = '',
     ProgressCallback? onSendProgress,
     CancelToken? cancelToken,
+    String? uploadId,
   }) async {
     var path = filePath;
     var name = fileName;
@@ -202,6 +203,7 @@ class ApiService {
         parentPath: parentPath,
         onSendProgress: onSendProgress,
         cancelToken: cancelToken,
+        uploadId: uploadId,
       );
     }
     final token = await _getToken();
@@ -238,18 +240,21 @@ class ApiService {
     String parentPath = '',
     ProgressCallback? onSendProgress,
     CancelToken? cancelToken,
+    String? uploadId,
   }) async {
     final token = await _getToken();
     const chunkSize = 4 * 1024 * 1024;
     final file = File(filePath);
     final totalBytes = await file.length();
     final totalChunks = (totalBytes / chunkSize).ceil();
-    final uploadId = '${DateTime.now().millisecondsSinceEpoch}_${fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_')}';
+    final id = (uploadId != null && uploadId.isNotEmpty)
+        ? uploadId
+        : 'hbs_${fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_')}_$totalBytes';
     final received = <int>{};
     try {
       final existing = await _dio.get(
         '$_serverUrl/api/user/upload/chunk',
-        queryParameters: {'uploadId': uploadId},
+        queryParameters: {'uploadId': id},
         options: _buildOptions(token),
       );
       final list = existing.data['received'];
@@ -274,7 +279,7 @@ class ApiService {
             await raf.setPosition(start);
             final bytes = await raf.read(end - start);
             final form = FormData.fromMap({
-              'uploadId': uploadId,
+              'uploadId': id,
               'index': i,
               'total': totalChunks,
               'fileName': fileName,
@@ -300,7 +305,7 @@ class ApiService {
     } finally {
       await raf.close();
     }
-    return {'complete': true};
+    return {'complete': true, 'uploadId': id};
   }
 
   Future<dynamic> createFolder({
@@ -410,11 +415,11 @@ class ApiService {
     return res.data is Map ? Map<String, dynamic>.from(res.data as Map) : {};
   }
 
-  Future<void> createShare({required String email, String path = ''}) async {
+  Future<void> createShare({required String email, String path = '', bool canWrite = false}) async {
     final token = await _getToken();
     await _dio.post(
       '$_serverUrl/api/user/shares',
-      data: {'email': email, 'path': path},
+      data: {'email': email, 'path': path, 'canWrite': canWrite},
       options: _buildOptions(token),
     );
   }
@@ -436,6 +441,35 @@ class ApiService {
       options: _buildOptions(token),
     );
     return res.data is Map ? Map<String, dynamic>.from(res.data as Map) : {};
+  }
+
+  Future<List<Map<String, dynamic>>> listPublicLinks() async {
+    final token = await _getToken();
+    final res = await _dio.get('$_serverUrl/api/user/links', options: _buildOptions(token));
+    final list = res.data['links'];
+    if (list is List) {
+      return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    }
+    return [];
+  }
+
+  Future<void> deletePublicLink(String id) async {
+    final token = await _getToken();
+    await _dio.delete(
+      '$_serverUrl/api/user/links',
+      queryParameters: {'id': id},
+      options: _buildOptions(token),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> listAlbums() async {
+    final token = await _getToken();
+    final res = await _dio.get('$_serverUrl/api/user/albums', options: _buildOptions(token));
+    final list = res.data['albums'];
+    if (list is List) {
+      return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    }
+    return [];
   }
 
   Future<Map<String, dynamic>> verifyChecksum(String fileId) async {

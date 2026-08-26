@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
       id: s.id,
       path: s.path,
       sharedWithEmail: s.sharedWithEmail,
+      canWrite: s.canWrite,
       createdAt: s.createdAt.toISOString(),
     })),
     sharedWithMe: received.map((s) => ({
@@ -43,6 +44,7 @@ export async function GET(request: NextRequest) {
       ownerId: s.ownerId,
       ownerEmail: ownerMap[s.ownerId]?.email ?? "",
       ownerName: ownerMap[s.ownerId]?.name ?? "",
+      canWrite: s.canWrite,
       createdAt: s.createdAt.toISOString(),
     })),
   });
@@ -51,7 +53,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const { session, error } = await requireSession(request);
   if (error) return error;
-  const body = (await request.json()) as { email?: string; path?: string };
+  const body = (await request.json()) as { email?: string; path?: string; canWrite?: boolean };
   const email = String(body.email || "").trim().toLowerCase();
   const folderPath = toPosixRel(body.path || "");
   if (!email || !email.includes("@")) return badRequest("email required");
@@ -64,6 +66,7 @@ export async function POST(request: NextRequest) {
       sharedWithEmail: email,
       sharedWithUserId: target?.id ?? null,
       path: folderPath,
+      canWrite: body.canWrite === true,
     },
   });
   return ok({ share: row }, { status: 201 });

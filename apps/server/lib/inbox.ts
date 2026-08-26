@@ -1,4 +1,5 @@
 import { prisma } from "@workspace/db";
+import { sendPushToUser } from "@/lib/push";
 
 export async function notifyUser(userId: string, title: string, body: string) {
   try {
@@ -6,6 +7,7 @@ export async function notifyUser(userId: string, title: string, body: string) {
   } catch {
     /* table may not exist yet */
   }
+  await sendPushToUser(userId, title, body);
 }
 
 export async function notifyShareRecipients(ownerId: string, folderPath: string, message: string) {

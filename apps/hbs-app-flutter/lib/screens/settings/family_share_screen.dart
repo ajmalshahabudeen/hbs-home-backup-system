@@ -39,10 +39,22 @@ class _FamilyShareScreenState extends State<FamilyShareScreen> {
       context,
       title: 'Share a folder',
       placeholder: 'family@email.com',
-      confirmText: 'Share',
+      confirmText: 'Next',
     );
     if (email == null || email.isEmpty) return;
-    await ApiService().createShare(email: email);
+    if (!mounted) return;
+    final write = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Allow uploads?'),
+        content: const Text('Can this person add files to the shared folder?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('View only')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Can upload')),
+        ],
+      ),
+    );
+    await ApiService().createShare(email: email, canWrite: write == true);
     await _reload();
   }
 
@@ -72,7 +84,7 @@ class _FamilyShareScreenState extends State<FamilyShareScreen> {
                       borderRadius: 14,
                       child: Row(
                         children: [
-                          Expanded(child: Text('${row['sharedWithEmail']} · ${row['path'] == '' ? 'All files' : row['path']}')),
+                          Expanded(child: Text('${row['sharedWithEmail']} · ${row['path'] == '' ? 'All files' : row['path']}${row['canWrite'] == true ? ' · can upload' : ''}')),
                           IconButton(
                             icon: const Icon(Icons.delete_outline, color: Colors.red),
                             onPressed: () async {
@@ -96,7 +108,7 @@ class _FamilyShareScreenState extends State<FamilyShareScreen> {
                     child: GlassCard(
                       padding: const EdgeInsets.all(12),
                       borderRadius: 14,
-                      child: Text('${row['ownerEmail']} · ${row['path'] == '' ? 'All files' : row['path']}'),
+                      child: Text('${row['ownerEmail']} · ${row['path'] == '' ? 'All files' : row['path']}${row['canWrite'] == true ? ' · can upload' : ''}'),
                     ),
                   );
                 }),

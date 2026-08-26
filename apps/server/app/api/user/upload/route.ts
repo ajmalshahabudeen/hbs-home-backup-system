@@ -11,6 +11,9 @@ import {
 } from "@/lib/auth-guard";
 import { ensureUserDir, resolveUserPath, toPosixRel } from "@/lib/storage";
 import { logAction } from "@/lib/logger";
+import { assertQuota } from "@/lib/quota";
+import { resolveUploadTarget } from "@/lib/share-target";
+import { encryptAtRestFile } from "@/lib/at-rest";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -103,10 +106,18 @@ export async function POST(request: NextRequest) {
       return badRequest("file payload missing or unsupported format");
     }
 
-    ensureUserDir(userId);
+    const target = await resolveUploadTarget(
+      { id: userId, email: session.user.email },
+      parentPath,
+    );
+    const ownerId = target.ownerId;
+    parentPath = target.parentPath;
+
+    ensureUserDir(ownerId);
     const name = rawName.replace(/[\\/]/g, "_");
     const incomingSize =
       Buffer.isBuffer(fileBlob) ? fileBlob.length : Number(fileBlob.size) || 0;
+    await assertQuota(ownerId, incomingSize);
     const intendedRel = toPosixRel(parentPath ? `${parentPath}/${name}` : name);
 
     let fileDate: Date | undefined;
@@ -124,7 +135,7 @@ export async function POST(request: NextRequest) {
       request.headers.get("x-check-only") === "1" ||
       new URL(request.url).searchParams.get("check") === "1";
     const existing = await prisma.backupFile.findUnique({
-      where: { userId_path: { userId, path: intendedRel } },
+      where: { userId_path: { userId: ownerId, path: intendedRel } },
     });
 
     if (checkOnly && existing) {
@@ -137,13 +148,14 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const rel = await uniqueUserRel(userId, parentPath, name, incomingSize);
+    const rel = await uniqueUserRel(ownerId, parentPath, name, incomingSize);
 
-    const abs = resolveUserPath(userId, rel);
+    const abs = resolveUserPath(ownerId, rel);
     fs.mkdirSync(/* turbopackIgnore: true */ path.dirname(abs), {
       recursive: true,
     });
     const bytes = await writeIncomingFile(abs, fileBlob);
+    await encryptAtRestFile(abs);
 
     if (fileDate) {
       try {
@@ -154,7 +166,7 @@ export async function POST(request: NextRequest) {
     }
 
     const rowData = {
-      userId,
+      userId: ownerId,
       path: rel,
       name: path.posix.basename(rel),
       parentPath,
@@ -165,7 +177,7 @@ export async function POST(request: NextRequest) {
     };
 
     const row = await prisma.backupFile.upsert({
-      where: { userId_path: { userId, path: rel } },
+      where: { userId_path: { userId: ownerId, path: rel } },
       create: rowData,
       update: {
         size: BigInt(bytes),
@@ -189,7 +201,7 @@ export async function POST(request: NextRequest) {
 
     try {
       const { notifyShareRecipients } = await import("@/lib/inbox");
-      await notifyShareRecipients(userId, parentPath, `${session.user.email} uploaded ${path.posix.basename(rel)}`);
+      await notifyShareRecipients(ownerId, parentPath, `${session.user.email} uploaded ${path.posix.basename(rel)}`);
     } catch {
       /* ignore */
     }
