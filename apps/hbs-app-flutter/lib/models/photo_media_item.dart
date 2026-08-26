@@ -16,6 +16,7 @@ class PhotoMediaItem {
   final String? localUri;
   final int? duration;
   final String? assetId;
+  final bool isLive;
 
   const PhotoMediaItem({
     required this.id,
@@ -35,6 +36,7 @@ class PhotoMediaItem {
     this.localUri,
     this.duration,
     this.assetId,
+    this.isLive = false,
   });
 
   factory PhotoMediaItem.fromJson(Map<String, dynamic> json) {
@@ -58,6 +60,7 @@ class PhotoMediaItem {
       localUri: json['localUri']?.toString(),
       duration: (json['duration'] as num?)?.toInt(),
       assetId: json['assetId']?.toString(),
+      isLive: json['isLive'] == true,
     );
   }
 
@@ -79,6 +82,7 @@ class PhotoMediaItem {
     String? localUri,
     int? duration,
     String? assetId,
+    bool? isLive,
   }) {
     return PhotoMediaItem(
       id: id ?? this.id,
@@ -98,6 +102,7 @@ class PhotoMediaItem {
       localUri: localUri ?? this.localUri,
       duration: duration ?? this.duration,
       assetId: assetId ?? this.assetId,
+      isLive: isLive ?? this.isLive,
     );
   }
 }

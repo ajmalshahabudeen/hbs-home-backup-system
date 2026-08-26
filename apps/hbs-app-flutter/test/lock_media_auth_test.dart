@@ -6,6 +6,7 @@ import 'package:hbs_app_flutter/core/utils/pin_validator.dart';
 import 'package:hbs_app_flutter/core/utils/vault_crypto.dart';
 import 'package:hbs_app_flutter/models/photo_media_item.dart';
 import 'package:hbs_app_flutter/models/saved_account.dart';
+import 'package:hbs_app_flutter/screens/photos/memories_screen.dart';
 
 void main() {
   group('PinValidator', () {
@@ -163,6 +164,33 @@ void main() {
     test('groups by year and month', () {
       expect(Formatters.timelineKey(DateTime(2026, 3, 9)), '2026 · March');
       expect(Formatters.timelineKey(null), 'Unknown date');
+    });
+  });
+
+  group('MemoriesScreen', () {
+    test('onThisDay keeps past years same month/day', () {
+      final now = DateTime.now();
+      final keep = PhotoMediaItem(
+        id: '1',
+        path: '',
+        name: 'a.jpg',
+        size: 1,
+        isVideo: false,
+        url: '',
+        createdAt: DateTime(now.year - 2, now.month, now.day),
+      );
+      final drop = PhotoMediaItem(
+        id: '2',
+        path: '',
+        name: 'b.jpg',
+        size: 1,
+        isVideo: false,
+        url: '',
+        createdAt: DateTime(now.year, now.month, now.day),
+      );
+      final out = MemoriesScreen.onThisDay([keep, drop]);
+      expect(out.length, 1);
+      expect(out.first.id, '1');
     });
   });
 

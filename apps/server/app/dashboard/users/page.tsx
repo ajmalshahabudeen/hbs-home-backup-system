@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, RefreshCw, Trash2, Ban } from "lucide-react";
+import { Plus, RefreshCw, Trash2, Ban, HardDrive } from "lucide-react";
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";
@@ -40,6 +40,7 @@ type UserRow = {
   banned: boolean | null;
   banReason: string | null;
   createdAt: string;
+  storageQuotaBytes?: string | number | null;
   _count: { backupFiles: number; sessions: number };
 };
 
@@ -124,6 +125,27 @@ export default function UsersPage() {
     if (!res.ok) {
       const data = await res.json();
       setError(data.error || "Update failed");
+      return;
+    }
+    await load();
+  }
+
+  async function setQuota(u: UserRow) {
+    const currentGb = u.storageQuotaBytes
+      ? String(Math.round(Number(u.storageQuotaBytes) / (1024 ** 3)))
+      : "";
+    const raw = window.prompt(`Quota for ${u.email} in GB (empty = disk default)`, currentGb);
+    if (raw === null) return;
+    const gb = raw.trim() === "" ? null : Number(raw);
+    const bytes = gb && Number.isFinite(gb) && gb > 0 ? Math.floor(gb * 1024 ** 3) : null;
+    const res = await fetch("/api/admin/users", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: u.id, storageQuotaBytes: bytes }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      setError(data.error || "Quota update failed");
       return;
     }
     await load();
@@ -230,6 +252,14 @@ export default function UsersPage() {
         className: "text-end",
         cell: (u) => (
           <div className="flex justify-end gap-1">
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              title="Set storage quota"
+              onClick={() => setQuota(u)}
+            >
+              <HardDrive className="size-4" />
+            </Button>
             <Button
               size="icon-sm"
               variant="ghost"

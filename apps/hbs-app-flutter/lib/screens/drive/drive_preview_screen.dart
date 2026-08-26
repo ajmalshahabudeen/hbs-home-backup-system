@@ -1,11 +1,14 @@
+import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:video_player/video_player.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/vault_crypto.dart';
 import '../../models/backup_file_item.dart';
 import '../../services/api_service.dart';
+import '../../services/drive_cache_service.dart';
 
 class DrivePreviewScreen extends StatefulWidget {
   final BackupFileItem file;
@@ -18,7 +21,11 @@ class DrivePreviewScreen extends StatefulWidget {
   });
 
   static Future<void> open(BuildContext context, BackupFileItem file) async {
-    final category = Formatters.getMimeTypeCategory(file.mimeType, file.name);
+    var category = Formatters.getMimeTypeCategory(file.mimeType, file.name);
+    if (file.name.endsWith('.hbsenc') || file.mimeType == 'application/x-hbs-encrypted') {
+      final inner = file.name.replaceAll('.hbsenc', '');
+      category = Formatters.getMimeTypeCategory(null, inner);
+    }
     if (category != 'photo' && category != 'video' && category != 'audio') {
       return;
     }
@@ -39,8 +46,12 @@ class _DrivePreviewScreenState extends State<DrivePreviewScreen> {
   ChewieController? _chewie;
   Map<String, String> _headers = const {};
   String _mediaUrl = '';
+  File? _localFile;
   bool _ready = false;
   String? _error;
+
+  bool get _encrypted =>
+      widget.file.name.endsWith('.hbsenc') || widget.file.mimeType == 'application/x-hbs-encrypted';
 
   @override
   void initState() {
@@ -50,23 +61,41 @@ class _DrivePreviewScreenState extends State<DrivePreviewScreen> {
 
   Future<void> _init() async {
     final api = ApiService();
-    _mediaUrl = api.getMediaUrl(widget.file.path);
     _headers = await api.mediaHeaders();
-    if (!mounted) return;
-
-    if (widget.category == 'photo') {
-      setState(() => _ready = true);
-      return;
-    }
-
     try {
-      _player = VideoPlayerController.networkUrl(
-        Uri.parse(_mediaUrl),
-        httpHeaders: _headers,
-      );
-      await _player!.initialize();
+      if (_encrypted) {
+        final cached = await DriveCacheService().cached(widget.file.id, widget.file.name);
+        File source;
+        if (cached != null) {
+          source = cached;
+        } else {
+          final tmp = await DriveCacheService().fileFor(widget.file.id, widget.file.name);
+          await api.downloadFile(fileId: widget.file.id, destPath: tmp.path);
+          source = tmp;
+        }
+        _localFile = await VaultCrypto.decryptFile(source);
+      } else {
+        _mediaUrl = api.getMediaUrl(widget.file.path);
+        if (widget.file.path.startsWith('__share__/')) {
+          final tmp = await DriveCacheService().fileFor(widget.file.id, widget.file.name);
+          await api.downloadFile(fileId: widget.file.id, destPath: tmp.path);
+          _localFile = tmp;
+        }
+      }
       if (!mounted) return;
 
+      if (widget.category == 'photo') {
+        setState(() => _ready = true);
+        return;
+      }
+
+      if (_localFile != null) {
+        _player = VideoPlayerController.file(_localFile!);
+      } else {
+        _player = VideoPlayerController.networkUrl(Uri.parse(_mediaUrl), httpHeaders: _headers);
+      }
+      await _player!.initialize();
+      if (!mounted) return;
       if (widget.category == 'video') {
         _chewie = ChewieController(
           videoPlayerController: _player!,
@@ -83,7 +112,7 @@ class _DrivePreviewScreenState extends State<DrivePreviewScreen> {
         await _player!.play();
       }
       setState(() => _ready = true);
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       setState(() => _error = 'Unable to preview this file');
     }
@@ -115,8 +144,11 @@ class _DrivePreviewScreenState extends State<DrivePreviewScreen> {
 
   Widget _buildBody() {
     if (widget.category == 'photo') {
+      final provider = _localFile != null
+          ? FileImage(_localFile!)
+          : CachedNetworkImageProvider(_mediaUrl, headers: _headers);
       return PhotoView(
-        imageProvider: CachedNetworkImageProvider(_mediaUrl, headers: _headers),
+        imageProvider: provider as ImageProvider,
         minScale: PhotoViewComputedScale.contained,
         maxScale: PhotoViewComputedScale.covered * 3.0,
         backgroundDecoration: const BoxDecoration(color: Colors.black),
@@ -139,30 +171,15 @@ class _DrivePreviewScreenState extends State<DrivePreviewScreen> {
         children: [
           const Icon(Icons.audiotrack_rounded, color: Colors.white, size: 72),
           const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: Text(
-              widget.file.name,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            Formatters.formatBytes(widget.file.size),
-            style: const TextStyle(color: Colors.white54, fontSize: 13),
-          ),
-          const SizedBox(height: 24),
+          Text(widget.file.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
           ValueListenableBuilder(
             valueListenable: player,
             builder: (context, value, _) {
-              final duration = value.duration;
-              final position = value.position;
-              final maxMs = duration.inMilliseconds <= 0 ? 1.0 : duration.inMilliseconds.toDouble();
+              final maxMs = value.duration.inMilliseconds <= 0 ? 1.0 : value.duration.inMilliseconds.toDouble();
               return Column(
                 children: [
                   Slider(
-                    value: position.inMilliseconds.clamp(0, maxMs.toInt()).toDouble(),
+                    value: value.position.inMilliseconds.clamp(0, maxMs.toInt()).toDouble(),
                     max: maxMs,
                     onChanged: (v) => player.seekTo(Duration(milliseconds: v.toInt())),
                   ),

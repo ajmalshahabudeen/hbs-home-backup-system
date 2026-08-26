@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
       banned: true,
       banReason: true,
       emailVerified: true,
+      storageQuotaBytes: true,
       image: true,
       createdAt: true,
       updatedAt: true,
@@ -163,6 +164,7 @@ export async function PATCH(request: NextRequest) {
     role?: string;
     banned?: boolean;
     banReason?: string | null;
+    storageQuotaBytes?: number | string | null;
   };
   try {
     body = await request.json();
@@ -178,6 +180,7 @@ export async function PATCH(request: NextRequest) {
     banned?: boolean;
     banReason?: string | null;
     banExpires?: Date | null;
+    storageQuotaBytes?: bigint | null;
   } = {};
 
   if (typeof body.name === "string" && body.name.trim()) {
@@ -190,6 +193,10 @@ export async function PATCH(request: NextRequest) {
     data.banned = body.banned;
     data.banReason = body.banned ? body.banReason ?? "Banned by admin" : null;
     data.banExpires = null;
+  }
+  if (body.storageQuotaBytes !== undefined) {
+    const n = Number(body.storageQuotaBytes);
+    data.storageQuotaBytes = Number.isFinite(n) && n > 0 ? BigInt(Math.floor(n)) : null;
   }
 
   const user = await prisma.user.update({

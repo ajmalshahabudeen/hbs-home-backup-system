@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import '../core/widgets/custom_bottom_nav.dart';
 import '../providers/backup_provider.dart';
 import '../services/api_service.dart';
+import '../services/notification_service.dart';
+import '../services/watch_folder_service.dart';
 import 'backup/backup_screen.dart';
 import 'drive/drive_screen.dart';
 import 'lock/app_lock_overlay.dart';
@@ -19,6 +22,7 @@ class AppShell extends ConsumerStatefulWidget {
 
 class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver {
   int _currentIndex = 0;
+  Timer? _inboxTimer;
 
   final List<Widget> _screens = const [
     PhotosScreen(),
@@ -33,10 +37,14 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
     WidgetsBinding.instance.addObserver(this);
     ReceiveSharingIntent.instance.getMediaStream().listen(_handleShared);
     ReceiveSharingIntent.instance.getInitialMedia().then(_handleShared);
+    WatchFolderService().start();
+    _pollInbox();
+    _inboxTimer = Timer.periodic(const Duration(seconds: 45), (_) => _pollInbox());
   }
 
   @override
   void dispose() {
+    _inboxTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -45,7 +53,21 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       ref.read(backupProvider.notifier).autoBackupIfEnabled();
+      _pollInbox();
     }
+  }
+
+  Future<void> _pollInbox() async {
+    try {
+      final events = await ApiService().unreadInbox();
+      for (final e in events) {
+        await NotificationService().showInboxAlert(
+          e['title']?.toString() ?? 'HBS Cloud',
+          e['body']?.toString() ?? '',
+        );
+      }
+      if (events.isNotEmpty) await ApiService().markInboxRead();
+    } catch (_) {}
   }
 
   Future<void> _handleShared(List<SharedMediaFile> files) async {

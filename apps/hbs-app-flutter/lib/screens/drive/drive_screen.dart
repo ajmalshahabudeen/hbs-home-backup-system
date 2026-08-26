@@ -14,6 +14,7 @@ import '../../providers/drive_provider.dart';
 import '../../providers/server_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/drive_cache_service.dart';
+import '../../services/storage_service.dart';
 import '../search/search_screen.dart';
 import '../settings/lan_scanner_modal.dart';
 import 'drive_preview_screen.dart';
@@ -97,6 +98,45 @@ class DriveScreen extends ConsumerWidget {
                 }
               },
             ),
+            ListTile(
+              leading: const Icon(Icons.link_rounded),
+              title: const Text('Public link (24h)'),
+              onTap: () async {
+                Navigator.of(context).pop();
+                try {
+                  final data = await ApiService().createPublicLink(fileId: file.id);
+                  final path = data['link']?['path'] ?? data['path'];
+                  final url = '${ref.read(serverProvider).url}$path';
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(url)));
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Link failed: $e')));
+                  }
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.verified_rounded),
+              title: const Text('Verify checksum'),
+              onTap: () async {
+                Navigator.of(context).pop();
+                try {
+                  final data = await ApiService().verifyChecksum(file.id);
+                  if (context.mounted) {
+                    final ok = data['ok'] == true;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(ok ? 'Checksum OK' : 'Bitrot or mismatch: ${data['actual']}')),
+                    );
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Verify failed: $e')));
+                  }
+                }
+              },
+            ),
             if (file.parentPath == 'Trash')
               ListTile(
                 leading: const Icon(Icons.restore_from_trash_rounded),
@@ -154,7 +194,9 @@ class DriveScreen extends ConsumerWidget {
       final dir = await getTemporaryDirectory();
       final dest = '${dir.path}/${file.name}';
       await ApiService().downloadFile(fileId: file.id, destPath: dest);
-      await DriveCacheService().put(file.id, file.name, dest);
+      if (!StorageService().getBool('hbs_optimize_storage', defaultValue: false)) {
+        await DriveCacheService().put(file.id, file.name, dest);
+      }
       final cat = Formatters.getMimeTypeCategory(file.mimeType, file.name);
       if (cat == 'photo') {
         await Gal.putImage(dest, album: 'HBS Cloud');
@@ -334,7 +376,7 @@ class DriveScreen extends ConsumerWidget {
                                     borderRadius: 18,
                                     onTap: () {
                                       if (file.isDir) {
-                                        driveNotifier.navigateToFolder(file.name);
+                                        driveNotifier.navigateToFolder(file.path.isNotEmpty ? file.path : file.name);
                                       } else {
                                         final category = Formatters.getMimeTypeCategory(file.mimeType, file.name);
                                         if (category == 'photo' || category == 'video' || category == 'audio') {
@@ -408,7 +450,7 @@ class DriveScreen extends ConsumerWidget {
                                     borderRadius: 16,
                                     onTap: () {
                                       if (file.isDir) {
-                                        driveNotifier.navigateToFolder(file.name);
+                                        driveNotifier.navigateToFolder(file.path.isNotEmpty ? file.path : file.name);
                                       } else {
                                         final category = Formatters.getMimeTypeCategory(file.mimeType, file.name);
                                         if (category == 'photo' || category == 'video' || category == 'audio') {

@@ -94,6 +94,17 @@ class NotificationService {
     );
   }
 
+  Future<void> showInboxAlert(String title, String body) async {
+    await init();
+    const android = AndroidNotificationDetails(
+      'hbs-inbox',
+      'HBS Family',
+      channelDescription: 'Shared folder activity',
+      importance: Importance.defaultImportance,
+    );
+    await _plugin.show(syncNotificationId + 2, title, body, const NotificationDetails(android: android));
+  }
+
   Future<void> cancelSyncNotification() async {
     await _plugin.cancel(syncNotificationId);
   }

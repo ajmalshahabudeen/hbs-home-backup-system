@@ -104,8 +104,15 @@ class DriveNotifier extends StateNotifier<DriveState> {
     }
   }
 
-  Future<void> navigateToFolder(String folderName) async {
-    final nextPath = state.currentPath.isEmpty ? folderName : '${state.currentPath}/$folderName';
+  Future<void> navigateToFolder(String folderNameOrPath) async {
+    if (folderNameOrPath.startsWith('__share__/') ||
+        (folderNameOrPath.contains('/') && !folderNameOrPath.startsWith('${state.currentPath}/'))) {
+      await loadFiles(folderNameOrPath);
+      return;
+    }
+    final nextPath = folderNameOrPath.contains('/')
+        ? folderNameOrPath
+        : (state.currentPath.isEmpty ? folderNameOrPath : '${state.currentPath}/$folderNameOrPath');
     await loadFiles(nextPath);
   }
 

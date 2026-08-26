@@ -11,6 +11,7 @@ import 'screens/landing/landing_screen.dart';
 import 'services/backup_index_db.dart';
 import 'services/notification_service.dart';
 import 'services/storage_service.dart';
+import 'services/watch_folder_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,6 +22,7 @@ void main() async {
   await NotificationService().init();
   await BackupIndexDb().database;
   await initBackgroundBackup();
+  WatchFolderService().start();
 
   runApp(
     const ProviderScope(

@@ -130,7 +130,26 @@ class MediaDiscoveryService {
       currentPage++;
     }
 
-    return items;
+    return _markLivePairs(items);
+  }
+
+  List<PhotoMediaItem> _markLivePairs(List<PhotoMediaItem> items) {
+    String stem(String name) {
+      final i = name.lastIndexOf('.');
+      return (i <= 0 ? name : name.substring(0, i)).toLowerCase();
+    }
+
+    final videos = <String, PhotoMediaItem>{};
+    for (final item in items.where((e) => e.isVideo)) {
+      videos[stem(item.name)] = item;
+    }
+    return items.map((item) {
+      if (item.isVideo) return item;
+      final ext = item.name.split('.').last.toLowerCase();
+      if (ext != 'heic' && ext != 'heif' && ext != 'jpg' && ext != 'jpeg') return item;
+      if (!videos.containsKey(stem(item.name))) return item;
+      return item.copyWith(isLive: true);
+    }).toList();
   }
 
   Future<List<PhotoMediaItem>> getLocalMediaForAlbums(List<LocalAlbum> albums) async {

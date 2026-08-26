@@ -48,12 +48,34 @@ export async function GET(request: NextRequest) {
 
   // Download a file by id
   if (download === "1" && fileId) {
-    const row = await prisma.backupFile.findFirst({
+    let row = await prisma.backupFile.findFirst({
       where: { id: fileId, userId },
     });
+    if (!row) {
+      const shares = await prisma.folderShare.findMany({
+        where: {
+          OR: [{ sharedWithUserId: userId }, { sharedWithEmail: session.user.email.toLowerCase() }],
+        },
+      });
+      for (const share of shares) {
+        const candidate = await prisma.backupFile.findFirst({
+          where: {
+            id: fileId,
+            userId: share.ownerId,
+            ...(share.path
+              ? { OR: [{ path: share.path }, { path: { startsWith: `${share.path}/` } }] }
+              : {}),
+          },
+        });
+        if (candidate) {
+          row = candidate;
+          break;
+        }
+      }
+    }
     if (!row || row.isDir) return badRequest("File not found");
     try {
-      const abs = resolveUserPath(userId, row.path);
+      const abs = resolveUserPath(row.userId, row.path);
       if (!fs.existsSync(abs)) return badRequest("File missing on disk");
       const stat = fs.statSync(abs);
       const stream = fs.createReadStream(abs);
@@ -71,6 +93,7 @@ export async function GET(request: NextRequest) {
 
   ensureUserDir(userId);
 
+  if (!parentPath.startsWith("__share__/")) {
   // Sync disk -> db for current parentPath
   try {
     const absDir = resolveUserPath(userId, parentPath);
@@ -105,6 +128,7 @@ export async function GET(request: NextRequest) {
     }
   } catch {
     // continue
+  }
   }
 
   // Filter conditions
@@ -154,10 +178,75 @@ export async function GET(request: NextRequest) {
     orderBy: [{ isDir: "desc" }, { name: "asc" }],
   });
 
+  const serialized = files.map(serializeFile);
+
+  if (parentPath.startsWith("__share__/")) {
+    const parts = parentPath.split("/");
+    const shareId = parts[1] || "";
+    const rest = parts.slice(2).join("/");
+    const share = await prisma.folderShare.findFirst({
+      where: {
+        id: shareId,
+        OR: [{ sharedWithUserId: userId }, { sharedWithEmail: session.user.email.toLowerCase() }],
+      },
+    });
+    if (!share) return badRequest("Share not found");
+    const ownerParent = toPosixRel(share.path ? (rest ? `${share.path}/${rest}` : share.path) : rest);
+    const sharedFiles = await prisma.backupFile.findMany({
+      where: {
+        userId: share.ownerId,
+        parentPath: ownerParent,
+        NOT: [{ name: { contains: ".hbs-thumb" } }, { path: { contains: ".hbs-thumb" } }],
+      },
+      orderBy: [{ isDir: "desc" }, { name: "asc" }],
+    });
+    return ok({
+      userId,
+      path: parentPath,
+      currentPath: parentPath,
+      files: sharedFiles.map((f) => ({
+        ...serializeFile(f),
+        path: `${parentPath}/${f.name}`,
+        parentPath,
+      })),
+    });
+  }
+
+  if (!parentPath && !search) {
+    const received = await prisma.folderShare.findMany({
+      where: {
+        OR: [{ sharedWithUserId: userId }, { sharedWithEmail: session.user.email.toLowerCase() }],
+      },
+    });
+    const owners = received.length
+      ? await prisma.user.findMany({
+          where: { id: { in: received.map((s) => s.ownerId) } },
+          select: { id: true, email: true, name: true },
+        })
+      : [];
+    const ownerMap = Object.fromEntries(owners.map((o) => [o.id, o]));
+    for (const share of received) {
+      const owner = ownerMap[share.ownerId];
+      serialized.unshift({
+        id: `share-${share.id}`,
+        userId: share.ownerId,
+        path: `__share__/${share.id}`,
+        name: `Shared · ${owner?.name || owner?.email || "family"}`,
+        parentPath: "",
+        isDir: true,
+        mimeType: null,
+        size: 0,
+        createdAt: share.createdAt,
+        updatedAt: share.createdAt,
+      });
+    }
+  }
+
   return ok({
     userId,
     path: parentPath,
-    files: files.map(serializeFile),
+    currentPath: parentPath,
+    files: serialized,
   });
 }
 

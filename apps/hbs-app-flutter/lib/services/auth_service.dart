@@ -150,6 +150,29 @@ class AuthService {
     }
   }
 
+  Future<AuthResult> signInWithPasskey({required String serverUrl}) async {
+    try {
+      final cleanUrl = serverUrl.endsWith('/') ? serverUrl.substring(0, serverUrl.length - 1) : serverUrl;
+      final result = await FlutterWebAuth2.authenticate(
+        url: '$cleanUrl/auth/passkey',
+        callbackUrlScheme: 'hbscloud',
+      );
+      final parsed = Uri.parse(result);
+      final rawToken = parsed.queryParameters['token'] ?? '';
+      final cleanToken = SessionTokenCleaner.cleanSessionToken(rawToken) ?? rawToken;
+      if (cleanToken.isEmpty) {
+        return const AuthResult(success: false, error: 'Passkey sign-in did not return a session');
+      }
+      await StorageService().saveSessionToken(cleanToken);
+      await StorageService().setUserLoggedOut(false);
+      ApiService().updateConfig(serverUrl: serverUrl, sessionToken: cleanToken);
+      final user = await restoreSession(serverUrl: serverUrl);
+      return AuthResult(success: true, user: user, token: cleanToken);
+    } catch (e) {
+      return AuthResult(success: false, error: e.toString());
+    }
+  }
+
   Future<AuthResult> signUp({
     required String serverUrl,
     required String name,
@@ -349,6 +372,38 @@ class AuthService {
     );
     if (res.data is Map) return Map<String, dynamic>.from(res.data as Map);
     return null;
+  }
+
+  Future<bool> disableTwoFactor({required String serverUrl, required String password}) async {
+    final token = await StorageService().getSessionToken();
+    final cleanUrl = serverUrl.endsWith('/') ? serverUrl.substring(0, serverUrl.length - 1) : serverUrl;
+    final res = await _dio.post(
+      '$cleanUrl/api/auth/two-factor/disable',
+      data: {'password': password},
+      options: Options(
+        headers: {...SessionTokenCleaner.authHeaders(token), 'Content-Type': 'application/json'},
+        validateStatus: (status) => status != null && status < 500,
+      ),
+    );
+    return res.statusCode == 200;
+  }
+
+  Future<List<String>> generateBackupCodes({required String serverUrl, required String password}) async {
+    final token = await StorageService().getSessionToken();
+    final cleanUrl = serverUrl.endsWith('/') ? serverUrl.substring(0, serverUrl.length - 1) : serverUrl;
+    final res = await _dio.post(
+      '$cleanUrl/api/auth/two-factor/generate-backup-codes',
+      data: {'password': password},
+      options: Options(
+        headers: {...SessionTokenCleaner.authHeaders(token), 'Content-Type': 'application/json'},
+        validateStatus: (status) => status != null && status < 500,
+      ),
+    );
+    final data = res.data;
+    if (data is Map && data['backupCodes'] is List) {
+      return (data['backupCodes'] as List).map((e) => e.toString()).toList();
+    }
+    return [];
   }
 
   Future<void> signOut({required String serverUrl}) async {

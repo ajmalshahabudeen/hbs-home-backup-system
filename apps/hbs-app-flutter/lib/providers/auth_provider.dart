@@ -188,6 +188,24 @@ class AuthNotifier extends StateNotifier<AuthState> {
     return false;
   }
 
+  Future<bool> signInWithPasskey() async {
+    state = state.copyWith(isLoading: true, errorMessage: null);
+    final serverUrl = ref.read(serverProvider).url;
+    final result = await AuthService().signInWithPasskey(serverUrl: serverUrl);
+    if (result.success) {
+      state = state.copyWith(
+        isLoading: false,
+        isAuthenticated: true,
+        user: result.user,
+        token: result.token,
+      );
+      DeviceService().registerAndPing();
+      return true;
+    }
+    state = state.copyWith(isLoading: false, errorMessage: result.error ?? 'Passkey failed');
+    return false;
+  }
+
   Future<bool> verifyTotp(String code) async {
     state = state.copyWith(isLoading: true, errorMessage: null);
     final serverUrl = ref.read(serverProvider).url;

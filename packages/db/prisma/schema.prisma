@@ -274,3 +274,28 @@ model FolderShare {
   @@map("folder_share")
 }
 
+model PublicShareLink {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  fileId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([fileId])
+  @@map("public_share_link")
+}
+
+model InboxEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  body      String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+  @@map("inbox_event")
+}
+

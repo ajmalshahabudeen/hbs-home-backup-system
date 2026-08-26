@@ -129,7 +129,15 @@ class BackupNotifier extends StateNotifier<BackupState> {
         ? state.albums
         : state.albums.where((a) => selected.contains(a.id)).toList();
 
-    final itemsToSync = await MediaDiscoveryService().getLocalMediaForAlbums(targetAlbums);
+    final itemsToSync = (await MediaDiscoveryService().getLocalMediaForAlbums(targetAlbums)).where((item) {
+      final includePhotos = StorageService().getBool('hbs_backup_photos', defaultValue: true);
+      final includeVideos = StorageService().getBool('hbs_backup_videos', defaultValue: true);
+      final maxMb = int.tryParse(StorageService().getString('hbs_backup_max_mb', defaultValue: '0')) ?? 0;
+      if (item.isVideo && !includeVideos) return false;
+      if (!item.isVideo && !includePhotos) return false;
+      if (maxMb > 0 && item.size > maxMb * 1024 * 1024) return false;
+      return true;
+    }).toList();
     await UploadQueueService().startSync(
       items: itemsToSync,
       concurrency: state.batterySaverEnabled ? 2 : 4,

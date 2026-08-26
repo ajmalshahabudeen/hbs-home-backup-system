@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/color_palettes.dart';
@@ -13,12 +14,14 @@ import '../../providers/backup_provider.dart';
 import '../../providers/server_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/api_service.dart';
-import '../../services/auth_service.dart';
+import '../../services/storage_service.dart';
+import '../../services/watch_folder_service.dart';
 import '../search/search_screen.dart';
 import 'duplicates_screen.dart';
 import 'family_share_screen.dart';
 import 'lan_scanner_modal.dart';
 import 'qr_pair_screen.dart';
+import 'two_factor_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -481,34 +484,55 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ListTile(
                         contentPadding: EdgeInsets.zero,
                         leading: const Icon(Icons.phonelink_lock_rounded),
-                        title: const Text('Enable authenticator 2FA'),
+                        title: const Text('Authenticator 2FA'),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const TwoFactorScreen()),
+                        ),
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        secondary: const Icon(Icons.photo_rounded),
+                        title: const Text('Backup photos'),
+                        value: StorageService().getBool('hbs_backup_photos', defaultValue: true),
+                        onChanged: (v) async {
+                          await StorageService().setBool('hbs_backup_photos', v);
+                          setState(() {});
+                        },
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        secondary: const Icon(Icons.videocam_rounded),
+                        title: const Text('Backup videos'),
+                        value: StorageService().getBool('hbs_backup_videos', defaultValue: true),
+                        onChanged: (v) async {
+                          await StorageService().setBool('hbs_backup_videos', v);
+                          setState(() {});
+                        },
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        secondary: const Icon(Icons.compress_rounded),
+                        title: const Text('Optimize storage'),
+                        subtitle: const Text('Prefer thumbs; skip extra full-file cache'),
+                        value: StorageService().getBool('hbs_optimize_storage', defaultValue: false),
+                        onChanged: (v) async {
+                          await StorageService().setBool('hbs_optimize_storage', v);
+                          setState(() {});
+                        },
+                      ),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.folder_copy_rounded),
+                        title: const Text('Desktop watch folder'),
+                        subtitle: Text(StorageService().getString('hbs_watch_folder').isEmpty
+                            ? 'Pick a folder to auto-upload (Windows/macOS)'
+                            : StorageService().getString('hbs_watch_folder')),
                         onTap: () async {
-                          final password = await InputDialog.show(
-                            context,
-                            title: 'Confirm password',
-                            placeholder: 'Account password',
-                            confirmText: 'Continue',
-                            obscureText: true,
-                          );
-                          if (password == null || !context.mounted) return;
-                          final data = await AuthService().enableTwoFactor(
-                            serverUrl: serverInfo.url,
-                            password: password,
-                          );
-                          if (!context.mounted) return;
-                          final uri = data?['totpURI'] ?? data?['totpUri'];
-                          await showDialog<void>(
-                            context: context,
-                            builder: (ctx) => AlertDialog(
-                              title: const Text('2FA'),
-                              content: Text(
-                                uri == null
-                                    ? 'If 2FA is configured on the server, add it in your authenticator app, then sign in with the 6-digit code.'
-                                    : 'Add this in your authenticator:\n$uri',
-                              ),
-                              actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
-                            ),
-                          );
+                          final dir = await FilePicker.platform.getDirectoryPath();
+                          if (dir == null) return;
+                          await StorageService().setString('hbs_watch_folder', dir);
+                          await WatchFolderService().start();
+                          setState(() {});
                         },
                       ),
                       if (_devices.isNotEmpty) ...[

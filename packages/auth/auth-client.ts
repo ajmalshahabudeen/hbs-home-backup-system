@@ -2,8 +2,7 @@
 
 import { createAuthClient } from "better-auth/react";
 import { passkeyClient } from "@better-auth/passkey/client";
-import { adminClient } from "better-auth/client/plugins";
-import { organizationClient } from "better-auth/client/plugins";
+import { adminClient, organizationClient, twoFactorClient } from "better-auth/client/plugins";
 
 /**
  * Prefer the page's actual origin (LAN IP / localhost) so cookies and
@@ -36,7 +35,7 @@ function resolveClientBaseURL(): string {
  */
 export const authClient = createAuthClient({
   baseURL: resolveClientBaseURL(),
-  plugins: [passkeyClient(), adminClient(), organizationClient()],
+  plugins: [passkeyClient(), twoFactorClient(), adminClient(), organizationClient()],
 });
 
 export const { signIn, signUp, signOut, useSession, getSession } = authClient;

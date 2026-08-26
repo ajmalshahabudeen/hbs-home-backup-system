@@ -13,6 +13,7 @@ import '../../services/media_discovery_service.dart';
 import '../search/search_screen.dart';
 import '../settings/lan_scanner_modal.dart';
 import 'media_viewer_modal.dart';
+import 'memories_screen.dart';
 
 class PhotosScreen extends ConsumerWidget {
   const PhotosScreen({super.key});
@@ -70,6 +71,16 @@ class PhotosScreen extends ConsumerWidget {
             totalCount: items.length,
             onCategoryChanged: mediaNotifier.setCategory,
             onDensityChanged: mediaNotifier.setDensity,
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const MemoriesScreen()),
+              ),
+              icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+              label: const Text('On this day'),
+            ),
           ),
 
           // Main Gallery Grid
@@ -162,6 +173,19 @@ class PhotosScreen extends ConsumerWidget {
                                                       color: Color(0xFF10B981),
                                                       size: 13,
                                                     ),
+                                                  ),
+                                                ),
+                                              if (item.isLive)
+                                                Positioned(
+                                                  bottom: 4,
+                                                  left: 4,
+                                                  child: Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.black.withValues(alpha: 0.65),
+                                                      borderRadius: BorderRadius.circular(6),
+                                                    ),
+                                                    child: const Text('LIVE', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
                                                   ),
                                                 ),
                                               if (item.isVideo)

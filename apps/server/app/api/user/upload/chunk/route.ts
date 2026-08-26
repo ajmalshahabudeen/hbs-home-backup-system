@@ -13,6 +13,24 @@ function chunkDir(userId: string, uploadId: string) {
   return path.join(os.tmpdir(), "hbs-chunks", userId, uploadId.replace(/[^a-zA-Z0-9_-]/g, "_"));
 }
 
+export async function GET(request: NextRequest) {
+  const { session, error } = await requireSession(request);
+  if (error) return error;
+  const uploadId = new URL(request.url).searchParams.get("uploadId") || "";
+  if (!uploadId) return badRequest("uploadId required");
+  const dir = chunkDir(session.user.id, uploadId);
+  let received: number[] = [];
+  try {
+    received = fs
+      .readdirSync(dir)
+      .map((n) => Number(n))
+      .filter((n) => Number.isFinite(n));
+  } catch {
+    received = [];
+  }
+  return ok({ uploadId, received });
+}
+
 export async function POST(request: NextRequest) {
   const { session, error } = await requireSession(request);
   if (error) return error;

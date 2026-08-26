@@ -187,6 +187,13 @@ export async function POST(request: NextRequest) {
       `[HBS][UPLOAD] ok user=${session.user.email} path=${rel} bytes=${bytes}`,
     );
 
+    try {
+      const { notifyShareRecipients } = await import("@/lib/inbox");
+      await notifyShareRecipients(userId, parentPath, `${session.user.email} uploaded ${path.posix.basename(rel)}`);
+    } catch {
+      /* ignore */
+    }
+
     return ok(
       {
         file: {

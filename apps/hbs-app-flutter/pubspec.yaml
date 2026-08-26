@@ -45,6 +45,7 @@ dependencies:
   workmanager: ^0.10.9
   mobile_scanner: ^7.4.0
   cryptography: ^2.9.0
+  watcher: ^1.2.1
 
 dev_dependencies:
   flutter_test:

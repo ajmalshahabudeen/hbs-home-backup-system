@@ -244,29 +244,57 @@ class ApiService {
     final file = File(filePath);
     final totalBytes = await file.length();
     final totalChunks = (totalBytes / chunkSize).ceil();
-    final uploadId = '${DateTime.now().millisecondsSinceEpoch}_$fileName';
+    final uploadId = '${DateTime.now().millisecondsSinceEpoch}_${fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_')}';
+    final received = <int>{};
+    try {
+      final existing = await _dio.get(
+        '$_serverUrl/api/user/upload/chunk',
+        queryParameters: {'uploadId': uploadId},
+        options: _buildOptions(token),
+      );
+      final list = existing.data['received'];
+      if (list is List) {
+        for (final n in list) {
+          if (n is num) received.add(n.toInt());
+        }
+      }
+    } catch (_) {}
     final raf = await file.open();
     try {
       for (var i = 0; i < totalChunks; i++) {
+        if (received.contains(i)) {
+          onSendProgress?.call(((i + 1) * chunkSize).clamp(0, totalBytes), totalBytes);
+          continue;
+        }
         final start = i * chunkSize;
         final end = (start + chunkSize > totalBytes) ? totalBytes : start + chunkSize;
-        await raf.setPosition(start);
-        final bytes = await raf.read(end - start);
-        final form = FormData.fromMap({
-          'uploadId': uploadId,
-          'index': i,
-          'total': totalChunks,
-          'fileName': fileName,
-          'parentPath': parentPath,
-          'mimeType': mimeType ?? 'application/octet-stream',
-          'chunk': MultipartFile.fromBytes(bytes, filename: 'chunk_$i'),
-        });
-        await _dio.post(
-          '$_serverUrl/api/user/upload/chunk',
-          data: form,
-          options: _buildOptions(token),
-          cancelToken: cancelToken,
-        );
+        Object? lastErr;
+        for (var attempt = 0; attempt < 3; attempt++) {
+          try {
+            await raf.setPosition(start);
+            final bytes = await raf.read(end - start);
+            final form = FormData.fromMap({
+              'uploadId': uploadId,
+              'index': i,
+              'total': totalChunks,
+              'fileName': fileName,
+              'parentPath': parentPath,
+              'mimeType': mimeType ?? 'application/octet-stream',
+              'chunk': MultipartFile.fromBytes(bytes, filename: 'chunk_$i'),
+            });
+            await _dio.post(
+              '$_serverUrl/api/user/upload/chunk',
+              data: form,
+              options: _buildOptions(token),
+              cancelToken: cancelToken,
+            );
+            lastErr = null;
+            break;
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+        if (lastErr != null) throw lastErr;
         onSendProgress?.call(end, totalBytes);
       }
     } finally {
@@ -398,6 +426,45 @@ class ApiService {
       queryParameters: {'id': id},
       options: _buildOptions(token),
     );
+  }
+
+  Future<Map<String, dynamic>> createPublicLink({required String fileId, int hours = 24}) async {
+    final token = await _getToken();
+    final res = await _dio.post(
+      '$_serverUrl/api/user/links',
+      data: {'fileId': fileId, 'hours': hours},
+      options: _buildOptions(token),
+    );
+    return res.data is Map ? Map<String, dynamic>.from(res.data as Map) : {};
+  }
+
+  Future<Map<String, dynamic>> verifyChecksum(String fileId) async {
+    final token = await _getToken();
+    final res = await _dio.post(
+      '$_serverUrl/api/user/files/verify',
+      data: {'id': fileId},
+      options: _buildOptions(token),
+    );
+    return res.data is Map ? Map<String, dynamic>.from(res.data as Map) : {};
+  }
+
+  Future<List<Map<String, dynamic>>> unreadInbox() async {
+    final token = await _getToken();
+    final res = await _dio.get(
+      '$_serverUrl/api/user/inbox',
+      queryParameters: {'unread': '1'},
+      options: _buildOptions(token),
+    );
+    final list = res.data['events'];
+    if (list is List) {
+      return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    }
+    return [];
+  }
+
+  Future<void> markInboxRead() async {
+    final token = await _getToken();
+    await _dio.patch('$_serverUrl/api/user/inbox', options: _buildOptions(token));
   }
 
   Future<UserStats> getUserStats() async {

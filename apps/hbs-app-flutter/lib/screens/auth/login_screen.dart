@@ -351,6 +351,29 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
               ),
             ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.key_rounded),
+                label: const Text('Continue with passkey', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                onPressed: authState.isLoading
+                    ? null
+                    : () async {
+                        final ok = await ref.read(authProvider.notifier).signInWithPasskey();
+                        if (ok && context.mounted) {
+                          Navigator.of(context).popUntil((route) => route.isFirst);
+                        }
+                      },
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(
+                    color: isDark ? Colors.white.withValues(alpha: 0.15) : Colors.black.withValues(alpha: 0.12),
+                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+              ),
+            ),
             const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
