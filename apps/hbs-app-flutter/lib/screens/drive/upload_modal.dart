@@ -33,11 +33,34 @@ class UploadModal extends ConsumerWidget {
 
     for (final file in result.files) {
       if (file.path != null) {
-        await ApiService().uploadFile(
+        final data = await ApiService().uploadFile(
           filePath: file.path!,
           fileName: file.name,
           parentPath: driveState.currentPath,
+          onConflict: 'ask',
         );
+        if (data is Map && data['conflict'] == true && context.mounted) {
+          final choice = await showDialog<String>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('File already exists'),
+              content: Text('${file.name} is already in this folder with a different size.'),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, 'skip'), child: const Text('Skip')),
+                TextButton(onPressed: () => Navigator.pop(ctx, 'rename'), child: const Text('Keep both')),
+                TextButton(onPressed: () => Navigator.pop(ctx, 'overwrite'), child: const Text('Replace')),
+              ],
+            ),
+          );
+          if (choice == 'overwrite' || choice == 'rename') {
+            await ApiService().uploadFile(
+              filePath: file.path!,
+              fileName: file.name,
+              parentPath: driveState.currentPath,
+              onConflict: choice,
+            );
+          }
+        }
       }
     }
 

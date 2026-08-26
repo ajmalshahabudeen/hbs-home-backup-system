@@ -152,7 +152,9 @@ class _DrivePreviewScreenState extends State<DrivePreviewScreen> {
         minScale: PhotoViewComputedScale.contained,
         maxScale: PhotoViewComputedScale.covered * 3.0,
         backgroundDecoration: const BoxDecoration(color: Colors.black),
-        errorBuilder: (_, __, ___) => Formatters.heicFallback(),
+        errorBuilder: (_, __, ___) => Formatters.isRaw(widget.file.mimeType, widget.file.name)
+            ? Formatters.rawFallback()
+            : Formatters.heicFallback(),
       );
     }
 

@@ -15,7 +15,6 @@ import '../../providers/server_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
-import '../../services/device_service.dart';
 import '../../services/storage_service.dart';
 import '../../services/watch_folder_service.dart';
 import '../search/search_screen.dart';
@@ -25,6 +24,7 @@ import 'lan_scanner_modal.dart';
 import 'public_links_screen.dart';
 import 'qr_pair_screen.dart';
 import 'two_factor_screen.dart';
+import '../photos/people_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -515,23 +515,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ListTile(
                         contentPadding: EdgeInsets.zero,
                         leading: const Icon(Icons.notifications_active_rounded),
-                        title: const Text('Push topic (ntfy / FCM)'),
-                        subtitle: Text(StorageService().getString('hbs_ntfy_topic').isEmpty
-                            ? 'Subscribe in ntfy, or paste an FCM token'
-                            : StorageService().getString('hbs_ntfy_topic')),
-                        onTap: () async {
-                          final topic = await InputDialog.show(
-                            context,
-                            title: 'Push topic',
-                            placeholder: 'my-hbs-phone or ntfy:topic',
-                            initialValue: StorageService().getString('hbs_ntfy_topic'),
-                            confirmText: 'Save',
-                          );
-                          if (topic == null) return;
-                          await StorageService().setString('hbs_ntfy_topic', topic.trim());
-                          DeviceService().registerAndPing();
-                          setState(() {});
-                        },
+                        title: const Text('LAN inbox alerts'),
+                        subtitle: const Text('Live updates from this box only — no FCM, ntfy, or internet'),
+                      ),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.folder_shared_rounded),
+                        title: const Text('WebDAV (LAN)'),
+                        subtitle: Text('${serverInfo.url}/dav  — user email + session token as password'),
+                      ),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.people_alt_rounded),
+                        title: const Text('People albums'),
+                        subtitle: const Text('Manual tags only — no face scan'),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const PeopleScreen()),
+                        ),
                       ),
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
@@ -550,6 +550,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         value: StorageService().getBool('hbs_backup_videos', defaultValue: true),
                         onChanged: (v) async {
                           await StorageService().setBool('hbs_backup_videos', v);
+                          setState(() {});
+                        },
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        secondary: const Icon(Icons.camera_outlined),
+                        title: const Text('Backup RAW / DNG'),
+                        value: StorageService().getBool('hbs_backup_raw', defaultValue: true),
+                        onChanged: (v) async {
+                          await StorageService().setBool('hbs_backup_raw', v);
                           setState(() {});
                         },
                       ),

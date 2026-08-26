@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
+import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:mime/mime.dart';
@@ -184,6 +186,7 @@ class ApiService {
     ProgressCallback? onSendProgress,
     CancelToken? cancelToken,
     String? uploadId,
+    String? onConflict,
   }) async {
     var path = filePath;
     var name = fileName;
@@ -215,6 +218,9 @@ class ApiService {
       'path': parentPath,
       'fileName': name,
       'name': name,
+      'originalName': fileName,
+      'searchName': fileName,
+      if (onConflict != null) 'onConflict': onConflict,
       'file': await MultipartFile.fromFile(
         path,
         filename: name,
@@ -225,10 +231,18 @@ class ApiService {
     final res = await _dio.post(
       '$_serverUrl/api/user/upload',
       data: formData,
-      options: _buildOptions(token),
+      options: _buildOptions(token).copyWith(
+        validateStatus: (s) => s != null && s < 500,
+      ),
       onSendProgress: onSendProgress,
       cancelToken: cancelToken,
     );
+    if (res.statusCode == 409 && res.data is Map) {
+      return {'conflict': true, ...Map<String, dynamic>.from(res.data as Map)};
+    }
+    if (res.statusCode != null && res.statusCode! >= 400) {
+      throw DioException(requestOptions: res.requestOptions, response: res);
+    }
 
     return res.data;
   }
@@ -285,6 +299,7 @@ class ApiService {
               'fileName': fileName,
               'parentPath': parentPath,
               'mimeType': mimeType ?? 'application/octet-stream',
+              'checksum': sha256.convert(bytes).toString(),
               'chunk': MultipartFile.fromBytes(bytes, filename: 'chunk_$i'),
             });
             await _dio.post(
@@ -499,6 +514,96 @@ class ApiService {
   Future<void> markInboxRead() async {
     final token = await _getToken();
     await _dio.patch('$_serverUrl/api/user/inbox', options: _buildOptions(token));
+  }
+
+  Future<void> listenInbox({
+    required void Function(List<Map<String, dynamic>> events) onEvents,
+    CancelToken? cancelToken,
+  }) async {
+    final token = await _getToken();
+    final res = await _dio.get<ResponseBody>(
+      '$_serverUrl/api/user/inbox/stream',
+      options: _buildOptions(token).copyWith(
+        responseType: ResponseType.stream,
+        receiveTimeout: const Duration(hours: 6),
+      ),
+      cancelToken: cancelToken,
+    );
+    final stream = res.data?.stream;
+    if (stream == null) return;
+    var buffer = '';
+    await for (final chunk in stream) {
+      buffer += utf8.decode(chunk, allowMalformed: true);
+      while (buffer.contains('\n\n')) {
+        final idx = buffer.indexOf('\n\n');
+        final block = buffer.substring(0, idx);
+        buffer = buffer.substring(idx + 2);
+        for (final line in block.split('\n')) {
+          if (!line.startsWith('data:')) continue;
+          final json = jsonDecode(line.substring(5).trim());
+          if (json is Map && json['events'] is List) {
+            onEvents(
+              (json['events'] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList(),
+            );
+          }
+        }
+      }
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> listPeople() async {
+    final token = await _getToken();
+    final res = await _dio.get('$_serverUrl/api/user/people', options: _buildOptions(token));
+    final list = res.data['albums'];
+    if (list is List) return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    return [];
+  }
+
+  Future<void> createPerson(String name) async {
+    final token = await _getToken();
+    await _dio.post('$_serverUrl/api/user/people', data: {'name': name}, options: _buildOptions(token));
+  }
+
+  Future<void> assignPerson({required String albumId, required String fileId, bool remove = false}) async {
+    final token = await _getToken();
+    await _dio.patch(
+      '$_serverUrl/api/user/people',
+      data: {'id': albumId, 'fileId': fileId, 'remove': remove},
+      options: _buildOptions(token),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> personFiles(String albumId) async {
+    final token = await _getToken();
+    final res = await _dio.get(
+      '$_serverUrl/api/user/people/items',
+      queryParameters: {'id': albumId},
+      options: _buildOptions(token),
+    );
+    final list = res.data['files'];
+    if (list is List) return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    return [];
+  }
+
+  Future<List<Map<String, dynamic>>> fileVersions(String fileId) async {
+    final token = await _getToken();
+    final res = await _dio.get(
+      '$_serverUrl/api/user/files/versions',
+      queryParameters: {'id': fileId},
+      options: _buildOptions(token),
+    );
+    final list = res.data['versions'];
+    if (list is List) return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    return [];
+  }
+
+  Future<void> restoreVersion({required String fileId, required int version}) async {
+    final token = await _getToken();
+    await _dio.post(
+      '$_serverUrl/api/user/files/versions',
+      data: {'fileId': fileId, 'version': version},
+      options: _buildOptions(token),
+    );
   }
 
   Future<UserStats> getUserStats() async {

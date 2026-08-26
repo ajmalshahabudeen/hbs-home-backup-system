@@ -112,6 +112,33 @@ export async function GET(
       }
     }
 
+    const isRaw =
+      /\.(dng|cr2|nef|arw|raf|orf|rw2|raw)$/i.test(file.name) ||
+      (file.mimeType || "").toLowerCase().includes("raw") ||
+      (file.mimeType || "").toLowerCase().includes("dng");
+    if (isRaw && !wantOriginal) {
+      try {
+        const sharp = (await import("sharp")).default;
+        const jpeg = await sharp(plain ?? /* turbopackIgnore: true */ abs, { failOn: "none" })
+          .rotate()
+          .jpeg({ quality: 82, mozjpeg: true })
+          .toBuffer();
+        return new Response(new Uint8Array(jpeg), {
+          headers: {
+            "Content-Type": "image/jpeg",
+            "Content-Length": String(jpeg.length),
+            "Cache-Control": "private, max-age=86400",
+            "X-HBS-Raw-Converted": "1",
+          },
+        });
+      } catch {
+        return new Response("RAW preview unavailable. Download the original file.", {
+          status: 415,
+          headers: { "X-HBS-Raw": "1" },
+        });
+      }
+    }
+
     const stat = fs.statSync(/* turbopackIgnore: true */ abs);
     const size = plain ? plain.length : stat.size;
     const rangeHeader = request.headers.get("range");

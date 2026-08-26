@@ -137,6 +137,74 @@ class DriveScreen extends ConsumerWidget {
                 }
               },
             ),
+            ListTile(
+              leading: const Icon(Icons.history_rounded),
+              title: const Text('Versions'),
+              onTap: () async {
+                Navigator.of(context).pop();
+                final versions = await ApiService().fileVersions(file.id);
+                if (!context.mounted) return;
+                await showModalBottomSheet<void>(
+                  context: context,
+                  builder: (ctx) => ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      const Text('File versions', style: TextStyle(fontWeight: FontWeight.w800)),
+                      if (versions.isEmpty) const ListTile(title: Text('No older copies yet')),
+                      ...versions.map((v) => ListTile(
+                            title: Text('v${v['version']} · ${v['name'] ?? file.name}'),
+                            subtitle: Text(v['createdAt']?.toString() ?? ''),
+                            trailing: TextButton(
+                              onPressed: () async {
+                                await ApiService().restoreVersion(
+                                  fileId: file.id,
+                                  version: (v['version'] as num).toInt(),
+                                );
+                                if (ctx.mounted) Navigator.pop(ctx);
+                                await driveNotifier.loadFiles(ref.read(driveProvider).currentPath);
+                              },
+                              child: const Text('Restore'),
+                            ),
+                          )),
+                    ],
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.person_add_alt_1_rounded),
+              title: const Text('Add to person'),
+              onTap: () async {
+                Navigator.of(context).pop();
+                final people = await ApiService().listPeople();
+                if (!context.mounted) return;
+                if (people.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Create a person album in Settings first')),
+                  );
+                  return;
+                }
+                final id = await showDialog<String>(
+                  context: context,
+                  builder: (ctx) => SimpleDialog(
+                    title: const Text('Assign to'),
+                    children: people
+                        .map(
+                          (p) => SimpleDialogOption(
+                            onPressed: () => Navigator.pop(ctx, p['id']?.toString()),
+                            child: Text(p['name']?.toString() ?? ''),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                );
+                if (id == null) return;
+                await ApiService().assignPerson(albumId: id, fileId: file.id);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Assigned')));
+                }
+              },
+            ),
             if (file.parentPath == 'Trash')
               ListTile(
                 leading: const Icon(Icons.restore_from_trash_rounded),

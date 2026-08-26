@@ -153,12 +153,17 @@ export async function GET(request: NextRequest) {
     userId: string;
     parentPath?: string;
     name?: { contains: string; mode: "insensitive" };
+    searchName?: { contains: string };
+    OR?: Array<Record<string, unknown>>;
     mimeType?: { startsWith: string } | { in: string[] };
     isDir?: boolean;
   } = { userId };
 
   if (search) {
-    where.name = { contains: search, mode: "insensitive" };
+    where.OR = [
+      { name: { contains: search, mode: "insensitive" } },
+      { searchName: { contains: search.toLowerCase() } },
+    ];
   } else if (!category || category === "all") {
     where.parentPath = parentPath;
   }

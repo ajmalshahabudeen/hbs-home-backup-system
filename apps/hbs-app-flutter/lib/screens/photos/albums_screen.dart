@@ -5,7 +5,8 @@ import '../../models/photo_media_item.dart';
 import '../../providers/media_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/media_discovery_service.dart';
-import '../photos/media_viewer_modal.dart';
+import 'media_viewer_modal.dart';
+import 'people_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class AlbumsScreen extends ConsumerStatefulWidget {
@@ -49,7 +50,18 @@ class _AlbumsScreenState extends ConsumerState<AlbumsScreen> {
   Widget build(BuildContext context) {
     final items = ref.watch(mediaProvider).items;
     return Scaffold(
-      appBar: AppBar(title: const Text('Albums & people')),
+      appBar: AppBar(
+        title: const Text('Albums & people'),
+        actions: [
+          IconButton(
+            tooltip: 'People',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const PeopleScreen()),
+            ),
+            icon: const Icon(Icons.people_alt_rounded),
+          ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(

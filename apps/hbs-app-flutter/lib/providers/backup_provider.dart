@@ -136,6 +136,12 @@ class BackupNotifier extends StateNotifier<BackupState> {
       final maxMb = int.tryParse(StorageService().getString('hbs_backup_max_mb', defaultValue: '0')) ?? 0;
       if (item.isVideo && !includeVideos) return false;
       if (!item.isVideo && !includePhotos) return false;
+      final includeRaw = StorageService().getBool('hbs_backup_raw', defaultValue: true);
+      if (!includeRaw) {
+        const raw = {'dng', 'raw', 'cr2', 'nef', 'arw', 'raf', 'orf', 'rw2'};
+        final ext = item.name.split('.').last.toLowerCase();
+        if (raw.contains(ext)) return false;
+      }
       if (maxMb > 0 && item.size > maxMb * 1024 * 1024) return false;
       return true;
     }).toList();

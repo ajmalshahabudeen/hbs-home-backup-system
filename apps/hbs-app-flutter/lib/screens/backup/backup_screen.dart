@@ -6,6 +6,9 @@ import '../../core/widgets/glass_card.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/backup_provider.dart';
 import '../../providers/server_provider.dart';
+import '../../services/api_service.dart';
+import '../../services/storage_service.dart';
+import '../../core/utils/background_backup.dart';
 import '../search/search_screen.dart';
 import '../settings/lan_scanner_modal.dart';
 import 'album_picker_modal.dart';
@@ -362,6 +365,35 @@ class BackupScreen extends ConsumerWidget {
                     ],
                   ),
                 ),
+                const SizedBox(height: 12),
+                GlassCard(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  borderRadius: 20,
+                  child: Row(
+                    children: [
+                      const Icon(Icons.timer_outlined),
+                      const SizedBox(width: 12),
+                      const Expanded(child: Text('Background interval')),
+                      DropdownButton<String>(
+                        value: StorageService().getString('hbs_backup_minutes', defaultValue: '15').isEmpty
+                            ? '15'
+                            : StorageService().getString('hbs_backup_minutes', defaultValue: '15'),
+                        items: const [
+                          DropdownMenuItem(value: '15', child: Text('15 min')),
+                          DropdownMenuItem(value: '30', child: Text('30 min')),
+                          DropdownMenuItem(value: '60', child: Text('Hourly')),
+                          DropdownMenuItem(value: '360', child: Text('6 hours')),
+                          DropdownMenuItem(value: '1440', child: Text('Daily')),
+                        ],
+                        onChanged: (v) async {
+                          if (v == null) return;
+                          await StorageService().setString('hbs_backup_minutes', v);
+                          if (backupState.autoBackup) await scheduleBackgroundBackup();
+                        },
+                      ),
+                    ],
+                  ),
+                ),
 
                 const SizedBox(height: 24),
 
@@ -375,7 +407,45 @@ class BackupScreen extends ConsumerWidget {
                       isSyncing ? 'Sync in Progress...' : 'Start Auto-Sync Now',
                       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                     ),
-                    onPressed: isSyncing ? null : () => backupNotifier.startSync(),
+                    onPressed: isSyncing
+                        ? null
+                        : () async {
+                            try {
+                              final stats = await ApiService().getUserStats();
+                              final quota = stats.quotaBytes;
+                              final used = stats.usedBytes ?? stats.totalBytes;
+                              if (quota != null && quota > 0 && context.mounted) {
+                                if (used >= quota) {
+                                  await showDialog<void>(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      title: const Text('Quota full'),
+                                      content: const Text('Your HBS Cloud quota is full. Free space or ask an admin to raise it.'),
+                                      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+                                    ),
+                                  );
+                                  return;
+                                }
+                                if (used > quota * 0.9) {
+                                  final go = await showDialog<bool>(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      title: const Text('Quota almost full'),
+                                      content: Text(
+                                        'You have used ${((used / quota) * 100).toStringAsFixed(0)}% of your quota. Continue backup?',
+                                      ),
+                                      actions: [
+                                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                                        TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Continue')),
+                                      ],
+                                    ),
+                                  );
+                                  if (go != true) return;
+                                }
+                              }
+                            } catch (_) {}
+                            await backupNotifier.startSync();
+                          },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: primary,
                       foregroundColor: Colors.white,

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import '../core/widgets/custom_bottom_nav.dart';
@@ -23,6 +24,7 @@ class AppShell extends ConsumerStatefulWidget {
 class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver {
   int _currentIndex = 0;
   Timer? _inboxTimer;
+  CancelToken? _inboxStream;
 
   final List<Widget> _screens = const [
     PhotosScreen(),
@@ -38,13 +40,33 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
     ReceiveSharingIntent.instance.getMediaStream().listen(_handleShared);
     ReceiveSharingIntent.instance.getInitialMedia().then(_handleShared);
     WatchFolderService().start();
+    _startLanInbox();
+  }
+
+  void _startLanInbox() {
+    _inboxStream?.cancel();
+    _inboxStream = CancelToken();
     _pollInbox();
-    _inboxTimer = Timer.periodic(const Duration(seconds: 45), (_) => _pollInbox());
+    _inboxTimer?.cancel();
+    _inboxTimer = Timer.periodic(const Duration(seconds: 90), (_) => _pollInbox());
+    ApiService().listenInbox(
+      cancelToken: _inboxStream,
+      onEvents: (events) async {
+        for (final e in events) {
+          await NotificationService().showInboxAlert(
+            e['title']?.toString() ?? 'HBS Cloud',
+            e['body']?.toString() ?? '',
+          );
+        }
+        if (events.isNotEmpty) await ApiService().markInboxRead();
+      },
+    ).catchError((_) {});
   }
 
   @override
   void dispose() {
     _inboxTimer?.cancel();
+    _inboxStream?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -53,7 +75,7 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       ref.read(backupProvider.notifier).autoBackupIfEnabled();
-      _pollInbox();
+      _startLanInbox();
     }
   }
 

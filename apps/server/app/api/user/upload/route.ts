@@ -14,6 +14,7 @@ import { logAction } from "@/lib/logger";
 import { assertQuota } from "@/lib/quota";
 import { resolveUploadTarget } from "@/lib/share-target";
 import { encryptAtRestFile } from "@/lib/at-rest";
+import { snapshotVersion, searchNameOf } from "@/lib/file-versions";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -53,6 +54,8 @@ export async function POST(request: NextRequest) {
   try {
     let parentPath = "";
     let rawName = "";
+    let originalName = "";
+    let onConflict = "rename";
     let mime: string | null = null;
     let fileBlob: File | Buffer | null = null;
     let rawCreationTime: string | null = request.headers.get("x-file-creation-time");
@@ -63,6 +66,8 @@ export async function POST(request: NextRequest) {
       const customName = String(
         form.get("fileName") || form.get("name") || form.get("filename") || "",
       ).trim();
+      originalName = String(form.get("originalName") || form.get("searchName") || customName).trim();
+      onConflict = String(form.get("onConflict") || "rename").toLowerCase();
       const file = form.get("file");
 
       if (!rawCreationTime) {
@@ -148,7 +153,37 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const rel = await uniqueUserRel(ownerId, parentPath, name, incomingSize);
+    if (
+      existing &&
+      onConflict === "ask" &&
+      incomingSize > 0 &&
+      Number(existing.size) !== incomingSize
+    ) {
+      return ok(
+        {
+          conflict: true,
+          existing: { ...existing, size: Number(existing.size) },
+          suggestedName: `${splitName(name).stem} (2)${splitName(name).ext}`,
+        },
+        { status: 409 },
+      );
+    }
+
+    if (existing && onConflict === "overwrite" && Number(existing.size) !== incomingSize) {
+      await snapshotVersion({
+        userId: ownerId,
+        fileId: existing.id,
+        name: existing.name,
+        relPath: existing.path,
+        size: Number(existing.size),
+        mimeType: existing.mimeType,
+      });
+    }
+
+    const rel =
+      existing && onConflict === "overwrite"
+        ? intendedRel
+        : await uniqueUserRel(ownerId, parentPath, name, incomingSize);
 
     const abs = resolveUserPath(ownerId, rel);
     fs.mkdirSync(/* turbopackIgnore: true */ path.dirname(abs), {
@@ -173,6 +208,7 @@ export async function POST(request: NextRequest) {
       isDir: false,
       size: BigInt(bytes),
       mimeType: mime,
+      searchName: searchNameOf(originalName || name),
       ...(fileDate ? { createdAt: fileDate, updatedAt: fileDate } : {}),
     };
 
@@ -182,6 +218,7 @@ export async function POST(request: NextRequest) {
       update: {
         size: BigInt(bytes),
         mimeType: mime,
+        searchName: searchNameOf(originalName || name),
         ...(fileDate ? { createdAt: fileDate, updatedAt: fileDate } : {}),
       },
     });

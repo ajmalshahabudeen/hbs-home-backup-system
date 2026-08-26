@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'api_service.dart';
-import 'storage_service.dart';
 
 class DeviceService {
   static final DeviceService _instance = DeviceService._internal();
@@ -34,13 +33,11 @@ class DeviceService {
       }
 
       final ip = await NetworkInfo().getWifiIP();
-      final ntfy = StorageService().getString('hbs_ntfy_topic').trim();
       await ApiService().registerDevice({
         'deviceId': deviceId,
         'deviceName': deviceName,
         'platform': platform,
         'localIp': ip,
-        if (ntfy.isNotEmpty) 'pushToken': ntfy.startsWith('ntfy:') ? ntfy : 'ntfy:$ntfy',
       });
       await ApiService().pingDevice(deviceId: deviceId, localIp: ip);
     } catch (_) {}

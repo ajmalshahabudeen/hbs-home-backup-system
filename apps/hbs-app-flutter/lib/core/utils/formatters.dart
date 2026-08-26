@@ -55,7 +55,7 @@ class Formatters {
 
     if (fileName != null) {
       final ext = fileName.split('.').last.toLowerCase();
-      if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif', 'bmp', 'svg'].contains(ext)) {
+      if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif', 'bmp', 'svg', 'dng', 'raw', 'cr2', 'nef', 'arw', 'raf', 'orf', 'rw2'].contains(ext)) {
         return 'photo';
       }
       if (['mp4', 'mkv', 'mov', 'avi', 'webm', '3gp', 'm4v', 'hevc'].contains(ext)) {
@@ -82,6 +82,33 @@ class Formatters {
     if (mime.contains('heic') || mime.contains('heif')) return true;
     final ext = (fileName ?? '').split('.').last.toLowerCase();
     return ext == 'heic' || ext == 'heif';
+  }
+
+  static bool isRaw(String? mimeType, String? fileName) {
+    final mime = (mimeType ?? '').toLowerCase();
+    if (mime.contains('dng') || mime.contains('raw')) return true;
+    const raw = {'dng', 'raw', 'cr2', 'nef', 'arw', 'raf', 'orf', 'rw2'};
+    return raw.contains((fileName ?? '').split('.').last.toLowerCase());
+  }
+
+  static Widget rawFallback() {
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.camera_outlined, color: Colors.white54, size: 48),
+            SizedBox(height: 12),
+            Text(
+              'RAW/DNG preview is not available on this device.\nDownload the original from Drive.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   static Widget heicFallback() {

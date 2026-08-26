@@ -161,6 +161,14 @@ void main() {
     });
   });
 
+  group('Formatters.isRaw', () {
+    test('detects dng/raw by mime and extension', () {
+      expect(Formatters.isRaw('image/x-adobe-dng', 'shot.dng'), isTrue);
+      expect(Formatters.isRaw(null, 'IMG.CR2'), isTrue);
+      expect(Formatters.isRaw('image/jpeg', 'photo.jpg'), isFalse);
+    });
+  });
+
   group('Formatters.timelineKey', () {
     test('groups by year and month', () {
       expect(Formatters.timelineKey(DateTime(2026, 3, 9)), '2026 · March');

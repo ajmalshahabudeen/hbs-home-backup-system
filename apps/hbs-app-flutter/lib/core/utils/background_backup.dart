@@ -31,10 +31,12 @@ Future<void> initBackgroundBackup() async {
 }
 
 Future<void> scheduleBackgroundBackup() async {
+  final minutes = int.tryParse(StorageService().getString('hbs_backup_minutes', defaultValue: '15')) ?? 15;
+  final freq = Duration(minutes: minutes < 15 ? 15 : minutes);
   await Workmanager().registerPeriodicTask(
     hbsBackupTask,
     hbsBackupTask,
-    frequency: const Duration(minutes: 15),
+    frequency: freq,
     constraints: Constraints(networkType: NetworkType.unmetered),
     existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
   );

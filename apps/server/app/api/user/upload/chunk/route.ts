@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { NextRequest } from "next/server";
 import fs from "node:fs";
 import path from "node:path";
@@ -26,6 +27,7 @@ export async function GET(request: NextRequest) {
   try {
     received = fs
       .readdirSync(dir)
+      .filter((n) => /^\d{1,6}$/.test(n))
       .map((n) => Number(n))
       .filter((n) => Number.isFinite(n));
   } catch {
@@ -51,6 +53,7 @@ export async function POST(request: NextRequest) {
     const fileName = String(form.get("fileName") || form.get("name") || "").replace(/[\\/]/g, "_");
     const parentPath = toPosixRel(String(form.get("parentPath") || form.get("path") || ""));
     const mime = String(form.get("mimeType") || "") || null;
+    const checksum = String(form.get("checksum") || form.get("hash") || "").trim().toLowerCase();
     const file = form.get("chunk") ?? form.get("file");
 
     if (!uploadId || !fileName || index < 0 || total < 1 || !(file instanceof File)) {
@@ -61,6 +64,13 @@ export async function POST(request: NextRequest) {
     fs.mkdirSync(/* turbopackIgnore: true */ dir, { recursive: true });
     const partAbs = path.join(dir, String(index).padStart(6, "0"));
     const buf = Buffer.from(await file.arrayBuffer());
+    if (checksum) {
+      const actual = crypto.createHash("sha256").update(buf).digest("hex");
+      if (actual !== checksum) {
+        return badRequest("Chunk checksum mismatch");
+      }
+      fs.writeFileSync(/* turbopackIgnore: true */ `${partAbs}.sha256`, checksum);
+    }
     fs.writeFileSync(/* turbopackIgnore: true */ partAbs, buf);
 
     const parts = fs
