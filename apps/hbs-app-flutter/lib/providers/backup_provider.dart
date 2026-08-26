@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/utils/background_backup.dart';
 import '../models/sync_state.dart';
 import '../services/backup_index_db.dart';
 import '../services/media_discovery_service.dart';
@@ -115,6 +116,11 @@ class BackupNotifier extends StateNotifier<BackupState> {
   Future<void> setAutoBackup(bool enabled) async {
     state = state.copyWith(autoBackup: enabled);
     await StorageService().setBool('hbs_auto_backup', enabled);
+    if (enabled) {
+      await scheduleBackgroundBackup();
+    } else {
+      await cancelBackgroundBackup();
+    }
   }
 
   Future<void> startSync() async {

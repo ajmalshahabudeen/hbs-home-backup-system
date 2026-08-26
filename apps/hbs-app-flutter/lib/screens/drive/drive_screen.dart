@@ -13,6 +13,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/drive_provider.dart';
 import '../../providers/server_provider.dart';
 import '../../services/api_service.dart';
+import '../../services/drive_cache_service.dart';
 import '../search/search_screen.dart';
 import '../settings/lan_scanner_modal.dart';
 import 'drive_preview_screen.dart';
@@ -96,6 +97,16 @@ class DriveScreen extends ConsumerWidget {
                 }
               },
             ),
+            if (file.parentPath == 'Trash')
+              ListTile(
+                leading: const Icon(Icons.restore_from_trash_rounded),
+                title: const Text('Restore'),
+                onTap: () async {
+                  Navigator.of(context).pop();
+                  await ApiService().restoreFile(file.id);
+                  await driveNotifier.loadFiles(ref.read(driveProvider).currentPath);
+                },
+              ),
             ListTile(
               leading: const Icon(Icons.delete_outline_rounded, color: Colors.red),
               title: Text(
@@ -143,6 +154,7 @@ class DriveScreen extends ConsumerWidget {
       final dir = await getTemporaryDirectory();
       final dest = '${dir.path}/${file.name}';
       await ApiService().downloadFile(fileId: file.id, destPath: dest);
+      await DriveCacheService().put(file.id, file.name, dest);
       final cat = Formatters.getMimeTypeCategory(file.mimeType, file.name);
       if (cat == 'photo') {
         await Gal.putImage(dest, album: 'HBS Cloud');
@@ -178,18 +190,37 @@ class DriveScreen extends ConsumerWidget {
     final breadcrumbParts = driveState.currentPath.isEmpty ? <String>[] : driveState.currentPath.split('/');
 
     return Scaffold(
-      floatingActionButton: Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.paddingOf(context).bottom,
-        ),
-        child: FloatingActionButton.extended(
-          onPressed: () => UploadModal.show(context),
-          backgroundColor: primary,
-          foregroundColor: Colors.white,
-          elevation: 6,
-          icon: const Icon(Icons.add_rounded, size: 22),
-          label: const Text('Add', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-        ),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (driveState.currentPath == 'Trash')
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: FloatingActionButton.extended(
+                heroTag: 'emptyTrash',
+                onPressed: () async {
+                  await ApiService().emptyTrash();
+                  await driveNotifier.loadFiles('Trash');
+                },
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                icon: const Icon(Icons.delete_forever_rounded),
+                label: const Text('Empty Trash'),
+              ),
+            ),
+          Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
+            child: FloatingActionButton.extended(
+              onPressed: () => UploadModal.show(context),
+              backgroundColor: primary,
+              foregroundColor: Colors.white,
+              elevation: 6,
+              icon: const Icon(Icons.add_rounded, size: 22),
+              label: const Text('Add', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+            ),
+          ),
+        ],
       ),
       body: Column(
         children: [

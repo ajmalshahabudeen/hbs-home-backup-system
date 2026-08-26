@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:mime/mime.dart';
 import '../core/utils/session_token_cleaner.dart';
+import '../core/utils/vault_crypto.dart';
 import '../models/backup_file_item.dart';
 import '../models/photo_media_item.dart';
 import '../models/user_stats.dart';
@@ -182,19 +184,38 @@ class ApiService {
     ProgressCallback? onSendProgress,
     CancelToken? cancelToken,
   }) async {
+    var path = filePath;
+    var name = fileName;
+    var resolvedMime = mimeType ?? lookupMimeType(filePath) ?? 'application/octet-stream';
+    if (VaultCrypto.enabled) {
+      final encrypted = await VaultCrypto.encryptFile(File(path));
+      path = encrypted.path;
+      name = '$fileName.hbsenc';
+      resolvedMime = 'application/x-hbs-encrypted';
+    }
+    final size = await File(path).length();
+    if (size > 8 * 1024 * 1024) {
+      return uploadChunked(
+        filePath: path,
+        fileName: name,
+        mimeType: resolvedMime,
+        parentPath: parentPath,
+        onSendProgress: onSendProgress,
+        cancelToken: cancelToken,
+      );
+    }
     final token = await _getToken();
-    final resolvedMime = mimeType ?? lookupMimeType(filePath) ?? 'application/octet-stream';
     final mimeParts = resolvedMime.split('/');
     final mediaType = MediaType(mimeParts[0], mimeParts.length > 1 ? mimeParts[1] : 'octet-stream');
 
     final formData = FormData.fromMap({
       'parentPath': parentPath,
       'path': parentPath,
-      'fileName': fileName,
-      'name': fileName,
+      'fileName': name,
+      'name': name,
       'file': await MultipartFile.fromFile(
-        filePath,
-        filename: fileName,
+        path,
+        filename: name,
         contentType: mediaType,
       ),
     });
@@ -208,6 +229,50 @@ class ApiService {
     );
 
     return res.data;
+  }
+
+  Future<dynamic> uploadChunked({
+    required String filePath,
+    required String fileName,
+    String? mimeType,
+    String parentPath = '',
+    ProgressCallback? onSendProgress,
+    CancelToken? cancelToken,
+  }) async {
+    final token = await _getToken();
+    const chunkSize = 4 * 1024 * 1024;
+    final file = File(filePath);
+    final totalBytes = await file.length();
+    final totalChunks = (totalBytes / chunkSize).ceil();
+    final uploadId = '${DateTime.now().millisecondsSinceEpoch}_$fileName';
+    final raf = await file.open();
+    try {
+      for (var i = 0; i < totalChunks; i++) {
+        final start = i * chunkSize;
+        final end = (start + chunkSize > totalBytes) ? totalBytes : start + chunkSize;
+        await raf.setPosition(start);
+        final bytes = await raf.read(end - start);
+        final form = FormData.fromMap({
+          'uploadId': uploadId,
+          'index': i,
+          'total': totalChunks,
+          'fileName': fileName,
+          'parentPath': parentPath,
+          'mimeType': mimeType ?? 'application/octet-stream',
+          'chunk': MultipartFile.fromBytes(bytes, filename: 'chunk_$i'),
+        });
+        await _dio.post(
+          '$_serverUrl/api/user/upload/chunk',
+          data: form,
+          options: _buildOptions(token),
+          cancelToken: cancelToken,
+        );
+        onSendProgress?.call(end, totalBytes);
+      }
+    } finally {
+      await raf.close();
+    }
+    return {'complete': true};
   }
 
   Future<dynamic> createFolder({
@@ -281,6 +346,58 @@ class ApiService {
       onReceiveProgress: onReceiveProgress,
     );
     return destPath;
+  }
+
+  Future<void> restoreFile(String fileId) async {
+    final token = await _getToken();
+    await _dio.patch(
+      '$_serverUrl/api/user/files',
+      data: {'id': fileId, 'restore': true},
+      options: _buildOptions(token),
+    );
+  }
+
+  Future<void> emptyTrash() async {
+    final token = await _getToken();
+    await _dio.delete(
+      '$_serverUrl/api/user/files',
+      queryParameters: {'emptyTrash': '1'},
+      options: _buildOptions(token),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> listDevices() async {
+    final token = await _getToken();
+    final res = await _dio.get('$_serverUrl/api/user/device', options: _buildOptions(token));
+    final list = res.data['devices'];
+    if (list is List) {
+      return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>> listShares() async {
+    final token = await _getToken();
+    final res = await _dio.get('$_serverUrl/api/user/shares', options: _buildOptions(token));
+    return res.data is Map ? Map<String, dynamic>.from(res.data as Map) : {};
+  }
+
+  Future<void> createShare({required String email, String path = ''}) async {
+    final token = await _getToken();
+    await _dio.post(
+      '$_serverUrl/api/user/shares',
+      data: {'email': email, 'path': path},
+      options: _buildOptions(token),
+    );
+  }
+
+  Future<void> deleteShare(String id) async {
+    final token = await _getToken();
+    await _dio.delete(
+      '$_serverUrl/api/user/shares',
+      queryParameters: {'id': id},
+      options: _buildOptions(token),
+    );
   }
 
   Future<UserStats> getUserStats() async {

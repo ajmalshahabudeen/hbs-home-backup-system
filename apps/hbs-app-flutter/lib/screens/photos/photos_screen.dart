@@ -20,7 +20,7 @@ class PhotosScreen extends ConsumerWidget {
   Map<String, List<PhotoMediaItem>> _groupByDate(List<PhotoMediaItem> items) {
     final Map<String, List<PhotoMediaItem>> groups = {};
     for (final item in items) {
-      final key = Formatters.formatDate(item.createdAt);
+      final key = Formatters.timelineKey(item.createdAt);
       groups.putIfAbsent(key.isEmpty ? 'Unknown' : key, () => []).add(item);
     }
     return groups;

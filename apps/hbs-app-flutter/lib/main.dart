@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme/app_theme.dart';
+import 'core/utils/background_backup.dart';
 import 'core/utils/high_refresh_rate.dart';
 import 'core/widgets/app_splash_screen.dart';
 import 'providers/auth_provider.dart';
@@ -19,6 +20,7 @@ void main() async {
   await StorageService().init();
   await NotificationService().init();
   await BackupIndexDb().database;
+  await initBackgroundBackup();
 
   runApp(
     const ProviderScope(

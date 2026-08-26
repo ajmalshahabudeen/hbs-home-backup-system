@@ -2,8 +2,7 @@ import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { prisma } from "@workspace/db";
 import { passkey } from "@better-auth/passkey";
-import { admin } from "better-auth/plugins";
-import { organization } from "better-auth/plugins";
+import { admin, organization, twoFactor } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
 
 const APP_PORT = process.env.PORT || process.env.APP_PORT || "38480";
@@ -361,6 +360,9 @@ export const auth: any = betterAuth({
   },
   plugins: [
     passkey(),
+    twoFactor({
+      issuer: "HBS Cloud",
+    }),
     admin({
       defaultRole: "user",
       adminRoles: ["admin"],

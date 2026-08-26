@@ -72,6 +72,11 @@ class Formatters {
     return 'other';
   }
 
+  static String timelineKey(DateTime? date) {
+    if (date == null) return 'Unknown date';
+    return DateFormat('yyyy · MMMM').format(date);
+  }
+
   static bool isHeic(String? mimeType, String? fileName) {
     final mime = (mimeType ?? '').toLowerCase();
     if (mime.contains('heic') || mime.contains('heif')) return true;

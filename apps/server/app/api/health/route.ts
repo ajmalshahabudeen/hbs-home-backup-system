@@ -78,5 +78,8 @@ export async function GET(_request: NextRequest) {
       root: storage.root || getStorageRoot(),
       error: storage.error,
     },
+    pair: {
+      qr: "/api/pair/qr",
+    },
   });
 }

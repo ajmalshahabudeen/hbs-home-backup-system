@@ -47,6 +47,26 @@ class StorageService {
     await _prefs?.remove('hbs_auth_session_token');
   }
 
+  Future<void> setVaultPassphrase(String passphrase) async {
+    try {
+      await _secureStorage.write(key: 'hbs_vault_passphrase', value: passphrase);
+    } catch (_) {}
+  }
+
+  Future<String?> getVaultPassphrase() async {
+    try {
+      return await _secureStorage.read(key: 'hbs_vault_passphrase');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> clearVaultPassphrase() async {
+    try {
+      await _secureStorage.delete(key: 'hbs_vault_passphrase');
+    } catch (_) {}
+  }
+
   // ==================== Auth Credentials Storage ====================
 
   Future<void> saveAuthCredentials(String email, String password) async {

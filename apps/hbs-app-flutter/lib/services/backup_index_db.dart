@@ -228,4 +228,16 @@ class BackupIndexDb {
     final db = await database;
     await db.delete('upload_queue', where: 'status IN (?, ?)', whereArgs: ['done', 'skipped']);
   }
+
+  Future<List<List<IndexedBackupItem>>> duplicateGroups() async {
+    final db = await database;
+    final rows = await db.query('backup_index', orderBy: 'checksum ASC, file_name ASC');
+    final byHash = <String, List<IndexedBackupItem>>{};
+    for (final row in rows) {
+      final item = IndexedBackupItem.fromMap(row);
+      if (item.checksum.isEmpty) continue;
+      byHash.putIfAbsent(item.checksum, () => []).add(item);
+    }
+    return byHash.values.where((g) => g.length > 1).toList();
+  }
 }

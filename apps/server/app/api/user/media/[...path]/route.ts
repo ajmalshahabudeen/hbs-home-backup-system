@@ -76,6 +76,31 @@ export async function GET(
       });
     }
 
+    const isHeic =
+      (file.mimeType || "").toLowerCase().includes("heic") ||
+      (file.mimeType || "").toLowerCase().includes("heif") ||
+      /\.hei[cf]$/i.test(file.name);
+    const wantOriginal = request.nextUrl.searchParams.get("original") === "1";
+    if (isHeic && !wantOriginal) {
+      try {
+        const sharp = (await import("sharp")).default;
+        const jpeg = await sharp(/* turbopackIgnore: true */ abs, { failOn: "none" })
+          .rotate()
+          .jpeg({ quality: 88, mozjpeg: true })
+          .toBuffer();
+        return new Response(new Uint8Array(jpeg), {
+          headers: {
+            "Content-Type": "image/jpeg",
+            "Content-Length": String(jpeg.length),
+            "Cache-Control": "private, max-age=86400",
+            "X-HBS-Heic-Converted": "1",
+          },
+        });
+      } catch (heicErr) {
+        console.warn("[HBS][MEDIA] HEIC convert failed", file.path, heicErr);
+      }
+    }
+
     const stat = fs.statSync(/* turbopackIgnore: true */ abs);
     const size = stat.size;
     const rangeHeader = request.headers.get("range");

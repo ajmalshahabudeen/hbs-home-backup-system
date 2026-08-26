@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/widgets/app_logo.dart';
 import '../../core/widgets/glass_card.dart';
+import '../../core/widgets/input_dialog.dart';
 import '../../models/saved_account.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/server_provider.dart';
@@ -58,6 +59,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final success = await ref.read(authProvider.notifier).signIn(email, password);
     if (success && mounted) {
       Navigator.of(context).popUntil((route) => route.isFirst);
+      return;
+    }
+    if (!mounted) return;
+    if (ref.read(authProvider).errorMessage == '2FA_REQUIRED') {
+      final code = await InputDialog.show(
+        context,
+        title: 'Authenticator code',
+        placeholder: '6-digit code',
+        confirmText: 'Verify',
+        digitsOnly: true,
+        maxLength: 6,
+        keyboardType: TextInputType.number,
+      );
+      if (code == null || !mounted) return;
+      final ok = await ref.read(authProvider.notifier).verifyTotp(code);
+      if (ok && mounted) Navigator.of(context).popUntil((route) => route.isFirst);
     }
   }
 

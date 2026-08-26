@@ -3,6 +3,7 @@ import 'package:hbs_app_flutter/core/utils/formatters.dart';
 import 'package:hbs_app_flutter/core/utils/media_merger.dart';
 import 'package:hbs_app_flutter/core/utils/media_path_filter.dart';
 import 'package:hbs_app_flutter/core/utils/pin_validator.dart';
+import 'package:hbs_app_flutter/core/utils/vault_crypto.dart';
 import 'package:hbs_app_flutter/models/photo_media_item.dart';
 import 'package:hbs_app_flutter/models/saved_account.dart';
 
@@ -155,6 +156,20 @@ void main() {
       expect(Formatters.isHeic(null, 'vacation.HEIC'), isTrue);
       expect(Formatters.isHeic('image/heif', 'a.heif'), isTrue);
       expect(Formatters.isHeic('image/jpeg', 'photo.jpg'), isFalse);
+    });
+  });
+
+  group('Formatters.timelineKey', () {
+    test('groups by year and month', () {
+      expect(Formatters.timelineKey(DateTime(2026, 3, 9)), '2026 · March');
+      expect(Formatters.timelineKey(null), 'Unknown date');
+    });
+  });
+
+  group('VaultCrypto', () {
+    test('detects HBS1 magic', () {
+      expect(VaultCrypto.looksEncrypted([0x48, 0x42, 0x53, 0x31, 0]), isTrue);
+      expect(VaultCrypto.looksEncrypted([1, 2, 3, 4]), isFalse);
     });
   });
 }

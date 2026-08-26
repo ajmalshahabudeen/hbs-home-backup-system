@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/color_palettes.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/vault_crypto.dart';
 import '../../core/widgets/floating_header.dart';
 import '../../core/widgets/glass_card.dart';
 import '../../core/widgets/input_dialog.dart';
@@ -12,8 +13,12 @@ import '../../providers/backup_provider.dart';
 import '../../providers/server_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/api_service.dart';
+import '../../services/auth_service.dart';
 import '../search/search_screen.dart';
+import 'duplicates_screen.dart';
+import 'family_share_screen.dart';
 import 'lan_scanner_modal.dart';
+import 'qr_pair_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -24,11 +29,20 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   UserStats _stats = UserStats.empty;
+  List<Map<String, dynamic>> _devices = [];
 
   @override
   void initState() {
     super.initState();
     _loadStats();
+    _loadDevices();
+  }
+
+  Future<void> _loadDevices() async {
+    try {
+      final devices = await ApiService().listDevices();
+      if (mounted) setState(() => _devices = devices);
+    } catch (_) {}
   }
 
   Future<void> _loadStats() async {
@@ -412,6 +426,106 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
                       ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                GlassCard(
+                  padding: const EdgeInsets.all(16),
+                  borderRadius: 20,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('More', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.qr_code_scanner_rounded),
+                        title: const Text('Scan server QR'),
+                        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const QrPairScreen())),
+                      ),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.copy_all_rounded),
+                        title: const Text('Find duplicates'),
+                        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DuplicatesScreen())),
+                      ),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.family_restroom_rounded),
+                        title: const Text('Family folders'),
+                        subtitle: Text('Quota ${Formatters.formatBytes(_stats.quotaBytes ?? _stats.diskTotalBytes ?? 0)}'),
+                        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FamilyShareScreen())),
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        secondary: const Icon(Icons.lock_rounded),
+                        title: const Text('End-to-end encrypt uploads'),
+                        subtitle: const Text('AES-256-GCM. Server never sees the passphrase.'),
+                        value: VaultCrypto.enabled,
+                        onChanged: (v) async {
+                          if (v) {
+                            final pass = await InputDialog.show(
+                              context,
+                              title: 'Vault passphrase',
+                              placeholder: 'At least 8 characters',
+                              confirmText: 'Enable',
+                              obscureText: true,
+                            );
+                            if (pass == null || pass.length < 8) return;
+                            await VaultCrypto.setPassphrase(pass);
+                          }
+                          await VaultCrypto.setEnabled(v);
+                          setState(() {});
+                        },
+                      ),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.phonelink_lock_rounded),
+                        title: const Text('Enable authenticator 2FA'),
+                        onTap: () async {
+                          final password = await InputDialog.show(
+                            context,
+                            title: 'Confirm password',
+                            placeholder: 'Account password',
+                            confirmText: 'Continue',
+                            obscureText: true,
+                          );
+                          if (password == null || !context.mounted) return;
+                          final data = await AuthService().enableTwoFactor(
+                            serverUrl: serverInfo.url,
+                            password: password,
+                          );
+                          if (!context.mounted) return;
+                          final uri = data?['totpURI'] ?? data?['totpUri'];
+                          await showDialog<void>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('2FA'),
+                              content: Text(
+                                uri == null
+                                    ? 'If 2FA is configured on the server, add it in your authenticator app, then sign in with the 6-digit code.'
+                                    : 'Add this in your authenticator:\n$uri',
+                              ),
+                              actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+                            ),
+                          );
+                        },
+                      ),
+                      if (_devices.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text('Devices', style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700)),
+                        ..._devices.map((d) {
+                          final seen = DateTime.tryParse(d['lastSeenAt']?.toString() ?? '');
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(Icons.smartphone_rounded),
+                            title: Text(d['deviceName']?.toString() ?? d['deviceId']?.toString() ?? 'Device'),
+                            subtitle: Text(
+                              '${d['platform'] ?? ''} · last seen ${seen == null ? 'unknown' : Formatters.formatDate(seen)}',
+                            ),
+                          );
+                        }),
+                      ],
                     ],
                   ),
                 ),

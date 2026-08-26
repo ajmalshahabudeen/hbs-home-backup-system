@@ -32,6 +32,11 @@ model User {
   systemLogs    SystemLog[]     @relation("LogActor")
   jobs          BackgroundJob[]
   mobileDevices MobileDevice[]
+  twofactors    TwoFactor[]
+  ownedShares   FolderShare[]   @relation("ShareOwner")
+  receivedShares FolderShare[]  @relation("ShareWith")
+  twoFactorEnabled  Boolean?    @default(false)
+  storageQuotaBytes BigInt?
 
   @@unique([email])
   @@map("user")
@@ -240,5 +245,32 @@ model MobileDevice {
   @@index([userId])
   @@index([lastIp])
   @@map("mobile_device")
+}
+
+model TwoFactor {
+  id          String @id
+  secret      String
+  backupCodes String
+  userId      String
+  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId])
+  @@map("twoFactor")
+}
+
+model FolderShare {
+  id               String   @id @default(cuid())
+  ownerId          String
+  owner            User     @relation("ShareOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  sharedWithUserId String?
+  sharedWith       User?    @relation("ShareWith", fields: [sharedWithUserId], references: [id], onDelete: Cascade)
+  sharedWithEmail  String
+  path             String   @default("")
+  createdAt        DateTime @default(now())
+
+  @@index([ownerId])
+  @@index([sharedWithEmail])
+  @@index([sharedWithUserId])
+  @@map("folder_share")
 }
 

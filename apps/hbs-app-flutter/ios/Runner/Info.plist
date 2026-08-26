@@ -62,6 +62,13 @@
 	</dict>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Unlock HBS Cloud with Face ID.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Scan the HBS Cloud pairing QR code from the dashboard.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>HBS Cloud needs access to your photos and videos to back them up and show them in the gallery.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

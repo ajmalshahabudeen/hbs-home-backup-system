@@ -10,12 +10,8 @@ import {
   writeLog,
   clientMeta,
 } from "@/lib/auth-guard";
-import {
-  ensureUserDir,
-  resolveUserPath,
-  toPosixRel,
-  getStorageRoot,
-} from "@/lib/storage";
+import { rememberTrashOriginal, forgetTrashOriginal, originalPathForTrash } from "@/lib/trash-meta";
+import { ensureUserDir, resolveUserPath, toPosixRel } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -232,21 +228,45 @@ export async function PATCH(request: NextRequest) {
   if (error) return error;
 
   const userId = session.user.id;
-  let body: { id?: string; name?: string };
+  let body: { id?: string; name?: string; newName?: string; path?: string; restore?: boolean };
   try {
     body = await request.json();
   } catch {
     return badRequest("Invalid JSON body");
   }
 
-  if (!body.id || !body.name?.trim()) return badRequest("id and name required");
+  if (body.restore && body.id) {
+    const row = await prisma.backupFile.findFirst({ where: { id: body.id, userId } });
+    if (!row) return badRequest("File not found");
+    const original = originalPathForTrash(userId, row.path) || toPosixRel(row.name);
+    const destParent = original.includes("/") ? original.slice(0, original.lastIndexOf("/")) : "";
+    const destRel = original || row.name;
+    try {
+      const oldAbs = resolveUserPath(userId, row.path);
+      const newAbs = resolveUserPath(userId, destRel);
+      fs.mkdirSync(path.dirname(newAbs), { recursive: true });
+      if (fs.existsSync(oldAbs)) fs.renameSync(oldAbs, newAbs);
+      await prisma.backupFile.update({
+        where: { id: row.id },
+        data: { path: destRel, parentPath: destParent, name: path.posix.basename(destRel) },
+      });
+      forgetTrashOriginal(userId, row.path);
+      return ok({ restored: true, path: destRel });
+    } catch (e) {
+      return badRequest(e instanceof Error ? e.message : "Restore failed");
+    }
+  }
+
+  const renameName = (body.name || body.newName || "").trim();
+  if (!body.id && !body.path) return badRequest("id or path required");
+  if (!renameName) return badRequest("name required");
 
   const row = await prisma.backupFile.findFirst({
-    where: { id: body.id, userId },
+    where: body.id ? { id: body.id, userId } : { path: toPosixRel(body.path || ""), userId },
   });
   if (!row) return badRequest("File not found");
 
-  const newName = body.name.trim().replace(/[\\/]/g, "_");
+  const newName = renameName.replace(/[\\/]/g, "_");
   const parent = row.parentPath;
   const newRel = toPosixRel(parent ? `${parent}/${newName}` : newName);
 
@@ -312,6 +332,26 @@ export async function DELETE(request: NextRequest) {
 
   const userId = session.user.id;
   const { searchParams } = new URL(request.url);
+  const emptyTrash = searchParams.get("emptyTrash") === "1";
+  if (emptyTrash) {
+    const rows = await prisma.backupFile.findMany({
+      where: { userId, OR: [{ parentPath: "Trash" }, { path: { startsWith: "Trash/" } }] },
+    });
+    for (const row of rows) {
+      const abs = resolveUserPath(userId, row.path);
+      if (fs.existsSync(abs)) fs.rmSync(abs, { recursive: true, force: true });
+    }
+    await prisma.backupFile.deleteMany({
+      where: { userId, OR: [{ parentPath: "Trash" }, { path: { startsWith: "Trash/" } }] },
+    });
+    try {
+      const trashAbs = resolveUserPath(userId, "Trash");
+      if (fs.existsSync(trashAbs)) fs.rmSync(trashAbs, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+    return ok({ emptied: true, count: rows.length });
+  }
   const id = searchParams.get("id");
   const permanent = searchParams.get("permanent") === "1";
   if (!id) return badRequest("id required");
@@ -364,6 +404,7 @@ export async function DELETE(request: NextRequest) {
     if (fs.existsSync(abs)) {
       fs.renameSync(abs, destAbs);
     }
+    rememberTrashOriginal(userId, destRel, row.path);
     if (row.isDir) {
       const children = await prisma.backupFile.findMany({
         where: {

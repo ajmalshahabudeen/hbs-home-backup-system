@@ -51,6 +51,7 @@ export async function GET(request: NextRequest) {
   const diskTotalBytes = storageInfo.disk.totalBytes || 0;
   const diskFreeBytes = storageInfo.disk.freeBytes || 0;
   const driveName = storageInfo.name || "Backup Drive";
+  const quotaBytes = diskTotalBytes > 0 ? diskTotalBytes : 100 * 1024 * 1024 * 1024;
 
   return ok({
     totalBytes,
@@ -62,5 +63,7 @@ export async function GET(request: NextRequest) {
     diskTotalBytes,
     diskFreeBytes,
     driveName,
+    quotaBytes,
+    usedBytes: totalBytes,
   });
 }

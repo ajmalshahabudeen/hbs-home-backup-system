@@ -133,7 +133,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } else {
       state = state.copyWith(
         isLoading: false,
-        errorMessage: result.error ?? 'Sign in failed',
+        errorMessage: result.needsTwoFactor ? '2FA_REQUIRED' : (result.error ?? 'Sign in failed'),
       );
       return false;
     }
@@ -185,6 +185,24 @@ class AuthNotifier extends StateNotifier<AuthState> {
       isLoading: false,
       errorMessage: result.error ?? 'Google sign in failed',
     );
+    return false;
+  }
+
+  Future<bool> verifyTotp(String code) async {
+    state = state.copyWith(isLoading: true, errorMessage: null);
+    final serverUrl = ref.read(serverProvider).url;
+    final result = await AuthService().verifyTotp(serverUrl: serverUrl, code: code);
+    if (result.success) {
+      state = state.copyWith(
+        isLoading: false,
+        isAuthenticated: true,
+        user: result.user,
+        token: result.token,
+      );
+      DeviceService().registerAndPing();
+      return true;
+    }
+    state = state.copyWith(isLoading: false, errorMessage: result.error ?? 'Invalid code');
     return false;
   }
 

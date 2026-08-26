@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/widgets/glass_card.dart';
 import '../../providers/server_provider.dart';
 import '../../services/lan_scanner_service.dart';
+import 'qr_pair_screen.dart';
 
 class LanScannerModal extends ConsumerStatefulWidget {
   const LanScannerModal({super.key});
@@ -202,6 +203,17 @@ class _LanScannerModalState extends ConsumerState<LanScannerModal> {
 
             const SizedBox(height: 12),
             const Divider(),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.qr_code_scanner_rounded),
+              label: const Text('Scan pairing QR'),
+              onPressed: () async {
+                final url = await Navigator.of(context).push<String>(
+                  MaterialPageRoute(builder: (_) => const QrPairScreen()),
+                );
+                if (url != null && context.mounted) Navigator.of(context).pop();
+              },
+            ),
             const SizedBox(height: 8),
 
             // Manual IP Entry Row

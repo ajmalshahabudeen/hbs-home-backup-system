@@ -11,12 +11,14 @@ class AuthResult {
   final UserModel? user;
   final String? token;
   final String? error;
+  final bool needsTwoFactor;
 
   const AuthResult({
     required this.success,
     this.user,
     this.token,
     this.error,
+    this.needsTwoFactor = false,
   });
 }
 
@@ -85,6 +87,9 @@ class AuthService {
       }
 
       final data = res.data is Map ? res.data as Map<String, dynamic> : <String, dynamic>{};
+      if (data['twoFactorRedirect'] == true) {
+        return const AuthResult(success: false, needsTwoFactor: true);
+      }
       final token = _extractTokenFromResponse(res);
       UserModel? user;
 
@@ -295,6 +300,55 @@ class AuthService {
       return AuthResult(success: true, user: user, token: token);
     }
     return const AuthResult(success: false, error: 'Auto-authentication failed');
+  }
+
+  Future<AuthResult> verifyTotp({required String serverUrl, required String code}) async {
+    try {
+      final cleanUrl = serverUrl.endsWith('/') ? serverUrl.substring(0, serverUrl.length - 1) : serverUrl;
+      final res = await _dio.post(
+        '$cleanUrl/api/auth/two-factor/verify-totp',
+        data: {'code': code.trim()},
+        options: Options(
+          headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+          validateStatus: (status) => status != null && status < 500,
+        ),
+      );
+      if (res.statusCode != 200 && res.statusCode != 201) {
+        return const AuthResult(success: false, error: 'Invalid authenticator code');
+      }
+      final token = _extractTokenFromResponse(res);
+      final cleanToken = SessionTokenCleaner.cleanSessionToken(token) ?? token;
+      if (cleanToken.isNotEmpty) {
+        await StorageService().saveSessionToken(cleanToken);
+        await StorageService().setUserLoggedOut(false);
+        ApiService().updateConfig(serverUrl: serverUrl, sessionToken: cleanToken);
+      }
+      final user = await restoreSession(serverUrl: serverUrl);
+      return AuthResult(success: true, user: user, token: cleanToken);
+    } catch (e) {
+      return AuthResult(success: false, error: e.toString());
+    }
+  }
+
+  Future<Map<String, dynamic>?> enableTwoFactor({
+    required String serverUrl,
+    required String password,
+  }) async {
+    final token = await StorageService().getSessionToken();
+    final cleanUrl = serverUrl.endsWith('/') ? serverUrl.substring(0, serverUrl.length - 1) : serverUrl;
+    final res = await _dio.post(
+      '$cleanUrl/api/auth/two-factor/enable',
+      data: {'password': password},
+      options: Options(
+        headers: {
+          ...SessionTokenCleaner.authHeaders(token),
+          'Content-Type': 'application/json',
+        },
+        validateStatus: (status) => status != null && status < 500,
+      ),
+    );
+    if (res.data is Map) return Map<String, dynamic>.from(res.data as Map);
+    return null;
   }
 
   Future<void> signOut({required String serverUrl}) async {

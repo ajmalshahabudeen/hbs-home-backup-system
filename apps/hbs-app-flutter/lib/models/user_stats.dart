@@ -8,6 +8,8 @@ class UserStats {
   final int? diskTotalBytes;
   final int? diskFreeBytes;
   final String? driveName;
+  final int? quotaBytes;
+  final int? usedBytes;
 
   const UserStats({
     required this.totalBytes,
@@ -19,6 +21,8 @@ class UserStats {
     this.diskTotalBytes,
     this.diskFreeBytes,
     this.driveName,
+    this.quotaBytes,
+    this.usedBytes,
   });
 
   factory UserStats.fromJson(Map<String, dynamic> json) {
@@ -31,6 +35,8 @@ class UserStats {
       otherCount: (json['otherCount'] as num?)?.toInt() ?? 0,
       diskTotalBytes: (json['diskTotalBytes'] as num?)?.toInt(),
       diskFreeBytes: (json['diskFreeBytes'] as num?)?.toInt(),
+      quotaBytes: (json['quotaBytes'] as num?)?.toInt(),
+      usedBytes: (json['usedBytes'] as num?)?.toInt(),
       driveName: json['driveName']?.toString(),
     );
   }

@@ -580,6 +580,25 @@ export default function DashboardPage() {
         </Card>
       </div>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>Pair a phone</CardTitle>
+          <CardDescription>Scan this QR in HBS Cloud to set the server URL</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+          <img
+            src="/api/pair/qr"
+            alt="Pair HBS Cloud"
+            width={160}
+            height={160}
+            className="rounded-xl border bg-white p-2"
+          />
+          <p className="max-w-sm text-sm text-muted-foreground">
+            Open HBS Cloud → Scan QR. The phone will connect to this dashboard&apos;s LAN address.
+          </p>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>

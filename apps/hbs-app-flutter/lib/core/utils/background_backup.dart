@@ -1,0 +1,45 @@
+import 'package:flutter/widgets.dart';
+import 'package:workmanager/workmanager.dart';
+import '../../services/api_service.dart';
+import '../../services/backup_index_db.dart';
+import '../../services/storage_service.dart';
+import '../../services/upload_queue_service.dart';
+
+const hbsBackupTask = 'hbs.autoBackup';
+
+@pragma('vm:entry-point')
+void hbsBackgroundDispatcher() {
+  Workmanager().executeTask((task, inputData) async {
+    WidgetsFlutterBinding.ensureInitialized();
+    await StorageService().init();
+    final url = StorageService().getString('hbs_server_url', defaultValue: 'http://192.168.1.100:38480');
+    final token = await StorageService().getSessionToken();
+    if (token == null || token.isEmpty) return true;
+    ApiService().updateConfig(serverUrl: url, sessionToken: token);
+    await BackupIndexDb().database;
+    await UploadQueueService().resumePending(concurrency: 1);
+    return true;
+  });
+}
+
+Future<void> initBackgroundBackup() async {
+  await Workmanager().initialize(hbsBackgroundDispatcher);
+  final auto = StorageService().getBool('hbs_auto_backup', defaultValue: false);
+  if (auto) {
+    await scheduleBackgroundBackup();
+  }
+}
+
+Future<void> scheduleBackgroundBackup() async {
+  await Workmanager().registerPeriodicTask(
+    hbsBackupTask,
+    hbsBackupTask,
+    frequency: const Duration(minutes: 15),
+    constraints: Constraints(networkType: NetworkType.unmetered),
+    existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
+  );
+}
+
+Future<void> cancelBackgroundBackup() async {
+  await Workmanager().cancelByUniqueName(hbsBackupTask);
+}
