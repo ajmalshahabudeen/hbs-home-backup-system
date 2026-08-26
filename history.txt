@@ -685,10 +685,25 @@
 - Verified `flutter test` with 100% passing unit tests.
 - Verified Turborepo workspace typecheck (`bun run typecheck`) with 3/3 successful builds and zero errors.
 
-## Session: 2026-08-25 (Flutter Run Command & Device Target Guidance)
-- User encountered `Target file "android" not found` when running `flutter run android`.
-- Clarified that `-d` or `--device` flag is required when specifying target devices in Flutter CLI (e.g. `flutter run -d android` or `flutter run -d <device-id>`).
-- Discovered active wireless Android device `SM A528B` (Android 14) and desktop/web targets.
+## Session: 2026-08-26 (Flutter Android Gradle Build & NDK Compatibility Fixes Completed)
+- Diagnosed and resolved consecutive Android build errors when running `flutter run` / `flutter build apk --debug` in `apps/hbs-app-flutter`:
+  1. Core Library Desugaring for `flutter_local_notifications`:
+     - Enabled `isCoreLibraryDesugaringEnabled = true` in `apps/hbs-app-flutter/android/app/build.gradle.kts`.
+     - Added dependency `coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")`.
+  2. NDK 28 Windows Clang ARMv7 Compiler Crash:
+     - Identified that NDK 28 (`28.2.13676358`) on Windows crashes with exit code 0xC0000005 during 32-bit ARM (`armeabi-v7a`) code generation for the `jni` native package (`@globalEnv_GetDoubleArrayRegion`).
+     - Pinned `ndkVersion = "27.1.12297006"` in `apps/hbs-app-flutter/android/app/build.gradle.kts` and `android/local.properties`.
+     - Added dynamic subprojects evaluation hook in `android/build.gradle.kts` to enforce NDK 27.1 across all plugin subprojects.
+  3. SDK 36 Subproject Alignment (`file_picker` compileSdk mismatch):
+     - Resolved `checkDebugAarMetadata` failure where `file_picker` was locked to `android-34` while `flutter_plugin_android_lifecycle` required API 36+.
+     - Configured root `android/build.gradle.kts` subproject hooks to enforce `compileSdk = 36` across all subproject extensions.
+- Build & Quality Verification:
+  - Verified `flutter build apk --debug`: Built `build\app\outputs\flutter-apk\app-debug.apk` in 33.3s with exit code 0.
+  - Verified `flutter analyze`: 0 issues found.
+  - Verified `flutter test`: 100% passing unit tests.
+  - Verified `bun run typecheck`: 3/3 packages succeeded.
+  - Verified Next.js server production build (`bun run build --filter=server`): 100% success.
+
 
 
 
