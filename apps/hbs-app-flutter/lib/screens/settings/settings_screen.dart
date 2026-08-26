@@ -65,7 +65,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             serverUrl: serverInfo.url,
             isConnected: serverInfo.isConnected,
             userName: user?.name ?? 'User',
-            currentThemeMode: themeState.mode,
             onServerTap: () {
               showModalBottomSheet(
                 context: context,
@@ -74,7 +73,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 builder: (_) => const LanScannerModal(),
               );
             },
-            onThemeToggle: () => themeNotifier.toggleMode(),
             onSearchTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const SearchScreen()),
@@ -287,54 +285,96 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text('App Security & Lock', style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Uses your phone lock (fingerprint, face, or device PIN). An optional 4-digit app PIN is available as a backup.',
+                        style: TextStyle(fontSize: 12, color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6)),
+                      ),
+                      const SizedBox(height: 8),
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
-                        title: const Text('Require PIN / Biometrics', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                        value: lockState.isLockEnabled,
+                        title: const Text('Lock with device security', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                        subtitle: Text(
+                          lockState.deviceAuthAvailable
+                              ? 'Fingerprint, face, or your phone PIN'
+                              : 'Set a screen lock on this device first',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        value: lockState.isDeviceLockEnabled,
                         activeTrackColor: primary,
                         onChanged: (val) async {
-                          if (val && !lockState.hasPin) {
-                            final pin = await InputDialog.show(
-                              context,
-                              title: 'Set App Lock PIN',
-                              placeholder: 'Enter 4-digit PIN',
-                              confirmText: 'Set PIN',
-                            );
-                            if (pin != null && pin.isNotEmpty) {
-                              await lockNotifier.setPin(pin);
-                              await lockNotifier.setLockEnabled(true);
+                          if (val) {
+                            final ok = await lockNotifier.enableDeviceLock();
+                            if (!ok && context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Could not enable device lock. Set a screen lock and try again.')),
+                              );
                             }
                           } else {
-                            await lockNotifier.setLockEnabled(val);
+                            await lockNotifier.disableDeviceLock();
                           }
                         },
                       ),
-                      if (lockState.isLockEnabled) ...[
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('4-digit app PIN', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                        subtitle: const Text('Optional backup if device unlock is cancelled', style: TextStyle(fontSize: 12)),
+                        value: lockState.hasPin,
+                        activeTrackColor: primary,
+                        onChanged: (val) async {
+                          if (val) {
+                            final pin = await _promptPin(context, title: 'Set 4-digit PIN');
+                            if (pin == null || !context.mounted) return;
+                            final confirm = await _promptPin(context, title: 'Confirm PIN');
+                            if (confirm == null) return;
+                            if (pin != confirm) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('PINs did not match')),
+                                );
+                              }
+                              return;
+                            }
+                            final saved = await lockNotifier.setPin(pin);
+                            if (!saved && context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('PIN must be exactly 4 digits')),
+                              );
+                            }
+                          } else {
+                            await lockNotifier.clearPin();
+                          }
+                        },
+                      ),
+                      if (lockState.hasPin)
                         ListTile(
                           contentPadding: EdgeInsets.zero,
                           leading: const Icon(Icons.pin_rounded),
                           title: const Text('Change PIN', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                           trailing: const Icon(Icons.chevron_right_rounded),
                           onTap: () async {
-                            final pin = await InputDialog.show(
-                              context,
-                              title: 'New PIN',
-                              placeholder: 'Enter new PIN',
-                              confirmText: 'Update',
-                            );
-                            if (pin != null && pin.isNotEmpty) {
-                              await lockNotifier.setPin(pin);
+                            final pin = await _promptPin(context, title: 'New 4-digit PIN');
+                            if (pin == null || !context.mounted) return;
+                            final confirm = await _promptPin(context, title: 'Confirm new PIN');
+                            if (confirm == null) return;
+                            if (pin != confirm) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('PINs did not match')),
+                                );
+                              }
+                              return;
                             }
+                            await lockNotifier.setPin(pin);
                           },
                         ),
+                      if (lockState.isLockEnabled)
                         ListTile(
                           contentPadding: EdgeInsets.zero,
                           leading: const Icon(Icons.lock_clock_rounded),
                           title: const Text('Lock App Now', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                           onTap: () => lockNotifier.lockNow(),
                         ),
-                      ],
                     ],
                   ),
                 ),
@@ -380,6 +420,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Future<String?> _promptPin(BuildContext context, {required String title}) {
+    return InputDialog.show(
+      context,
+      title: title,
+      placeholder: '4 digits',
+      confirmText: 'Continue',
+      obscureText: true,
+      digitsOnly: true,
+      maxLength: 4,
+      keyboardType: TextInputType.number,
     );
   }
 

@@ -6,7 +6,6 @@ import '../../core/widgets/glass_card.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/backup_provider.dart';
 import '../../providers/server_provider.dart';
-import '../../providers/theme_provider.dart';
 import '../search/search_screen.dart';
 import '../settings/lan_scanner_modal.dart';
 import 'album_picker_modal.dart';
@@ -23,7 +22,6 @@ class BackupScreen extends ConsumerWidget {
     final backupState = ref.watch(backupProvider);
     final backupNotifier = ref.read(backupProvider.notifier);
     final serverInfo = ref.watch(serverProvider);
-    final themeState = ref.watch(themeProvider);
     final user = ref.watch(authProvider).user;
     final syncState = backupState.syncState;
 
@@ -39,7 +37,6 @@ class BackupScreen extends ConsumerWidget {
             serverUrl: serverInfo.url,
             isConnected: serverInfo.isConnected,
             userName: user?.name ?? 'User',
-            currentThemeMode: themeState.mode,
             onServerTap: () {
               showModalBottomSheet(
                 context: context,
@@ -48,7 +45,6 @@ class BackupScreen extends ConsumerWidget {
                 builder: (_) => const LanScannerModal(),
               );
             },
-            onThemeToggle: () => ref.read(themeProvider.notifier).toggleMode(),
             onSearchTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const SearchScreen()),

@@ -1,16 +1,15 @@
-import 'dart:io';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/filter_sort_bar.dart';
 import '../../core/widgets/floating_header.dart';
+import '../../core/widgets/media_thumb.dart';
 import '../../core/widgets/skeleton_loader.dart';
 import '../../models/photo_media_item.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/media_provider.dart';
 import '../../providers/server_provider.dart';
-import '../../providers/theme_provider.dart';
+import '../../services/media_discovery_service.dart';
 import '../search/search_screen.dart';
 import '../settings/lan_scanner_modal.dart';
 import 'media_viewer_modal.dart';
@@ -30,13 +29,11 @@ class PhotosScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final primary = theme.primaryColor;
 
     final mediaState = ref.watch(mediaProvider);
     final mediaNotifier = ref.read(mediaProvider.notifier);
     final serverInfo = ref.watch(serverProvider);
-    final themeState = ref.watch(themeProvider);
     final user = ref.watch(authProvider).user;
 
     final items = mediaState.filteredItems;
@@ -51,7 +48,6 @@ class PhotosScreen extends ConsumerWidget {
             serverUrl: serverInfo.url,
             isConnected: serverInfo.isConnected,
             userName: user?.name ?? 'User',
-            currentThemeMode: themeState.mode,
             onServerTap: () {
               showModalBottomSheet(
                 context: context,
@@ -60,7 +56,6 @@ class PhotosScreen extends ConsumerWidget {
                 builder: (_) => const LanScannerModal(),
               );
             },
-            onThemeToggle: () => ref.read(themeProvider.notifier).toggleMode(),
             onSearchTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const SearchScreen()),
@@ -140,34 +135,18 @@ class PhotosScreen extends ConsumerWidget {
                                       (context, index) {
                                         final item = group.value[index];
                                         return GestureDetector(
-                                          onTap: () => MediaViewerModal.show(context, item),
+                                          onTap: () async {
+                                            var resolved = item;
+                                            if (item.assetId != null && item.assetId!.isNotEmpty && !item.url.startsWith('http')) {
+                                              resolved = await MediaDiscoveryService().resolveFile(item);
+                                            }
+                                            if (!context.mounted) return;
+                                            MediaViewerModal.show(context, resolved);
+                                          },
                                           child: Stack(
                                             fit: StackFit.expand,
                                             children: [
-                                              // Thumbnail Image
-                                              item.url.startsWith('http')
-                                                  ? CachedNetworkImage(
-                                                      imageUrl: item.thumbUrl ?? item.url,
-                                                      fit: BoxFit.cover,
-                                                      placeholder: (context, url) => Container(
-                                                        color: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFE5E7EB),
-                                                      ),
-                                                      errorWidget: (context, url, error) => Container(
-                                                        color: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFE5E7EB),
-                                                        child: const Icon(Icons.broken_image_rounded, size: 24),
-                                                      ),
-                                                    )
-                                                  : Image.file(
-                                                      File(item.url),
-                                                      fit: BoxFit.cover,
-                                                      cacheWidth: 320,
-                                                      errorBuilder: (context, error, stackTrace) => Container(
-                                                        color: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFE5E7EB),
-                                                        child: const Icon(Icons.broken_image_rounded, size: 24),
-                                                      ),
-                                                    ),
-
-                                              // Cloud Sync Badge
+                                              MediaThumb(item: item),
                                               if (item.isBackedUp)
                                                 Positioned(
                                                   top: 4,
@@ -185,8 +164,6 @@ class PhotosScreen extends ConsumerWidget {
                                                     ),
                                                   ),
                                                 ),
-
-                                              // Video Badge & Duration
                                               if (item.isVideo)
                                                 Positioned(
                                                   bottom: 4,

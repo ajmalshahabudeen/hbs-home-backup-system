@@ -21,6 +21,15 @@ class MediaDiscoveryService {
   factory MediaDiscoveryService() => _instance;
   MediaDiscoveryService._internal();
 
+  static final FilterOptionGroup _allMediaFilter = FilterOptionGroup(
+    imageOption: const FilterOption(
+      sizeConstraint: SizeConstraint(ignoreSize: true),
+    ),
+    videoOption: const FilterOption(
+      sizeConstraint: SizeConstraint(ignoreSize: true),
+    ),
+  );
+
   Future<bool> requestPermissions() async {
     final PermissionState state = await PhotoManager.requestPermissionExtend();
     return state.isAuth || state.hasAccess;
@@ -32,6 +41,7 @@ class MediaDiscoveryService {
 
     final List<AssetPathEntity> paths = await PhotoManager.getAssetPathList(
       type: RequestType.common,
+      filterOption: _allMediaFilter,
     );
 
     final List<LocalAlbum> albums = [];
@@ -50,10 +60,32 @@ class MediaDiscoveryService {
     return albums;
   }
 
+  PhotoMediaItem itemFromEntity(AssetEntity entity) {
+    final isVideo = entity.type == AssetType.video;
+    final title = entity.title ?? 'media_${entity.id}';
+    return PhotoMediaItem(
+      id: entity.id,
+      path: '',
+      name: title,
+      size: 0,
+      createdAt: entity.createDateTime,
+      updatedAt: entity.modifiedDateTime,
+      isVideo: isVideo,
+      url: '',
+      thumbUrl: null,
+      isLocalOnly: true,
+      isBackedUp: false,
+      localUri: entity.id,
+      duration: isVideo ? entity.duration : null,
+      assetId: entity.id,
+    );
+  }
+
   Future<List<PhotoMediaItem>> getLocalMedia({
     int page = 0,
-    int pageSize = 100,
+    int pageSize = 80,
     AssetPathEntity? album,
+    void Function(List<PhotoMediaItem> soFar)? onPage,
   }) async {
     final hasPerm = await requestPermissions();
     if (!hasPerm) return [];
@@ -63,6 +95,7 @@ class MediaDiscoveryService {
       final albums = await PhotoManager.getAssetPathList(
         type: RequestType.common,
         onlyAll: true,
+        filterOption: _allMediaFilter,
       );
       if (albums.isNotEmpty) {
         targetAlbum = albums.first;
@@ -71,35 +104,49 @@ class MediaDiscoveryService {
 
     if (targetAlbum == null) return [];
 
-    final List<AssetEntity> entities = await targetAlbum.getAssetListPaged(
-      page: page,
-      size: pageSize,
-    );
-
     final List<PhotoMediaItem> items = [];
-    for (final entity in entities) {
-      final isVideo = entity.type == AssetType.video;
-      final file = await entity.file;
-      final filePath = file?.path ?? '';
-      final title = entity.title ?? (filePath.isNotEmpty ? filePath.split(Platform.pathSeparator).last : 'media_${entity.id}');
+    var currentPage = page;
+    while (true) {
+      final List<AssetEntity> entities = await targetAlbum.getAssetListPaged(
+        page: currentPage,
+        size: pageSize,
+      );
+      if (entities.isEmpty) break;
 
-      items.add(PhotoMediaItem(
-        id: entity.id,
-        path: filePath,
-        name: title,
-        size: (file != null && await file.exists()) ? await file.length() : 0,
-        createdAt: entity.createDateTime,
-        updatedAt: entity.modifiedDateTime,
-        isVideo: isVideo,
-        url: filePath,
-        thumbUrl: null, // Rendered via PhotoManager thumbnail or File in UI
-        isLocalOnly: true,
-        isBackedUp: false,
-        localUri: filePath,
-        duration: isVideo ? entity.duration : null,
-      ));
+      for (final entity in entities) {
+        items.add(itemFromEntity(entity));
+      }
+      onPage?.call(List<PhotoMediaItem>.from(items));
+
+      if (entities.length < pageSize) break;
+      currentPage++;
     }
 
     return items;
+  }
+
+  Future<PhotoMediaItem> resolveFile(PhotoMediaItem item) async {
+    if (item.url.isNotEmpty && !item.url.startsWith('http')) {
+      return item;
+    }
+    final assetId = item.assetId;
+    if (assetId == null || assetId.isEmpty) return item;
+
+    final entity = await AssetEntity.fromId(assetId);
+    if (entity == null) return item;
+    final file = await entity.file;
+    if (file == null || !await file.exists()) return item;
+
+    return item.copyWith(
+      path: file.path,
+      url: file.path,
+      size: await file.length(),
+      localUri: file.path,
+    );
+  }
+
+  Future<File?> fileForAssetId(String assetId) async {
+    final entity = await AssetEntity.fromId(assetId);
+    return entity?.file;
   }
 }

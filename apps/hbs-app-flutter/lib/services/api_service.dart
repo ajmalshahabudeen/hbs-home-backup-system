@@ -264,4 +264,11 @@ class ApiService {
   String getMediaUrl(String path) {
     return '$_serverUrl/api/user/media/${Uri.encodeComponent(path)}';
   }
+
+  Future<Map<String, String>> mediaHeaders() async {
+    final token = await _getToken();
+    return SessionTokenCleaner.authHeaders(token);
+  }
+
+  String get serverUrl => _serverUrl;
 }

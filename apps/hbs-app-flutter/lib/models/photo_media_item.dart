@@ -15,6 +15,7 @@ class PhotoMediaItem {
   final bool isBackedUp;
   final String? localUri;
   final int? duration;
+  final String? assetId;
 
   const PhotoMediaItem({
     required this.id,
@@ -33,6 +34,7 @@ class PhotoMediaItem {
     this.isBackedUp = false,
     this.localUri,
     this.duration,
+    this.assetId,
   });
 
   factory PhotoMediaItem.fromJson(Map<String, dynamic> json) {
@@ -55,6 +57,7 @@ class PhotoMediaItem {
       isBackedUp: json['isBackedUp'] == true,
       localUri: json['localUri']?.toString(),
       duration: (json['duration'] as num?)?.toInt(),
+      assetId: json['assetId']?.toString(),
     );
   }
 
@@ -75,6 +78,7 @@ class PhotoMediaItem {
     bool? isBackedUp,
     String? localUri,
     int? duration,
+    String? assetId,
   }) {
     return PhotoMediaItem(
       id: id ?? this.id,
@@ -93,6 +97,7 @@ class PhotoMediaItem {
       isBackedUp: isBackedUp ?? this.isBackedUp,
       localUri: localUri ?? this.localUri,
       duration: duration ?? this.duration,
+      assetId: assetId ?? this.assetId,
     );
   }
 }

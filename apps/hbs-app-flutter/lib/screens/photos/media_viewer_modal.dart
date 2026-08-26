@@ -30,21 +30,36 @@ class _MediaViewerModalState extends State<MediaViewerModal> {
   VideoPlayerController? _videoController;
   ChewieController? _chewieController;
   bool _isVideoInitialized = false;
+  Map<String, String> _headers = const {};
 
   @override
   void initState() {
     super.initState();
+    _prepare();
+  }
+
+  Future<void> _prepare() async {
+    if (widget.item.url.startsWith('http')) {
+      _headers = await ApiService().mediaHeaders();
+    }
     if (widget.item.isVideo) {
-      _initVideo();
+      await _initVideo();
+    } else if (mounted) {
+      setState(() {});
     }
   }
 
   Future<void> _initVideo() async {
     final path = widget.item.url;
     if (path.startsWith('http://') || path.startsWith('https://')) {
-      _videoController = VideoPlayerController.networkUrl(Uri.parse(path));
-    } else {
+      _videoController = VideoPlayerController.networkUrl(
+        Uri.parse(path),
+        httpHeaders: _headers,
+      );
+    } else if (path.isNotEmpty) {
       _videoController = VideoPlayerController.file(File(path));
+    } else {
+      return;
     }
 
     try {
@@ -137,17 +152,19 @@ class _MediaViewerModalState extends State<MediaViewerModal> {
                 ? (_isVideoInitialized && _chewieController != null
                     ? Chewie(controller: _chewieController!)
                     : const CircularProgressIndicator(color: Colors.white))
-                : (widget.item.url.startsWith('http')
-                    ? PhotoView(
-                        imageProvider: CachedNetworkImageProvider(widget.item.url),
-                        minScale: PhotoViewComputedScale.contained,
-                        maxScale: PhotoViewComputedScale.covered * 3.0,
-                      )
-                    : PhotoView(
-                        imageProvider: FileImage(File(widget.item.url)),
-                        minScale: PhotoViewComputedScale.contained,
-                        maxScale: PhotoViewComputedScale.covered * 3.0,
-                      )),
+                : (widget.item.url.isEmpty
+                    ? const Icon(Icons.broken_image_rounded, color: Colors.white54, size: 48)
+                    : (widget.item.url.startsWith('http')
+                        ? PhotoView(
+                            imageProvider: CachedNetworkImageProvider(widget.item.url, headers: _headers),
+                            minScale: PhotoViewComputedScale.contained,
+                            maxScale: PhotoViewComputedScale.covered * 3.0,
+                          )
+                        : PhotoView(
+                            imageProvider: FileImage(File(widget.item.url)),
+                            minScale: PhotoViewComputedScale.contained,
+                            maxScale: PhotoViewComputedScale.covered * 3.0,
+                          ))),
           ),
 
           // Top Action Bar

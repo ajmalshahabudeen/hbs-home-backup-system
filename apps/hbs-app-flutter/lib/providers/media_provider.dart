@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/utils/media_merger.dart';
 import '../core/widgets/filter_sort_bar.dart';
 import '../models/photo_media_item.dart';
 import '../services/api_service.dart';
@@ -25,14 +26,12 @@ class MediaState {
   List<PhotoMediaItem> get filteredItems {
     var list = items;
 
-    // Filter by Category
     if (category == MediaCategoryFilter.photos) {
       list = list.where((e) => !e.isVideo).toList();
     } else if (category == MediaCategoryFilter.videos) {
       list = list.where((e) => e.isVideo).toList();
     }
 
-    // Filter by Search Query
     if (searchQuery.isNotEmpty) {
       final q = searchQuery.toLowerCase();
       list = list.where((e) => e.name.toLowerCase().contains(q)).toList();
@@ -69,53 +68,23 @@ class MediaNotifier extends StateNotifier<MediaState> {
     state = state.copyWith(isLoading: true, errorMessage: null);
 
     try {
-      // 1. Instant Local Assets Batch
-      final localItems = await MediaDiscoveryService().getLocalMedia(pageSize: 150);
-      if (localItems.isNotEmpty) {
-        state = state.copyWith(
-          isLoading: false,
-          items: localItems,
-        );
-      }
-
-      // 2. Fetch Remote Server Photos in background
-      final serverPhotos = await ApiService().getPhotos().catchError((_) => <PhotoMediaItem>[]);
-
-      // 3. Mark Backup Statuses
-      final merged = List<PhotoMediaItem>.from(localItems);
-      final serverMap = {for (var item in serverPhotos) item.name: item};
-
-      for (int i = 0; i < merged.length; i++) {
-        final local = merged[i];
-        if (serverMap.containsKey(local.name)) {
-          merged[i] = local.copyWith(isBackedUp: true);
-        } else {
-          // Check local SQLite index
-          final isIndex = await BackupIndexDb().isLocallyUploaded(
-            checksum: '',
-            fileName: local.name,
-            fileSize: local.size,
-          );
-          if (isIndex) {
-            merged[i] = local.copyWith(isBackedUp: true);
+      final localItems = await MediaDiscoveryService().getLocalMedia(
+        onPage: (soFar) {
+          if (state.items.isEmpty || soFar.length > state.items.length) {
+            state = state.copyWith(isLoading: false, items: soFar);
           }
-        }
-      }
+        },
+      );
 
-      // Add server-only photos
-      final localNames = {for (var item in localItems) item.name};
-      for (final s in serverPhotos) {
-        if (!localNames.contains(s.name)) {
-          merged.add(s);
-        }
-      }
+      final serverPhotos = await ApiService().getPhotos().catchError((_) => <PhotoMediaItem>[]);
+      final indexKeys = await BackupIndexDb().getUploadedKeys();
 
-      // Sort by creation date descending
-      merged.sort((a, b) {
-        final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final bDate = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        return bDate.compareTo(aDate);
-      });
+      final merged = MediaMerger.merge(
+        local: localItems,
+        server: serverPhotos,
+        uploadedNameSizeKeys: indexKeys.nameSizeKeys,
+        uploadedNames: indexKeys.names,
+      );
 
       state = state.copyWith(
         isLoading: false,

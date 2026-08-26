@@ -9,9 +9,9 @@ import '../../models/backup_file_item.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/drive_provider.dart';
 import '../../providers/server_provider.dart';
-import '../../providers/theme_provider.dart';
 import '../search/search_screen.dart';
 import '../settings/lan_scanner_modal.dart';
+import 'drive_preview_screen.dart';
 import 'upload_modal.dart';
 
 class DriveScreen extends ConsumerWidget {
@@ -58,6 +58,16 @@ class DriveScreen extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: 16),
+            if (!file.isDir &&
+                ['photo', 'video', 'audio'].contains(Formatters.getMimeTypeCategory(file.mimeType, file.name)))
+              ListTile(
+                leading: const Icon(Icons.play_circle_outline_rounded),
+                title: const Text('Preview'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  DrivePreviewScreen.open(context, file);
+                },
+              ),
             ListTile(
               leading: const Icon(Icons.edit_rounded),
               title: const Text('Rename'),
@@ -113,7 +123,6 @@ class DriveScreen extends ConsumerWidget {
     final driveState = ref.watch(driveProvider);
     final driveNotifier = ref.read(driveProvider.notifier);
     final serverInfo = ref.watch(serverProvider);
-    final themeState = ref.watch(themeProvider);
     final user = ref.watch(authProvider).user;
 
     final files = driveState.sortedAndFilteredFiles;
@@ -141,7 +150,6 @@ class DriveScreen extends ConsumerWidget {
             serverUrl: serverInfo.url,
             isConnected: serverInfo.isConnected,
             userName: user?.name ?? 'User',
-            currentThemeMode: themeState.mode,
             onServerTap: () {
               showModalBottomSheet(
                 context: context,
@@ -150,7 +158,6 @@ class DriveScreen extends ConsumerWidget {
                 builder: (_) => const LanScannerModal(),
               );
             },
-            onThemeToggle: () => ref.read(themeProvider.notifier).toggleMode(),
             onSearchTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const SearchScreen()),
@@ -249,7 +256,12 @@ class DriveScreen extends ConsumerWidget {
                                       if (file.isDir) {
                                         driveNotifier.navigateToFolder(file.name);
                                       } else {
-                                        _showFileActions(context, ref, file);
+                                        final category = Formatters.getMimeTypeCategory(file.mimeType, file.name);
+                                        if (category == 'photo' || category == 'video' || category == 'audio') {
+                                          DrivePreviewScreen.open(context, file);
+                                        } else {
+                                          _showFileActions(context, ref, file);
+                                        }
                                       }
                                     },
                                     child: Column(
@@ -318,7 +330,12 @@ class DriveScreen extends ConsumerWidget {
                                       if (file.isDir) {
                                         driveNotifier.navigateToFolder(file.name);
                                       } else {
-                                        _showFileActions(context, ref, file);
+                                        final category = Formatters.getMimeTypeCategory(file.mimeType, file.name);
+                                        if (category == 'photo' || category == 'video' || category == 'audio') {
+                                          DrivePreviewScreen.open(context, file);
+                                        } else {
+                                          _showFileActions(context, ref, file);
+                                        }
                                       }
                                     },
                                     child: Row(

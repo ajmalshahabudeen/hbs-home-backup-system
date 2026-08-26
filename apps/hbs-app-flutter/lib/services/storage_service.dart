@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/saved_account.dart';
 import '../models/user_model.dart';
 
 class StorageService {
@@ -76,6 +77,77 @@ class StorageService {
       await _secureStorage.delete(key: 'hbs_auth_credentials');
     } catch (_) {}
     await _prefs?.remove('hbs_auth_credentials');
+  }
+
+  // ==================== Saved Login Accounts ====================
+
+  static const _savedAccountsKey = 'hbs_saved_accounts';
+
+  Future<List<SavedAccount>> getSavedAccounts() async {
+    String? raw;
+    try {
+      raw = await _secureStorage.read(key: _savedAccountsKey);
+    } catch (_) {}
+    raw ??= _prefs?.getString(_savedAccountsKey);
+
+    final accounts = <SavedAccount>[];
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          for (final item in decoded) {
+            if (item is Map<String, dynamic>) {
+              final account = SavedAccount.fromJson(item);
+              if (account.email.isNotEmpty && account.password.isNotEmpty) {
+                accounts.add(account);
+              }
+            } else if (item is Map) {
+              final account = SavedAccount.fromJson(Map<String, dynamic>.from(item));
+              if (account.email.isNotEmpty && account.password.isNotEmpty) {
+                accounts.add(account);
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (accounts.isEmpty) {
+      final legacy = await getAuthCredentials();
+      if (legacy != null) {
+        accounts.add(SavedAccount(
+          email: legacy['email'] ?? '',
+          password: legacy['password'] ?? '',
+          name: getCurrentUser()?.name ?? '',
+        ));
+      }
+    }
+
+    return accounts;
+  }
+
+  Future<void> upsertSavedAccount(SavedAccount account) async {
+    if (account.email.isEmpty || account.password.isEmpty) return;
+    final existing = await getSavedAccounts();
+    final next = <SavedAccount>[
+      account,
+      ...existing.where((e) => e.email.toLowerCase() != account.email.toLowerCase()),
+    ];
+    await _writeSavedAccounts(next);
+  }
+
+  Future<void> removeSavedAccount(String email) async {
+    final existing = await getSavedAccounts();
+    final next = existing.where((e) => e.email.toLowerCase() != email.toLowerCase()).toList();
+    await _writeSavedAccounts(next);
+  }
+
+  Future<void> _writeSavedAccounts(List<SavedAccount> accounts) async {
+    final raw = jsonEncode(accounts.map((e) => e.toJson()).toList());
+    try {
+      await _secureStorage.write(key: _savedAccountsKey, value: raw);
+    } catch (_) {}
+    await _prefs?.setString(_savedAccountsKey, raw);
   }
 
   // ==================== User Profile Caching ====================

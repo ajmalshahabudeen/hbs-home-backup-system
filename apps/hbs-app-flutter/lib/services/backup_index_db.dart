@@ -142,6 +142,21 @@ class BackupIndexDb {
     return Sqflite.firstIntValue(res) ?? 0;
   }
 
+  Future<({Set<String> nameSizeKeys, Set<String> names})> getUploadedKeys() async {
+    final db = await database;
+    final rows = await db.query('backup_index', columns: ['file_name', 'file_size']);
+    final nameSize = <String>{};
+    final names = <String>{};
+    for (final row in rows) {
+      final name = (row['file_name']?.toString() ?? '').trim().toLowerCase();
+      final size = (row['file_size'] as num?)?.toInt() ?? 0;
+      if (name.isEmpty) continue;
+      names.add(name);
+      nameSize.add('$name|$size');
+    }
+    return (nameSizeKeys: nameSize, names: names);
+  }
+
   Future<void> clearAll() async {
     final db = await database;
     await db.delete('backup_index');

@@ -47,6 +47,12 @@
 			</array>
 		</dict>
 	</dict>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Unlock HBS Cloud with Face ID.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>HBS Cloud needs access to your photos and videos to back them up and show them in the gallery.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>HBS Cloud may save media to your photo library.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

@@ -1,6 +1,5 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import '../theme/color_palettes.dart';
 import 'app_logo.dart';
 
 class FloatingHeader extends StatefulWidget {
@@ -8,9 +7,7 @@ class FloatingHeader extends StatefulWidget {
   final String serverUrl;
   final bool isConnected;
   final String userName;
-  final ThemeModeOption currentThemeMode;
   final VoidCallback? onServerTap;
-  final VoidCallback? onThemeToggle;
   final VoidCallback? onSearchTap;
   final VoidCallback? onProfileTap;
 
@@ -20,9 +17,7 @@ class FloatingHeader extends StatefulWidget {
     required this.serverUrl,
     required this.isConnected,
     this.userName = 'User',
-    required this.currentThemeMode,
     this.onServerTap,
-    this.onThemeToggle,
     this.onSearchTap,
     this.onProfileTap,
   });
@@ -96,7 +91,6 @@ class _FloatingHeaderState extends State<FloatingHeader> with SingleTickerProvid
               ),
               child: Row(
                 children: [
-                  // Brand Icon Badge
                   Container(
                     width: 38,
                     height: 38,
@@ -113,8 +107,6 @@ class _FloatingHeaderState extends State<FloatingHeader> with SingleTickerProvid
                     child: const AppLogo(size: 38, borderRadius: 12),
                   ),
                   const SizedBox(width: 10),
-
-                  // App Title & Server Pulse Capsule
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -135,7 +127,6 @@ class _FloatingHeaderState extends State<FloatingHeader> with SingleTickerProvid
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              // Pulse Dot
                               AnimatedBuilder(
                                 animation: _pulseAnimation,
                                 child: Container(
@@ -181,8 +172,6 @@ class _FloatingHeaderState extends State<FloatingHeader> with SingleTickerProvid
                       ],
                     ),
                   ),
-
-                  // Quick Action: Search
                   if (widget.onSearchTap != null)
                     IconButton(
                       icon: const Icon(Icons.search_rounded, size: 20),
@@ -190,33 +179,7 @@ class _FloatingHeaderState extends State<FloatingHeader> with SingleTickerProvid
                       tooltip: 'Search',
                       visualDensity: VisualDensity.compact,
                     ),
-
-                  // Quick Action: Theme Mode Toggle Pill
-                  if (widget.onThemeToggle != null)
-                    InkWell(
-                      onTap: widget.onThemeToggle,
-                      borderRadius: BorderRadius.circular(16),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.05),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Icon(
-                          widget.currentThemeMode == ThemeModeOption.light
-                              ? Icons.wb_sunny_rounded
-                              : (widget.currentThemeMode == ThemeModeOption.dark
-                                  ? Icons.nightlight_round
-                                  : Icons.brightness_auto_rounded),
-                          size: 16,
-                          color: primary,
-                        ),
-                      ),
-                    ),
-
-                  const SizedBox(width: 8),
-
-                  // User Avatar Ring
+                  const SizedBox(width: 4),
                   GestureDetector(
                     onTap: widget.onProfileTap,
                     child: Container(

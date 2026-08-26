@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class InputDialog extends StatefulWidget {
   final String title;
@@ -8,6 +9,10 @@ class InputDialog extends StatefulWidget {
   final String placeholder;
   final String confirmText;
   final String cancelText;
+  final bool obscureText;
+  final bool digitsOnly;
+  final int? maxLength;
+  final TextInputType? keyboardType;
 
   const InputDialog({
     super.key,
@@ -17,6 +22,10 @@ class InputDialog extends StatefulWidget {
     this.placeholder = '',
     this.confirmText = 'Confirm',
     this.cancelText = 'Cancel',
+    this.obscureText = false,
+    this.digitsOnly = false,
+    this.maxLength,
+    this.keyboardType,
   });
 
   static Future<String?> show(
@@ -27,6 +36,10 @@ class InputDialog extends StatefulWidget {
     String placeholder = '',
     String confirmText = 'Confirm',
     String cancelText = 'Cancel',
+    bool obscureText = false,
+    bool digitsOnly = false,
+    int? maxLength,
+    TextInputType? keyboardType,
   }) {
     return showDialog<String>(
       context: context,
@@ -38,6 +51,10 @@ class InputDialog extends StatefulWidget {
         placeholder: placeholder,
         confirmText: confirmText,
         cancelText: cancelText,
+        obscureText: obscureText,
+        digitsOnly: digitsOnly,
+        maxLength: maxLength,
+        keyboardType: keyboardType,
       ),
     );
   }
@@ -59,6 +76,21 @@ class _InputDialogState extends State<InputDialog> {
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  bool _canSubmit(String text) {
+    final value = text.trim();
+    if (value.isEmpty) return false;
+    if (widget.maxLength != null && value.length != widget.maxLength) return false;
+    if (widget.digitsOnly && value.contains(RegExp(r'\D'))) return false;
+    return true;
+  }
+
+  void _submit() {
+    final text = _controller.text.trim();
+    if (_canSubmit(text)) {
+      Navigator.of(context).pop(text);
+    }
   }
 
   @override
@@ -97,8 +129,19 @@ class _InputDialogState extends State<InputDialog> {
             TextField(
               controller: _controller,
               autofocus: true,
+              obscureText: widget.obscureText,
+              keyboardType: widget.keyboardType ??
+                  (widget.digitsOnly ? TextInputType.number : TextInputType.text),
+              maxLength: widget.maxLength,
+              inputFormatters: [
+                if (widget.digitsOnly) FilteringTextInputFormatter.digitsOnly,
+                if (widget.maxLength != null) LengthLimitingTextInputFormatter(widget.maxLength),
+              ],
+              onChanged: (_) => setState(() {}),
+              onSubmitted: (_) => _submit(),
               decoration: InputDecoration(
                 hintText: widget.placeholder,
+                counterText: widget.maxLength != null ? '' : null,
                 filled: true,
                 fillColor: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -123,12 +166,7 @@ class _InputDialogState extends State<InputDialog> {
             ),
           ),
           ElevatedButton(
-            onPressed: () {
-              final text = _controller.text.trim();
-              if (text.isNotEmpty) {
-                Navigator.of(context).pop(text);
-              }
-            },
+            onPressed: _canSubmit(_controller.text) ? _submit : null,
             style: ElevatedButton.styleFrom(
               backgroundColor: primary,
               foregroundColor: Colors.white,

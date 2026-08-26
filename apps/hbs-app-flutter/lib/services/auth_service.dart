@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import '../core/utils/session_token_cleaner.dart';
+import '../models/saved_account.dart';
 import '../models/user_model.dart';
 import 'api_service.dart';
 import 'storage_service.dart';
@@ -99,6 +100,12 @@ class AuthService {
         await StorageService().saveAuthCredentials(email, password);
         await StorageService().saveCurrentUser(user);
         await StorageService().setUserLoggedOut(false);
+        await StorageService().upsertSavedAccount(SavedAccount(
+          email: email.trim(),
+          password: password,
+          name: user.name,
+          serverUrl: serverUrl,
+        ));
         ApiService().updateConfig(serverUrl: serverUrl, sessionToken: cleanToken);
       }
 
@@ -151,6 +158,12 @@ class AuthService {
         await StorageService().saveAuthCredentials(email, password);
         await StorageService().saveCurrentUser(user);
         await StorageService().setUserLoggedOut(false);
+        await StorageService().upsertSavedAccount(SavedAccount(
+          email: email.trim(),
+          password: password,
+          name: user.name,
+          serverUrl: serverUrl,
+        ));
         ApiService().updateConfig(serverUrl: serverUrl, sessionToken: cleanToken);
       }
 
