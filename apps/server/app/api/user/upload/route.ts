@@ -51,38 +51,38 @@ export async function POST(request: NextRequest) {
     let parentPath = "";
     let rawName = "";
     let mime: string | null = null;
-    let buf: Buffer | null = null;
+    let fileBlob: File | Buffer | null = null;
     let rawCreationTime: string | null = request.headers.get("x-file-creation-time");
 
     try {
       const form = await request.formData();
       parentPath = toPosixRel(String(form.get("parentPath") || form.get("path") || ""));
       const customName = String(
-        form.get("fileName") || form.get("name") || form.get("filename") || ""
+        form.get("fileName") || form.get("name") || form.get("filename") || "",
       ).trim();
       const file = form.get("file");
 
       if (!rawCreationTime) {
-        rawCreationTime = String(
-          form.get("creationTime") || form.get("capturedAt") || form.get("mtime") || ""
-        ).trim() || null;
+        rawCreationTime =
+          String(form.get("creationTime") || form.get("capturedAt") || form.get("mtime") || "").trim() ||
+          null;
       }
 
       if (file instanceof File) {
         rawName = customName || file.name || `upload_${Date.now()}`;
-        buf = Buffer.from(await file.arrayBuffer());
+        fileBlob = file;
         mime = file.type || guessMime(rawName);
       }
     } catch (formErr) {
       console.warn(
         "[HBS][UPLOAD] formData() failed, using multipart fallback",
-        formErr instanceof Error ? formErr.message : formErr
+        formErr instanceof Error ? formErr.message : formErr,
       );
       const fallback = await parseMultipartFallback(request, contentType);
       if (fallback) {
         parentPath = toPosixRel(fallback.parentPath);
         rawName = fallback.customName || fallback.fileName;
-        buf = fallback.fileBuf;
+        fileBlob = fallback.fileBuf;
         mime = fallback.mimeType || guessMime(rawName);
         if (!rawCreationTime && fallback.creationTime) {
           rawCreationTime = fallback.creationTime;
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (!buf || !rawName) {
+    if (!fileBlob || !rawName) {
       await logAction({
         type: "USER_UPLOAD",
         level: "WARN",
@@ -105,7 +105,9 @@ export async function POST(request: NextRequest) {
 
     ensureUserDir(userId);
     const name = rawName.replace(/[\\/]/g, "_");
-    const rel = toPosixRel(parentPath ? `${parentPath}/${name}` : name);
+    const incomingSize =
+      Buffer.isBuffer(fileBlob) ? fileBlob.length : Number(fileBlob.size) || 0;
+    const intendedRel = toPosixRel(parentPath ? `${parentPath}/${name}` : name);
 
     let fileDate: Date | undefined;
     if (rawCreationTime) {
@@ -122,7 +124,7 @@ export async function POST(request: NextRequest) {
       request.headers.get("x-check-only") === "1" ||
       new URL(request.url).searchParams.get("check") === "1";
     const existing = await prisma.backupFile.findUnique({
-      where: { userId_path: { userId, path: rel } },
+      where: { userId_path: { userId, path: intendedRel } },
     });
 
     if (checkOnly && existing) {
@@ -135,11 +137,13 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const rel = await uniqueUserRel(userId, parentPath, name, incomingSize);
+
     const abs = resolveUserPath(userId, rel);
     fs.mkdirSync(/* turbopackIgnore: true */ path.dirname(abs), {
       recursive: true,
     });
-    fs.writeFileSync(/* turbopackIgnore: true */ abs, buf);
+    const bytes = await writeIncomingFile(abs, fileBlob);
 
     if (fileDate) {
       try {
@@ -152,10 +156,10 @@ export async function POST(request: NextRequest) {
     const rowData = {
       userId,
       path: rel,
-      name,
+      name: path.posix.basename(rel),
       parentPath,
       isDir: false,
-      size: BigInt(buf.length),
+      size: BigInt(bytes),
       mimeType: mime,
       ...(fileDate ? { createdAt: fileDate, updatedAt: fileDate } : {}),
     };
@@ -164,7 +168,7 @@ export async function POST(request: NextRequest) {
       where: { userId_path: { userId, path: rel } },
       create: rowData,
       update: {
-        size: BigInt(buf.length),
+        size: BigInt(bytes),
         mimeType: mime,
         ...(fileDate ? { createdAt: fileDate, updatedAt: fileDate } : {}),
       },
@@ -172,15 +176,15 @@ export async function POST(request: NextRequest) {
 
     await writeLog({
       type: "USER_UPLOAD",
-      message: `User uploaded ${rel} (${buf.length} bytes)`,
+      message: `User uploaded ${rel} (${bytes} bytes)`,
       userId,
       userEmail: session.user.email,
       ...meta,
-      metadata: { path: rel, bytes: buf.length, mime, creationTime: fileDate?.toISOString() },
+      metadata: { path: rel, bytes, mime, creationTime: fileDate?.toISOString() },
     });
 
     console.log(
-      `[HBS][UPLOAD] ok user=${session.user.email} path=${rel} bytes=${buf.length}`
+      `[HBS][UPLOAD] ok user=${session.user.email} path=${rel} bytes=${bytes}`,
     );
 
     return ok(
@@ -190,7 +194,7 @@ export async function POST(request: NextRequest) {
           size: Number(row.size),
         },
       },
-      { status: 201 }
+      { status: 201 },
     );
   } catch (e) {
     await logAction({
@@ -269,6 +273,68 @@ async function parseMultipartFallback(
     // fallback failed
   }
   return null;
+}
+
+function splitName(name: string): { stem: string; ext: string } {
+  const idx = name.lastIndexOf(".");
+  if (idx <= 0) return { stem: name, ext: "" };
+  return { stem: name.slice(0, idx), ext: name.slice(idx) };
+}
+
+async function uniqueUserRel(
+  userId: string,
+  parentPath: string,
+  name: string,
+  incomingSize: number,
+): Promise<string> {
+  let candidate = toPosixRel(parentPath ? `${parentPath}/${name}` : name);
+  const { stem, ext } = splitName(name);
+  let n = 2;
+  while (true) {
+    const existing = await prisma.backupFile.findUnique({
+      where: { userId_path: { userId, path: candidate } },
+    });
+    const abs = resolveUserPath(userId, candidate);
+    const onDisk = fs.existsSync(/* turbopackIgnore: true */ abs);
+    const existingSize = existing
+      ? Number(existing.size)
+      : onDisk
+        ? fs.statSync(/* turbopackIgnore: true */ abs).size
+        : null;
+    if (existingSize == null) return candidate;
+    if (incomingSize > 0 && existingSize === incomingSize) return candidate;
+    const nextName = `${stem} (${n})${ext}`;
+    candidate = toPosixRel(parentPath ? `${parentPath}/${nextName}` : nextName);
+    n += 1;
+    if (n > 500) return candidate;
+  }
+}
+
+async function writeIncomingFile(abs: string, source: File | Buffer): Promise<number> {
+  if (Buffer.isBuffer(source)) {
+    await fs.promises.writeFile(/* turbopackIgnore: true */ abs, source);
+    return source.length;
+  }
+  const writer = fs.createWriteStream(/* turbopackIgnore: true */ abs);
+  const reader = source.stream().getReader();
+  let bytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      bytes += value.byteLength;
+      if (!writer.write(Buffer.from(value))) {
+        await new Promise<void>((resolve) => writer.once("drain", resolve));
+      }
+    }
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      writer.end(() => resolve());
+      writer.on("error", reject);
+    });
+  }
+  return bytes;
 }
 
 function guessMime(name: string): string | null {

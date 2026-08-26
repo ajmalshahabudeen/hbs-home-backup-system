@@ -101,12 +101,14 @@ class ApiService {
     };
   }
 
-  Future<List<PhotoMediaItem>> getPhotos({String category = 'all'}) async {
+  Future<List<PhotoMediaItem>> getPhotos({String category = 'all', int offset = 0, int limit = 80}) async {
     final token = await _getToken();
     final res = await _dio.get(
       '$_serverUrl/api/user/photos',
       queryParameters: {
-        if (category.isNotEmpty && category != 'all') 'category': category,
+        if (category.isNotEmpty && category != 'all') 'filter': category,
+        'offset': offset,
+        'limit': limit,
       },
       options: _buildOptions(token),
     );
@@ -115,7 +117,6 @@ class ApiService {
     final List rawMedia = data['media'] is List ? data['media'] : [];
     return rawMedia.map((e) {
       final item = PhotoMediaItem.fromJson(e);
-      // Ensure absolute URL
       String finalUrl = item.url;
       if (finalUrl.startsWith('/')) {
         finalUrl = '$_serverUrl$finalUrl';
@@ -126,6 +127,18 @@ class ApiService {
       }
       return item.copyWith(url: finalUrl, thumbUrl: finalThumb);
     }).toList();
+  }
+
+  Future<List<BackupFileItem>> searchFiles(String query) async {
+    final token = await _getToken();
+    final res = await _dio.get(
+      '$_serverUrl/api/user/files',
+      queryParameters: {'search': query},
+      options: _buildOptions(token),
+    );
+    final data = res.data;
+    final List rawFiles = data['files'] is List ? data['files'] : [];
+    return rawFiles.map((e) => BackupFileItem.fromJson(e)).toList();
   }
 
   Future<DuplicateCheckResult> checkDuplicate({
@@ -232,14 +245,42 @@ class ApiService {
     return res.data;
   }
 
-  Future<dynamic> deleteFile({required String fileId}) async {
+  Future<dynamic> deleteFile({required String fileId, bool permanent = false}) async {
     final token = await _getToken();
     final res = await _dio.delete(
       '$_serverUrl/api/user/files',
-      queryParameters: {'id': fileId},
+      queryParameters: {
+        'id': fileId,
+        if (permanent) 'permanent': '1',
+      },
       options: _buildOptions(token),
     );
     return res.data;
+  }
+
+  Future<void> pingDevice({required String deviceId, String? localIp}) async {
+    final token = await _getToken();
+    await _dio.post(
+      '$_serverUrl/api/user/device/ping',
+      data: {'deviceId': deviceId, if (localIp != null) 'localIp': localIp},
+      options: _buildOptions(token),
+    );
+  }
+
+  Future<String> downloadFile({
+    required String fileId,
+    required String destPath,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final token = await _getToken();
+    await _dio.download(
+      '$_serverUrl/api/user/files',
+      destPath,
+      queryParameters: {'download': '1', 'id': fileId},
+      options: _buildOptions(token),
+      onReceiveProgress: onReceiveProgress,
+    );
+    return destPath;
   }
 
   Future<UserStats> getUserStats() async {

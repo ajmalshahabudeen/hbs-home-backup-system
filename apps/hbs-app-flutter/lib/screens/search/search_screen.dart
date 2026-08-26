@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/glass_card.dart';
-import '../../providers/drive_provider.dart';
+import '../../models/backup_file_item.dart';
+import '../../models/photo_media_item.dart';
 import '../../providers/media_provider.dart';
+import '../../services/api_service.dart';
+import '../drive/drive_preview_screen.dart';
 import '../photos/media_viewer_modal.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
@@ -16,12 +19,32 @@ class SearchScreen extends ConsumerStatefulWidget {
 class _SearchScreenState extends ConsumerState<SearchScreen> {
   final _searchController = TextEditingController();
   String _query = '';
-  int _tabIndex = 0; // 0: All, 1: Photos, 2: Files
+  int _tabIndex = 0;
+  bool _searching = false;
+  List<BackupFileItem> _serverFiles = [];
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _runServerSearch(String query) async {
+    if (query.length < 2) {
+      setState(() => _serverFiles = []);
+      return;
+    }
+    setState(() => _searching = true);
+    try {
+      final files = await ApiService().searchFiles(query);
+      if (!mounted) return;
+      setState(() => _serverFiles = files);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _serverFiles = []);
+    } finally {
+      if (mounted) setState(() => _searching = false);
+    }
   }
 
   @override
@@ -30,15 +53,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     final primary = theme.primaryColor;
 
     final mediaItems = ref.watch(mediaProvider).items;
-    final driveFiles = ref.watch(driveProvider).files;
-
     final filteredPhotos = _query.isEmpty
-        ? []
+        ? <PhotoMediaItem>[]
         : mediaItems.where((p) => p.name.toLowerCase().contains(_query.toLowerCase())).toList();
-
-    final filteredFiles = _query.isEmpty
-        ? []
-        : driveFiles.where((f) => f.name.toLowerCase().contains(_query.toLowerCase())).toList();
+    final filteredFiles = _serverFiles;
 
     return Scaffold(
       appBar: AppBar(
@@ -46,7 +64,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         title: TextField(
           controller: _searchController,
           autofocus: true,
-          onChanged: (val) => setState(() => _query = val.trim()),
+          onChanged: (val) {
+            final q = val.trim();
+            setState(() => _query = q);
+            _runServerSearch(q);
+          },
           decoration: InputDecoration(
             hintText: 'Search photos, videos, files...',
             border: InputBorder.none,
@@ -55,7 +77,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                     icon: const Icon(Icons.clear_rounded, size: 20),
                     onPressed: () {
                       _searchController.clear();
-                      setState(() => _query = '');
+                      setState(() {
+                        _query = '';
+                        _serverFiles = [];
+                      });
                     },
                   )
                 : null,
@@ -64,7 +89,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       ),
       body: Column(
         children: [
-          // Filter Chips Row
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
@@ -77,8 +101,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               ],
             ),
           ),
-
-          // Search Results Body
           Expanded(
             child: _query.isEmpty
                 ? Center(
@@ -97,6 +119,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 : ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
+                      if (_searching) const LinearProgressIndicator(),
                       if ((_tabIndex == 0 || _tabIndex == 1) && filteredPhotos.isNotEmpty) ...[
                         Text('Photos & Media', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
                         const SizedBox(height: 8),
@@ -133,6 +156,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                               child: GlassCard(
                                 padding: const EdgeInsets.all(12),
                                 borderRadius: 14,
+                                onTap: () {
+                                  final cat = Formatters.getMimeTypeCategory(file.mimeType, file.name);
+                                  if (cat == 'photo' || cat == 'video' || cat == 'audio') {
+                                    DrivePreviewScreen.open(context, file);
+                                  }
+                                },
                                 child: Row(
                                   children: [
                                     Icon(file.isDir ? Icons.folder_rounded : Icons.insert_drive_file_rounded, color: const Color(0xFFF59E0B)),

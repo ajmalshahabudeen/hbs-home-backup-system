@@ -133,6 +133,19 @@ class MediaDiscoveryService {
     return items;
   }
 
+  Future<List<PhotoMediaItem>> getLocalMediaForAlbums(List<LocalAlbum> albums) async {
+    if (albums.isEmpty) return getLocalMedia();
+    final seen = <String>{};
+    final out = <PhotoMediaItem>[];
+    for (final album in albums) {
+      final items = await getLocalMedia(album: album.entity);
+      for (final item in items) {
+        if (seen.add(item.id)) out.add(item);
+      }
+    }
+    return out;
+  }
+
   Future<PhotoMediaItem> resolveFile(PhotoMediaItem item) async {
     if (item.url.isNotEmpty && !item.url.startsWith('http')) {
       return item;

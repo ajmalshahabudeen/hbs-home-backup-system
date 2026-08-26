@@ -145,9 +145,9 @@ class DriveNotifier extends StateNotifier<DriveState> {
     }
   }
 
-  Future<bool> deleteFile(String fileId) async {
+  Future<bool> deleteFile(String fileId, {bool permanent = false}) async {
     try {
-      await ApiService().deleteFile(fileId: fileId);
+      await ApiService().deleteFile(fileId: fileId, permanent: permanent);
       await loadFiles(state.currentPath);
       return true;
     } catch (e) {

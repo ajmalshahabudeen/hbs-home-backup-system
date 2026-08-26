@@ -130,6 +130,7 @@ const staticTrustedOriginPatterns: string[] = [
   "exp://*",
   "exps://*",
   "hbsbackup://*",
+  "hbscloud://*",
   "http://*",
   "https://*",
   ...(process.env.EXPO_SCHEME ? [`${process.env.EXPO_SCHEME}://*`] : []),

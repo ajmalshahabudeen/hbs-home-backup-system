@@ -10,6 +10,8 @@ class BackupState {
   final List<String> selectedAlbumIds;
   final SyncState syncState;
   final bool batterySaverEnabled;
+  final bool wifiOnly;
+  final bool autoBackup;
   final int indexedCount;
   final bool isLoadingAlbums;
 
@@ -18,6 +20,8 @@ class BackupState {
     this.selectedAlbumIds = const [],
     this.syncState = const SyncState(),
     this.batterySaverEnabled = true,
+    this.wifiOnly = true,
+    this.autoBackup = false,
     this.indexedCount = 0,
     this.isLoadingAlbums = false,
   });
@@ -27,6 +31,8 @@ class BackupState {
     List<String>? selectedAlbumIds,
     SyncState? syncState,
     bool? batterySaverEnabled,
+    bool? wifiOnly,
+    bool? autoBackup,
     int? indexedCount,
     bool? isLoadingAlbums,
   }) {
@@ -35,6 +41,8 @@ class BackupState {
       selectedAlbumIds: selectedAlbumIds ?? this.selectedAlbumIds,
       syncState: syncState ?? this.syncState,
       batterySaverEnabled: batterySaverEnabled ?? this.batterySaverEnabled,
+      wifiOnly: wifiOnly ?? this.wifiOnly,
+      autoBackup: autoBackup ?? this.autoBackup,
       indexedCount: indexedCount ?? this.indexedCount,
       isLoadingAlbums: isLoadingAlbums ?? this.isLoadingAlbums,
     );
@@ -50,19 +58,23 @@ class BackupNotifier extends StateNotifier<BackupState> {
     final storage = StorageService();
     final savedAlbumIds = storage.getStringList('hbs_backup_selected_albums');
     final battery = storage.getBool('hbs_battery_saver', defaultValue: true);
+    final wifiOnly = storage.getBool('hbs_wifi_only', defaultValue: true);
+    final autoBackup = storage.getBool('hbs_auto_backup', defaultValue: false);
 
     state = state.copyWith(
       selectedAlbumIds: savedAlbumIds,
       batterySaverEnabled: battery,
+      wifiOnly: wifiOnly,
+      autoBackup: autoBackup,
     );
 
-    // Listen to queue state stream
     UploadQueueService().stateStream.listen((syncState) {
       state = state.copyWith(syncState: syncState);
     });
 
     loadAlbums();
     refreshIndexCount();
+    UploadQueueService().resumePending(concurrency: battery ? 2 : 4);
   }
 
   Future<void> loadAlbums() async {
@@ -95,24 +107,33 @@ class BackupNotifier extends StateNotifier<BackupState> {
     await StorageService().setBool('hbs_battery_saver', enabled);
   }
 
+  Future<void> setWifiOnly(bool enabled) async {
+    state = state.copyWith(wifiOnly: enabled);
+    await StorageService().setBool('hbs_wifi_only', enabled);
+  }
+
+  Future<void> setAutoBackup(bool enabled) async {
+    state = state.copyWith(autoBackup: enabled);
+    await StorageService().setBool('hbs_auto_backup', enabled);
+  }
+
   Future<void> startSync() async {
     final selected = state.selectedAlbumIds;
-    final List<LocalAlbum> targetAlbums = [];
+    final targetAlbums = selected.isEmpty
+        ? state.albums
+        : state.albums.where((a) => selected.contains(a.id)).toList();
 
-    if (selected.isEmpty) {
-      // If no specific album selected, use all
-      targetAlbums.addAll(state.albums);
-    } else {
-      targetAlbums.addAll(state.albums.where((a) => selected.contains(a.id)));
-    }
-
-    // Gather all media items from target albums
-    final itemsToSync = await MediaDiscoveryService().getLocalMedia(pageSize: 500);
-
-    UploadQueueService().startSync(
+    final itemsToSync = await MediaDiscoveryService().getLocalMediaForAlbums(targetAlbums);
+    await UploadQueueService().startSync(
       items: itemsToSync,
       concurrency: state.batterySaverEnabled ? 2 : 4,
     );
+    await refreshIndexCount();
+  }
+
+  Future<void> autoBackupIfEnabled() async {
+    if (!state.autoBackup || state.syncState.isSyncing) return;
+    await startSync();
   }
 
   void cancelSync() {

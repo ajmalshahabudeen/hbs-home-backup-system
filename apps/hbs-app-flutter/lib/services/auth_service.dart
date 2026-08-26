@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import '../core/utils/session_token_cleaner.dart';
 import '../models/saved_account.dart';
 import '../models/user_model.dart';
@@ -110,6 +111,35 @@ class AuthService {
       }
 
       return AuthResult(success: true, user: user, token: cleanToken);
+    } catch (e) {
+      return AuthResult(success: false, error: e.toString());
+    }
+  }
+
+  Future<AuthResult> signInWithGoogle({required String serverUrl}) async {
+    try {
+      final cleanUrl = serverUrl.endsWith('/') ? serverUrl.substring(0, serverUrl.length - 1) : serverUrl;
+      final callback = '$cleanUrl/auth/flutter-bridge';
+      final url =
+          '$cleanUrl/api/auth/sign-in/social?provider=google&callbackURL=${Uri.encodeComponent(callback)}';
+      final result = await FlutterWebAuth2.authenticate(
+        url: url,
+        callbackUrlScheme: 'hbscloud',
+      );
+      final parsed = Uri.parse(result);
+      final rawToken = parsed.queryParameters['token'] ?? '';
+      final cleanToken = SessionTokenCleaner.cleanSessionToken(rawToken) ?? rawToken;
+      if (cleanToken.isEmpty) {
+        return const AuthResult(success: false, error: 'Google sign-in did not return a session. Is Google configured on the server?');
+      }
+      await StorageService().saveSessionToken(cleanToken);
+      await StorageService().setUserLoggedOut(false);
+      ApiService().updateConfig(serverUrl: serverUrl, sessionToken: cleanToken);
+      final user = await restoreSession(serverUrl: serverUrl);
+      if (user != null) {
+        return AuthResult(success: true, user: user, token: cleanToken);
+      }
+      return AuthResult(success: true, token: cleanToken);
     } catch (e) {
       return AuthResult(success: false, error: e.toString());
     }

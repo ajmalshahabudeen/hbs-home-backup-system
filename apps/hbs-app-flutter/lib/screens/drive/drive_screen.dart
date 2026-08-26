@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gal/gal.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/floating_header.dart';
 import '../../core/widgets/glass_card.dart';
@@ -9,6 +12,7 @@ import '../../models/backup_file_item.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/drive_provider.dart';
 import '../../providers/server_provider.dart';
+import '../../services/api_service.dart';
 import '../search/search_screen.dart';
 import '../settings/lan_scanner_modal.dart';
 import 'drive_preview_screen.dart';
@@ -69,6 +73,14 @@ class DriveScreen extends ConsumerWidget {
                 },
               ),
             ListTile(
+              leading: const Icon(Icons.download_rounded),
+              title: const Text('Download'),
+              onTap: () async {
+                Navigator.of(context).pop();
+                await _downloadFile(context, file);
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.edit_rounded),
               title: const Text('Rename'),
               onTap: () async {
@@ -86,26 +98,37 @@ class DriveScreen extends ConsumerWidget {
             ),
             ListTile(
               leading: const Icon(Icons.delete_outline_rounded, color: Colors.red),
-              title: const Text('Delete', style: TextStyle(color: Colors.red)),
+              title: Text(
+                file.parentPath == 'Trash' ? 'Delete forever' : 'Move to Trash',
+                style: const TextStyle(color: Colors.red),
+              ),
               onTap: () async {
                 Navigator.of(context).pop();
+                final inTrash = file.parentPath == 'Trash';
                 final confirm = await showDialog<bool>(
                   context: context,
                   builder: (ctx) => AlertDialog(
-                    title: const Text('Delete Item'),
-                    content: Text('Are you sure you want to delete "${file.name}"?'),
+                    title: Text(inTrash ? 'Delete forever' : 'Move to Trash'),
+                    content: Text(
+                      inTrash
+                          ? 'Permanently delete "${file.name}"? This cannot be undone.'
+                          : 'Move "${file.name}" to Trash?',
+                    ),
                     actions: [
                       TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
                       ElevatedButton(
                         onPressed: () => Navigator.of(ctx).pop(true),
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-                        child: const Text('Delete'),
+                        child: Text(inTrash ? 'Delete' : 'Trash'),
                       ),
                     ],
                   ),
                 );
                 if (confirm == true) {
-                  await driveNotifier.deleteFile(file.id);
+                  await driveNotifier.deleteFile(file.id, permanent: inTrash);
+                  if (context.mounted && !inTrash) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Moved to Trash')));
+                  }
                 }
               },
             ),
@@ -113,6 +136,32 @@ class DriveScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _downloadFile(BuildContext context, BackupFileItem file) async {
+    try {
+      final dir = await getTemporaryDirectory();
+      final dest = '${dir.path}/${file.name}';
+      await ApiService().downloadFile(fileId: file.id, destPath: dest);
+      final cat = Formatters.getMimeTypeCategory(file.mimeType, file.name);
+      if (cat == 'photo') {
+        await Gal.putImage(dest, album: 'HBS Cloud');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved to gallery')));
+        }
+      } else if (cat == 'video') {
+        await Gal.putVideo(dest, album: 'HBS Cloud');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved to gallery')));
+        }
+      } else {
+        await SharePlus.instance.share(ShareParams(files: [XFile(dest)], text: file.name));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Download failed: $e')));
+      }
+    }
   }
 
   @override

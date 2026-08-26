@@ -318,11 +318,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   'Continue with Google',
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                 ),
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Redirecting to Google Sign-In...')),
-                  );
-                },
+                onPressed: authState.isLoading
+                    ? null
+                    : () async {
+                        final ok = await ref.read(authProvider.notifier).signInWithGoogle();
+                        if (ok && context.mounted) {
+                          Navigator.of(context).popUntil((route) => route.isFirst);
+                        }
+                      },
                 style: OutlinedButton.styleFrom(
                   side: BorderSide(
                     color: isDark ? Colors.white.withValues(alpha: 0.15) : Colors.black.withValues(alpha: 0.12),

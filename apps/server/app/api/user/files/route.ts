@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import fs from "node:fs";
 import path from "node:path";
+import { Readable } from "node:stream";
 import { prisma } from "@workspace/db";
 import {
   requireSession,
@@ -58,12 +59,13 @@ export async function GET(request: NextRequest) {
     try {
       const abs = resolveUserPath(userId, row.path);
       if (!fs.existsSync(abs)) return badRequest("File missing on disk");
-      const buf = fs.readFileSync(abs);
-      return new Response(buf, {
+      const stat = fs.statSync(abs);
+      const stream = fs.createReadStream(abs);
+      return new Response(Readable.toWeb(stream) as ReadableStream, {
         headers: {
           "Content-Type": row.mimeType || "application/octet-stream",
           "Content-Disposition": `attachment; filename="${encodeURIComponent(row.name)}"`,
-          "Content-Length": String(buf.length),
+          "Content-Length": String(stat.size),
         },
       });
     } catch (e) {
@@ -311,6 +313,7 @@ export async function DELETE(request: NextRequest) {
   const userId = session.user.id;
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
+  const permanent = searchParams.get("permanent") === "1";
   if (!id) return badRequest("id required");
 
   const row = await prisma.backupFile.findFirst({
@@ -320,35 +323,84 @@ export async function DELETE(request: NextRequest) {
 
   try {
     const abs = resolveUserPath(userId, row.path);
-    if (fs.existsSync(abs)) {
-      fs.rmSync(abs, { recursive: true, force: true });
+    const inTrash = row.parentPath === "Trash" || row.path.startsWith("Trash/");
+
+    if (permanent || inTrash) {
+      if (fs.existsSync(abs)) {
+        fs.rmSync(abs, { recursive: true, force: true });
+      }
+      if (row.isDir) {
+        await prisma.backupFile.deleteMany({
+          where: {
+            userId,
+            OR: [{ path: row.path }, { path: { startsWith: row.path + "/" } }],
+          },
+        });
+      } else {
+        await prisma.backupFile.delete({ where: { id } });
+      }
+      const meta = clientMeta(request);
+      await writeLog({
+        type: "USER_FILE_CRUD",
+        message: `User permanently deleted ${row.isDir ? "folder" : "file"} ${row.path}`,
+        userId,
+        userEmail: session.user.email,
+        ...meta,
+        metadata: { path: row.path, isDir: row.isDir, permanent: true },
+      });
+      return ok({ deleted: true, id, permanent: true });
     }
 
+    ensureUserDir(userId);
+    const trashRel = toPosixRel(`Trash/${row.name}`);
+    const trashAbs = resolveUserPath(userId, trashRel);
+    fs.mkdirSync(path.dirname(trashAbs), { recursive: true });
+    let destRel = trashRel;
+    let destAbs = trashAbs;
+    if (fs.existsSync(destAbs) || destRel === row.path) {
+      destRel = toPosixRel(`Trash/${Date.now()}_${row.name}`);
+      destAbs = resolveUserPath(userId, destRel);
+    }
+    if (fs.existsSync(abs)) {
+      fs.renameSync(abs, destAbs);
+    }
     if (row.isDir) {
-      await prisma.backupFile.deleteMany({
+      const children = await prisma.backupFile.findMany({
         where: {
           userId,
-          OR: [{ path: row.path }, { path: { startsWith: row.path + "/" } }],
+          OR: [{ path: { startsWith: row.path + "/" } }, { path: row.path }],
         },
       });
+      for (const child of children) {
+        const updatedPath =
+          child.path === row.path ? destRel : toPosixRel(child.path.replace(row.path, destRel));
+        await prisma.backupFile.update({
+          where: { id: child.id },
+          data: {
+            path: updatedPath,
+            parentPath: child.id === row.id ? "Trash" : child.parentPath.replace(row.path, destRel),
+            name: child.id === row.id ? row.name : child.name,
+          },
+        });
+      }
     } else {
-      await prisma.backupFile.delete({ where: { id } });
+      await prisma.backupFile.update({
+        where: { id: row.id },
+        data: { path: destRel, parentPath: "Trash", name: row.name },
+      });
     }
 
     const meta = clientMeta(request);
     await writeLog({
       type: "USER_FILE_CRUD",
-      message: `User deleted ${row.isDir ? "folder" : "file"} ${row.path}`,
+      message: `User moved ${row.isDir ? "folder" : "file"} ${row.path} to Trash`,
       userId,
       userEmail: session.user.email,
       ...meta,
-      metadata: { path: row.path, isDir: row.isDir },
+      metadata: { path: row.path, trash: destRel, isDir: row.isDir },
     });
-    console.log(
-      `[HBS][FILE] delete user=${session.user.email} path=${row.path}`
-    );
-
-    return ok({ deleted: true, id });
+    console.log(`[HBS][FILE] trash user=${session.user.email} path=${row.path}`);
+    return ok({ deleted: false, trashed: true, id });
   } catch (e) {
     return badRequest(e instanceof Error ? e.message : "Delete failed");
   }

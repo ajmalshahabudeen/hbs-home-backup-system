@@ -64,9 +64,19 @@ class BackupIndexDb {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
-        await db.execute('''
+        await _createV1(db);
+        await _createQueue(db);
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) await _createQueue(db);
+      },
+    );
+  }
+
+  Future<void> _createV1(Database db) async {
+    await db.execute('''
           CREATE TABLE IF NOT EXISTS backup_index (
             id TEXT PRIMARY KEY,
             file_name TEXT NOT NULL,
@@ -77,10 +87,25 @@ class BackupIndexDb {
             uploaded_at TEXT NOT NULL
           )
         ''');
-        await db.execute('CREATE INDEX IF NOT EXISTS idx_checksum ON backup_index (checksum)');
-        await db.execute('CREATE INDEX IF NOT EXISTS idx_file_name_size ON backup_index (file_name, file_size)');
-      },
-    );
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_checksum ON backup_index (checksum)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_file_name_size ON backup_index (file_name, file_size)');
+  }
+
+  Future<void> _createQueue(Database db) async {
+    await db.execute('''
+          CREATE TABLE IF NOT EXISTS upload_queue (
+            id TEXT PRIMARY KEY,
+            asset_id TEXT,
+            file_path TEXT NOT NULL,
+            file_name TEXT NOT NULL,
+            file_size INTEGER NOT NULL,
+            mime_type TEXT,
+            parent_path TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL
+          )
+        ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_queue_status ON upload_queue (status)');
   }
 
   Future<void> recordUploaded({
@@ -160,5 +185,47 @@ class BackupIndexDb {
   Future<void> clearAll() async {
     final db = await database;
     await db.delete('backup_index');
+  }
+
+  Future<void> enqueueUpload({
+    required String id,
+    required String filePath,
+    required String fileName,
+    required int fileSize,
+    String? assetId,
+    String? mimeType,
+    String parentPath = 'MobileBackups',
+  }) async {
+    final db = await database;
+    await db.insert(
+      'upload_queue',
+      {
+        'id': id,
+        'asset_id': assetId,
+        'file_path': filePath,
+        'file_name': fileName,
+        'file_size': fileSize,
+        'mime_type': mimeType,
+        'parent_path': parentPath,
+        'status': 'pending',
+        'created_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> pendingUploads() async {
+    final db = await database;
+    return db.query('upload_queue', where: 'status = ?', whereArgs: ['pending'], orderBy: 'created_at ASC');
+  }
+
+  Future<void> markQueueStatus(String id, String status) async {
+    final db = await database;
+    await db.update('upload_queue', {'status': status}, where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> clearFinishedQueue() async {
+    final db = await database;
+    await db.delete('upload_queue', where: 'status IN (?, ?)', whereArgs: ['done', 'skipped']);
   }
 }

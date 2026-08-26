@@ -24,7 +24,7 @@ class StorageService {
     try {
       await _secureStorage.write(key: 'hbs_auth_session_token', value: token);
     } catch (_) {}
-    await _prefs?.setString('hbs_auth_session_token', token);
+    await _prefs?.remove('hbs_auth_session_token');
   }
 
   Future<String?> getSessionToken() async {
@@ -32,7 +32,12 @@ class StorageService {
       final token = await _secureStorage.read(key: 'hbs_auth_session_token');
       if (token != null && token.isNotEmpty) return token;
     } catch (_) {}
-    return _prefs?.getString('hbs_auth_session_token');
+    final legacy = _prefs?.getString('hbs_auth_session_token');
+    if (legacy != null && legacy.isNotEmpty) {
+      await saveSessionToken(legacy);
+      return legacy;
+    }
+    return null;
   }
 
   Future<void> clearSessionToken() async {
@@ -49,7 +54,7 @@ class StorageService {
     try {
       await _secureStorage.write(key: 'hbs_auth_credentials', value: raw);
     } catch (_) {}
-    await _prefs?.setString('hbs_auth_credentials', raw);
+    await _prefs?.remove('hbs_auth_credentials');
   }
 
   Future<Map<String, String>?> getAuthCredentials() async {
@@ -58,6 +63,12 @@ class StorageService {
       raw = await _secureStorage.read(key: 'hbs_auth_credentials');
     } catch (_) {}
     raw ??= _prefs?.getString('hbs_auth_credentials');
+    if (raw != null && _prefs?.containsKey('hbs_auth_credentials') == true) {
+      await _prefs?.remove('hbs_auth_credentials');
+      try {
+        await _secureStorage.write(key: 'hbs_auth_credentials', value: raw);
+      } catch (_) {}
+    }
 
     if (raw == null || raw.isEmpty) return null;
     try {
@@ -89,6 +100,12 @@ class StorageService {
       raw = await _secureStorage.read(key: _savedAccountsKey);
     } catch (_) {}
     raw ??= _prefs?.getString(_savedAccountsKey);
+    if (raw != null && _prefs?.containsKey(_savedAccountsKey) == true) {
+      await _prefs?.remove(_savedAccountsKey);
+      try {
+        await _secureStorage.write(key: _savedAccountsKey, value: raw);
+      } catch (_) {}
+    }
 
     final accounts = <SavedAccount>[];
     if (raw != null && raw.isNotEmpty) {
@@ -147,7 +164,7 @@ class StorageService {
     try {
       await _secureStorage.write(key: _savedAccountsKey, value: raw);
     } catch (_) {}
-    await _prefs?.setString(_savedAccountsKey, raw);
+    await _prefs?.remove(_savedAccountsKey);
   }
 
   // ==================== User Profile Caching ====================

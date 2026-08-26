@@ -76,7 +76,15 @@ class MediaNotifier extends StateNotifier<MediaState> {
         },
       );
 
-      final serverPhotos = await ApiService().getPhotos().catchError((_) => <PhotoMediaItem>[]);
+      final serverPhotos = <PhotoMediaItem>[];
+      var offset = 0;
+      while (true) {
+        final page = await ApiService().getPhotos(offset: offset, limit: 80).catchError((_) => <PhotoMediaItem>[]);
+        if (page.isEmpty) break;
+        serverPhotos.addAll(page);
+        if (page.length < 80) break;
+        offset += 80;
+      }
       final indexKeys = await BackupIndexDb().getUploadedKeys();
 
       final merged = MediaMerger.merge(

@@ -159,11 +159,13 @@ class _MediaViewerModalState extends State<MediaViewerModal> {
                             imageProvider: CachedNetworkImageProvider(widget.item.url, headers: _headers),
                             minScale: PhotoViewComputedScale.contained,
                             maxScale: PhotoViewComputedScale.covered * 3.0,
+                            errorBuilder: (_, __, ___) => Formatters.heicFallback(),
                           )
                         : PhotoView(
                             imageProvider: FileImage(File(widget.item.url)),
                             minScale: PhotoViewComputedScale.contained,
                             maxScale: PhotoViewComputedScale.covered * 3.0,
+                            errorBuilder: (_, __, ___) => Formatters.heicFallback(),
                           ))),
           ),
 

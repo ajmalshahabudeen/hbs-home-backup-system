@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 class Formatters {
@@ -54,10 +55,10 @@ class Formatters {
 
     if (fileName != null) {
       final ext = fileName.split('.').last.toLowerCase();
-      if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'bmp', 'svg'].contains(ext)) {
+      if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif', 'bmp', 'svg'].contains(ext)) {
         return 'photo';
       }
-      if (['mp4', 'mkv', 'mov', 'avi', 'webm', '3gp', 'm4v'].contains(ext)) {
+      if (['mp4', 'mkv', 'mov', 'avi', 'webm', '3gp', 'm4v', 'hevc'].contains(ext)) {
         return 'video';
       }
       if (['mp3', 'wav', 'aac', 'flac', 'ogg', 'm4a'].contains(ext)) {
@@ -69,5 +70,32 @@ class Formatters {
     }
 
     return 'other';
+  }
+
+  static bool isHeic(String? mimeType, String? fileName) {
+    final mime = (mimeType ?? '').toLowerCase();
+    if (mime.contains('heic') || mime.contains('heif')) return true;
+    final ext = (fileName ?? '').split('.').last.toLowerCase();
+    return ext == 'heic' || ext == 'heif';
+  }
+
+  static Widget heicFallback() {
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.image_not_supported_outlined, color: Colors.white54, size: 48),
+            SizedBox(height: 12),
+            Text(
+              'This HEIC/HEIF file cannot be previewed on this device.\nDownload it or open it in another app.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

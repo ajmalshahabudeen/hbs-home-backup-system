@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@workspace/db";
-import { requireSession, ok, extractSessionToken } from "@/lib/auth-guard";
+import { requireSession, ok } from "@/lib/auth-guard";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -11,29 +11,33 @@ export async function GET(request: NextRequest) {
 
   const userId = session.user.id;
   const { searchParams } = new URL(request.url);
-  const filter = searchParams.get("filter"); // 'all' | 'photos' | 'videos'
-  const token = extractSessionToken(request) || "";
+  const filter = searchParams.get("filter") || searchParams.get("category");
+  const limitRaw = Number(searchParams.get("limit") || 80);
+  const offsetRaw = Number(searchParams.get("offset") || 0);
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 200) : 80;
+  const offset = Number.isFinite(offsetRaw) ? Math.max(offsetRaw, 0) : 0;
 
-  const files = await prisma.backupFile.findMany({
-    where: {
-      userId,
-      isDir: false,
-      NOT: [
-        { name: { contains: ".hbs-thumb" } },
-        { path: { contains: ".hbs-thumb" } },
-      ],
-      OR:
-        filter === "videos"
-          ? [{ mimeType: { startsWith: "video/" } }]
-          : filter === "photos"
-            ? [{ mimeType: { startsWith: "image/" } }]
-            : [
-                { mimeType: { startsWith: "image/" } },
-                { mimeType: { startsWith: "video/" } },
-              ],
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  const where = {
+    userId,
+    isDir: false,
+    NOT: [{ name: { contains: ".hbs-thumb" } }, { path: { contains: ".hbs-thumb" } }, { path: { startsWith: "Trash/" } }],
+    OR:
+      filter === "videos"
+        ? [{ mimeType: { startsWith: "video/" } }]
+        : filter === "photos"
+          ? [{ mimeType: { startsWith: "image/" } }]
+          : [{ mimeType: { startsWith: "image/" } }, { mimeType: { startsWith: "video/" } }],
+  };
+
+  const [total, files] = await Promise.all([
+    prisma.backupFile.count({ where }),
+    prisma.backupFile.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: offset,
+      take: limit,
+    }),
+  ]);
 
   const mediaList = files.map((f) => {
     const enc = f.path
@@ -41,10 +45,6 @@ export async function GET(request: NextRequest) {
       .map((p) => encodeURIComponent(p))
       .join("/");
     const base = `/api/user/media/${enc}`;
-    const q = token ? `?token=${encodeURIComponent(token)}` : "";
-    const thumbQ = token
-      ? `?token=${encodeURIComponent(token)}&thumb=1`
-      : `?thumb=1`;
     return {
       id: f.id,
       userId: f.userId,
@@ -56,13 +56,16 @@ export async function GET(request: NextRequest) {
       createdAt: f.createdAt.toISOString(),
       updatedAt: f.updatedAt.toISOString(),
       isVideo: f.mimeType?.startsWith("video/") ?? false,
-      url: `${base}${q}`,
-      thumbUrl: `${base}${thumbQ}`,
+      url: base,
+      thumbUrl: `${base}?thumb=1`,
     };
   });
 
   return ok({
-    total: mediaList.length,
+    total,
+    offset,
+    limit,
+    hasMore: offset + files.length < total,
     media: mediaList,
   });
 }

@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
+import '../services/device_service.dart';
 import '../services/storage_service.dart';
 import 'server_provider.dart';
 
@@ -79,6 +80,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         user: user,
         token: token,
       );
+      DeviceService().registerAndPing();
     } else {
       if (StorageService().isUserLoggedOut()) {
         state = const AuthState(
@@ -126,6 +128,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         user: result.user,
         token: result.token,
       );
+      DeviceService().registerAndPing();
       return true;
     } else {
       state = state.copyWith(
@@ -153,6 +156,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         user: result.user,
         token: result.token,
       );
+      DeviceService().registerAndPing();
       return true;
     } else {
       state = state.copyWith(
@@ -161,6 +165,27 @@ class AuthNotifier extends StateNotifier<AuthState> {
       );
       return false;
     }
+  }
+
+  Future<bool> signInWithGoogle() async {
+    state = state.copyWith(isLoading: true, errorMessage: null);
+    final serverUrl = ref.read(serverProvider).url;
+    final result = await AuthService().signInWithGoogle(serverUrl: serverUrl);
+    if (result.success) {
+      state = state.copyWith(
+        isLoading: false,
+        isAuthenticated: true,
+        user: result.user,
+        token: result.token,
+      );
+      DeviceService().registerAndPing();
+      return true;
+    }
+    state = state.copyWith(
+      isLoading: false,
+      errorMessage: result.error ?? 'Google sign in failed',
+    );
+    return false;
   }
 
   Future<void> signOut() async {

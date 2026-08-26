@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hbs_app_flutter/core/utils/formatters.dart';
 import 'package:hbs_app_flutter/core/utils/media_merger.dart';
 import 'package:hbs_app_flutter/core/utils/media_path_filter.dart';
 import 'package:hbs_app_flutter/core/utils/pin_validator.dart';
@@ -145,6 +146,15 @@ void main() {
       expect(MediaPathFilter.isAndroidAppFolder(relativePath: 'Download'), isFalse);
       expect(MediaPathFilter.isAndroidAppFolder(filePath: '/storage/emulated/0/DCIM/IMG_1.jpg'), isFalse);
       expect(MediaPathFilter.isAndroidAppFolder(albumName: 'Camera'), isFalse);
+    });
+  });
+
+  group('Formatters.isHeic', () {
+    test('detects heic/heif by mime and extension', () {
+      expect(Formatters.isHeic('image/heic', 'IMG.JPG'), isTrue);
+      expect(Formatters.isHeic(null, 'vacation.HEIC'), isTrue);
+      expect(Formatters.isHeic('image/heif', 'a.heif'), isTrue);
+      expect(Formatters.isHeic('image/jpeg', 'photo.jpg'), isFalse);
     });
   });
 }
