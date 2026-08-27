@@ -1,136 +1,179 @@
 import crypto from "node:crypto";
-import { NextRequest } from "next/server";
 import fs from "node:fs";
-import path from "node:path";
 import os from "node:os";
+import path from "node:path";
 import { prisma } from "@workspace/db";
-import { requireSession, ok, badRequest, writeLog, clientMeta } from "@/lib/auth-guard";
-import { ensureUserDir, resolveUserPath, toPosixRel } from "@/lib/storage";
+import type { NextRequest } from "next/server";
+import { withApiLog } from "@/lib/api-log";
+import { encryptAtRestFile } from "@/lib/at-rest";
+import {
+  badRequest,
+  clientMeta,
+  ok,
+  requireSession,
+  writeLog,
+} from "@/lib/auth-guard";
 import { assertQuota } from "@/lib/quota";
 import { resolveUploadTarget } from "@/lib/share-target";
-import { encryptAtRestFile } from "@/lib/at-rest";
+import { ensureUserDir, resolveUserPath, toPosixRel } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 function chunkDir(userId: string, uploadId: string) {
-  return path.join(os.tmpdir(), "hbs-chunks", userId, uploadId.replace(/[^a-zA-Z0-9_-]/g, "_"));
+  return path.join(
+    os.tmpdir(),
+    "hbs-chunks",
+    userId,
+    uploadId.replace(/[^a-zA-Z0-9_-]/g, "_"),
+  );
 }
 
-export async function GET(request: NextRequest) {
-  const { session, error } = await requireSession(request);
-  if (error) return error;
-  const uploadId = new URL(request.url).searchParams.get("uploadId") || "";
-  if (!uploadId) return badRequest("uploadId required");
-  const dir = chunkDir(session.user.id, uploadId);
-  let received: number[] = [];
-  try {
-    received = fs
-      .readdirSync(dir)
-      .filter((n) => /^\d{1,6}$/.test(n))
-      .map((n) => Number(n))
-      .filter((n) => Number.isFinite(n));
-  } catch {
-    received = [];
-  }
-  return ok({ uploadId, received });
-}
+export const GET = withApiLog(
+  "GET /api/user/upload/chunk",
+  async (request: NextRequest) => {
+    const { session, error } = await requireSession(request);
+    if (error) return error;
+    const uploadId = new URL(request.url).searchParams.get("uploadId") || "";
+    if (!uploadId) return badRequest("uploadId required");
+    const dir = chunkDir(session.user.id, uploadId);
+    let received: number[] = [];
+    try {
+      received = fs
+        .readdirSync(dir)
+        .filter((n) => /^\d{1,6}$/.test(n))
+        .map((n) => Number(n))
+        .filter((n) => Number.isFinite(n));
+    } catch {
+      received = [];
+    }
+    return ok({ uploadId, received });
+  },
+);
 
-export async function POST(request: NextRequest) {
-  const { session, error } = await requireSession(request);
-  if (error) return error;
-  const userId = session.user.id;
-  const contentType = request.headers.get("content-type") || "";
-  if (!contentType.includes("multipart/form-data")) {
-    return badRequest("multipart/form-data required");
-  }
-
-  try {
-    const form = await request.formData();
-    const uploadId = String(form.get("uploadId") || "").trim();
-    const index = Number(form.get("index") ?? form.get("chunkIndex") ?? -1);
-    const total = Number(form.get("total") ?? form.get("totalChunks") ?? 0);
-    const fileName = String(form.get("fileName") || form.get("name") || "").replace(/[\\/]/g, "_");
-    const parentPath = toPosixRel(String(form.get("parentPath") || form.get("path") || ""));
-    const mime = String(form.get("mimeType") || "") || null;
-    const checksum = String(form.get("checksum") || form.get("hash") || "").trim().toLowerCase();
-    const file = form.get("chunk") ?? form.get("file");
-
-    if (!uploadId || !fileName || index < 0 || total < 1 || !(file instanceof File)) {
-      return badRequest("uploadId, index, total, fileName, chunk required");
+export const POST = withApiLog(
+  "POST /api/user/upload/chunk",
+  async (request: NextRequest) => {
+    const { session, error } = await requireSession(request);
+    if (error) return error;
+    const userId = session.user.id;
+    const contentType = request.headers.get("content-type") || "";
+    if (!contentType.includes("multipart/form-data")) {
+      return badRequest("multipart/form-data required");
     }
 
-    const dir = chunkDir(userId, uploadId);
-    fs.mkdirSync(/* turbopackIgnore: true */ dir, { recursive: true });
-    const partAbs = path.join(dir, String(index).padStart(6, "0"));
-    const buf = Buffer.from(await file.arrayBuffer());
-    if (checksum) {
-      const actual = crypto.createHash("sha256").update(buf).digest("hex");
-      if (actual !== checksum) {
-        return badRequest("Chunk checksum mismatch");
+    try {
+      const form = await request.formData();
+      const uploadId = String(form.get("uploadId") || "").trim();
+      const index = Number(form.get("index") ?? form.get("chunkIndex") ?? -1);
+      const total = Number(form.get("total") ?? form.get("totalChunks") ?? 0);
+      const fileName = String(
+        form.get("fileName") || form.get("name") || "",
+      ).replace(/[\\/]/g, "_");
+      const parentPath = toPosixRel(
+        String(form.get("parentPath") || form.get("path") || ""),
+      );
+      const mime = String(form.get("mimeType") || "") || null;
+      const checksum = String(form.get("checksum") || form.get("hash") || "")
+        .trim()
+        .toLowerCase();
+      const file = form.get("chunk") ?? form.get("file");
+
+      if (
+        !uploadId ||
+        !fileName ||
+        index < 0 ||
+        total < 1 ||
+        !(file instanceof File)
+      ) {
+        return badRequest("uploadId, index, total, fileName, chunk required");
       }
-      fs.writeFileSync(/* turbopackIgnore: true */ `${partAbs}.sha256`, checksum);
+
+      const dir = chunkDir(userId, uploadId);
+      fs.mkdirSync(/* turbopackIgnore: true */ dir, { recursive: true });
+      const partAbs = path.join(dir, String(index).padStart(6, "0"));
+      const buf = Buffer.from(await file.arrayBuffer());
+      if (checksum) {
+        const actual = crypto.createHash("sha256").update(buf).digest("hex");
+        if (actual !== checksum) {
+          return badRequest("Chunk checksum mismatch");
+        }
+        fs.writeFileSync(
+          /* turbopackIgnore: true */ `${partAbs}.sha256`,
+          checksum,
+        );
+      }
+      fs.writeFileSync(/* turbopackIgnore: true */ partAbs, buf);
+
+      const parts = fs
+        .readdirSync(/* turbopackIgnore: true */ dir)
+        .filter((n) => /^\d+$/.test(n) || /^\d{6}$/.test(n));
+      if (parts.length < total) {
+        return ok({ received: index, total, complete: false });
+      }
+
+      const target = await resolveUploadTarget(
+        { id: userId, email: session.user.email },
+        parentPath,
+      );
+      const ownerId = target.ownerId;
+      const destParent = target.parentPath;
+      ensureUserDir(ownerId);
+      const rel = toPosixRel(
+        destParent ? `${destParent}/${fileName}` : fileName,
+      );
+      const abs = resolveUserPath(ownerId, rel);
+      fs.mkdirSync(/* turbopackIgnore: true */ path.dirname(abs), {
+        recursive: true,
+      });
+      const writer = fs.createWriteStream(/* turbopackIgnore: true */ abs);
+      let bytes = 0;
+      for (let i = 0; i < total; i++) {
+        const p = path.join(dir, String(i).padStart(6, "0"));
+        const chunk = fs.readFileSync(/* turbopackIgnore: true */ p);
+        bytes += chunk.length;
+        writer.write(chunk);
+      }
+      await new Promise<void>((resolve, reject) => {
+        writer.end(() => resolve());
+        writer.on("error", reject);
+      });
+      fs.rmSync(/* turbopackIgnore: true */ dir, {
+        recursive: true,
+        force: true,
+      });
+      await encryptAtRestFile(abs);
+      await assertQuota(ownerId, bytes);
+
+      const row = await prisma.backupFile.upsert({
+        where: { userId_path: { userId: ownerId, path: rel } },
+        create: {
+          userId: ownerId,
+          path: rel,
+          name: fileName,
+          parentPath: destParent,
+          isDir: false,
+          size: BigInt(bytes),
+          mimeType: mime,
+        },
+        update: { size: BigInt(bytes), mimeType: mime },
+      });
+
+      await writeLog({
+        type: "USER_UPLOAD",
+        message: `Chunked upload assembled ${rel} (${bytes} bytes)`,
+        userId,
+        userEmail: session.user.email,
+        ...clientMeta(request),
+        metadata: { path: rel, bytes, chunks: total },
+      });
+
+      return ok(
+        { complete: true, file: { ...row, size: Number(row.size) } },
+        { status: 201 },
+      );
+    } catch (e) {
+      return badRequest(e instanceof Error ? e.message : "Chunk upload failed");
     }
-    fs.writeFileSync(/* turbopackIgnore: true */ partAbs, buf);
-
-    const parts = fs
-      .readdirSync(/* turbopackIgnore: true */ dir)
-      .filter((n) => /^\d+$/.test(n) || /^\d{6}$/.test(n));
-    if (parts.length < total) {
-      return ok({ received: index, total, complete: false });
-    }
-
-    const target = await resolveUploadTarget(
-      { id: userId, email: session.user.email },
-      parentPath,
-    );
-    const ownerId = target.ownerId;
-    const destParent = target.parentPath;
-    ensureUserDir(ownerId);
-    const rel = toPosixRel(destParent ? `${destParent}/${fileName}` : fileName);
-    const abs = resolveUserPath(ownerId, rel);
-    fs.mkdirSync(/* turbopackIgnore: true */ path.dirname(abs), { recursive: true });
-    const writer = fs.createWriteStream(/* turbopackIgnore: true */ abs);
-    let bytes = 0;
-    for (let i = 0; i < total; i++) {
-      const p = path.join(dir, String(i).padStart(6, "0"));
-      const chunk = fs.readFileSync(/* turbopackIgnore: true */ p);
-      bytes += chunk.length;
-      writer.write(chunk);
-    }
-    await new Promise<void>((resolve, reject) => {
-      writer.end(() => resolve());
-      writer.on("error", reject);
-    });
-    fs.rmSync(/* turbopackIgnore: true */ dir, { recursive: true, force: true });
-    await encryptAtRestFile(abs);
-    await assertQuota(ownerId, bytes);
-
-    const row = await prisma.backupFile.upsert({
-      where: { userId_path: { userId: ownerId, path: rel } },
-      create: {
-        userId: ownerId,
-        path: rel,
-        name: fileName,
-        parentPath: destParent,
-        isDir: false,
-        size: BigInt(bytes),
-        mimeType: mime,
-      },
-      update: { size: BigInt(bytes), mimeType: mime },
-    });
-
-    await writeLog({
-      type: "USER_UPLOAD",
-      message: `Chunked upload assembled ${rel} (${bytes} bytes)`,
-      userId,
-      userEmail: session.user.email,
-      ...clientMeta(request),
-      metadata: { path: rel, bytes, chunks: total },
-    });
-
-    return ok({ complete: true, file: { ...row, size: Number(row.size) } }, { status: 201 });
-  } catch (e) {
-    return badRequest(e instanceof Error ? e.message : "Chunk upload failed");
-  }
-}
+  },
+);

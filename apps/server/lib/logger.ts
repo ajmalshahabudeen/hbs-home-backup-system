@@ -1,7 +1,18 @@
 /**
- * App logger — always prints to terminal and persists to SystemLog when possible.
+ * App logger — pretty terminal always, SystemLog persist when possible.
  */
 import { writeLog } from "@/lib/auth-guard";
+
+export type { LogTag } from "@/lib/term-log";
+export {
+  divider,
+  printBootBanner,
+  redact,
+  summarize,
+  term,
+  termKv,
+  traceFn,
+} from "@/lib/term-log";
 
 type Level = "INFO" | "WARN" | "ERROR";
 

@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { prisma } from "@workspace/db";
 import { getRedis } from "@/lib/redis";
+import { term } from "@/lib/term-log";
 
 export type EnqueueResult = {
   ok: boolean;
@@ -96,11 +97,16 @@ async function publishCeleryTask(
   taskName: string,
   queue: string,
   args: unknown[] = [],
-  kwargs: Record<string, unknown> = {}
+  kwargs: Record<string, unknown> = {},
 ): Promise<{ ok: boolean; taskId: string; error?: string }> {
   const redis = getRedis();
   if (!redis) {
-    return { ok: false, taskId: "", error: "Redis is not connected (REDIS_URL not configured)" };
+    term("QUEUE", "publish skipped — Redis not connected", { taskName, queue });
+    return {
+      ok: false,
+      taskId: "",
+      error: "Redis is not connected (REDIS_URL not configured)",
+    };
   }
 
   const taskId = crypto.randomUUID();
@@ -147,11 +153,18 @@ async function publishCeleryTask(
   };
 
   try {
+    term("QUEUE", "→ Redis LPUSH (Celery)", { taskName, queue, taskId, args });
     await redis.lpush(queue, JSON.stringify(message));
+    term("QUEUE", "← Redis LPUSH ok", { taskName, queue, taskId });
     return { ok: true, taskId };
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error("[HBS][QUEUE] Redis LPUSH failed:", errorMsg);
+    term("ERROR", "Redis LPUSH failed", {
+      taskName,
+      queue,
+      taskId,
+      err: errorMsg,
+    });
     return { ok: false, taskId, error: errorMsg };
   }
 }
@@ -161,10 +174,15 @@ async function publishCeleryTask(
  */
 export async function enqueueJob(
   input: string[] | EnqueueOptions,
-  _timeoutMs = 20_000
+  _timeoutMs = 20_000,
 ): Promise<EnqueueResult> {
   const backend = process.env.QUEUE_BACKEND || "celery";
+  term("QUEUE", "→ enqueueJob", {
+    backend,
+    input: Array.isArray(input) ? input : input,
+  });
   if (backend === "inline") {
+    term("WARN", "enqueueJob inline backend not implemented");
     return {
       ok: false,
       error: "inline backend not implemented — set QUEUE_BACKEND=celery",
@@ -176,15 +194,30 @@ export async function enqueueJob(
 
   const taskDef = TASK_MAP[t];
   if (!taskDef) {
+    term("WARN", "unknown job type", { type: t });
     return { ok: false, error: `unknown job type ${t}` };
   }
 
   // Fire-and-forget cron tasks
   if (!taskDef.createsJob) {
-    const dispatch = await publishCeleryTask(taskDef.taskName, taskDef.queue, [], {});
+    const dispatch = await publishCeleryTask(
+      taskDef.taskName,
+      taskDef.queue,
+      [],
+      {},
+    );
     if (!dispatch.ok) {
-      return { ok: false, type: t, error: dispatch.error || "Failed to publish task to Redis" };
+      term("ERROR", "cron dispatch failed", { type: t, err: dispatch.error });
+      return {
+        ok: false,
+        type: t,
+        error: dispatch.error || "Failed to publish task to Redis",
+      };
     }
+    term("QUEUE", "← enqueueJob cron dispatched", {
+      type: t,
+      taskId: dispatch.taskId,
+    });
     return {
       ok: true,
       type: t,
@@ -195,6 +228,7 @@ export async function enqueueJob(
 
   // User-scoped tasks (SCAN, CONSISTENCY, CHECKSUM)
   if (!opts.userId) {
+    term("WARN", "enqueueJob missing userId", { type: t });
     return { ok: false, error: "userId required for job" };
   }
 
@@ -223,7 +257,7 @@ export async function enqueueJob(
       taskDef.taskName,
       taskDef.queue,
       [job.id],
-      {}
+      {},
     );
 
     if (!dispatch.ok) {
@@ -249,6 +283,12 @@ export async function enqueueJob(
       },
     });
 
+    term("QUEUE", "← enqueueJob ok", {
+      type: t,
+      jobId: job.id,
+      taskId: dispatch.taskId,
+      userId: opts.userId,
+    });
     return {
       ok: true,
       jobId: job.id,
@@ -258,7 +298,7 @@ export async function enqueueJob(
     };
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error("[HBS][QUEUE] enqueueJob error:", errorMsg);
+    term("ERROR", "enqueueJob error", { err: errorMsg, type: t });
     return { ok: false, error: errorMsg };
   }
 }

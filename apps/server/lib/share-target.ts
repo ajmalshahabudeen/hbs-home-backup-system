@@ -1,5 +1,6 @@
 import { prisma } from "@workspace/db";
 import { toPosixRel } from "@/lib/storage";
+import { term } from "@/lib/term-log";
 
 export type UploadTarget = {
   ownerId: string;
@@ -12,6 +13,12 @@ export async function resolveUploadTarget(
   parentPath: string,
 ): Promise<UploadTarget> {
   if (!parentPath.startsWith("__share__/")) {
+    term(
+      "SHARE",
+      "upload target self",
+      { ownerId: sessionUser.id, parentPath },
+      "trace",
+    );
     return { ownerId: sessionUser.id, parentPath };
   }
   const parts = parentPath.split("/");
@@ -26,6 +33,13 @@ export async function resolveUploadTarget(
   });
   if (!share) throw new Error("Share not found");
   if (!share.canWrite) throw new Error("This shared folder is read-only");
-  const ownerParent = toPosixRel(share.path ? (rest ? `${share.path}/${rest}` : share.path) : rest);
+  const ownerParent = toPosixRel(
+    share.path ? (rest ? `${share.path}/${rest}` : share.path) : rest,
+  );
+  term("SHARE", "upload target share", {
+    shareId: share.id,
+    ownerId: share.ownerId,
+    ownerParent,
+  });
   return { ownerId: share.ownerId, parentPath: ownerParent, shareId: share.id };
 }

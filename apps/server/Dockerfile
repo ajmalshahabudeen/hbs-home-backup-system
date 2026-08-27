@@ -57,7 +57,10 @@ ENV NODE_ENV=production \
     STORAGE_ROOT=/data/storage \
     NEXT_TELEMETRY_DISABLED=1 \
     QUEUE_BACKEND=celery \
-    BETTER_AUTH_STRICT_ORIGINS=false
+    BETTER_AUTH_STRICT_ORIGINS=false \
+    FORCE_COLOR=1 \
+    HBS_LOG_COLOR=1 \
+    HBS_LOG_LEVEL=trace
 
 # Only minimal runtime OS utilities (no python/pip, no bun, no ffmpeg)
 RUN apt-get update \

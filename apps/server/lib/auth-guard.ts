@@ -2,6 +2,7 @@ import { auth } from "@workspace/auth";
 import { prisma } from "@workspace/db";
 import { headers } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
+import { term } from "@/lib/term-log";
 
 export type AppSession = NonNullable<
   Awaited<ReturnType<typeof auth.api.getSession>>
@@ -134,19 +135,33 @@ export function extractSessionToken(
  */
 export async function getSession(request?: NextRequest) {
   const h = request ? request.headers : await headers();
+  term("AUTH", "→ getSession");
 
   try {
     const fromAuth = await auth.api.getSession({ headers: h });
-    if (fromAuth?.user) return fromAuth;
-  } catch {
-    // continue to token fallback
+    if (fromAuth?.user) {
+      term("AUTH", "← getSession cookie/header ok", {
+        user: fromAuth.user.email,
+        id: fromAuth.user.id,
+        via: "better-auth",
+      });
+      return fromAuth;
+    }
+  } catch (err) {
+    term("AUTH", "better-auth getSession threw, trying token fallback", {
+      err: err instanceof Error ? err.message : String(err),
+    });
   }
 
   const candidates = extractCandidateSessionTokens(
     request,
     request ? request.headers : h,
   );
-  if (candidates.length === 0) return null;
+  if (candidates.length === 0) {
+    term("AUTH", "← getSession miss (no token candidates)");
+    return null;
+  }
+  term("AUTH", "token fallback", { candidates: candidates.length });
 
   try {
     const row = await prisma.session.findFirst({
@@ -155,9 +170,23 @@ export async function getSession(request?: NextRequest) {
       },
       include: { user: true },
     });
-    if (!row) return null;
-    if (row.expiresAt.getTime() <= Date.now()) return null;
-    if (row.user.banned) return null;
+    if (!row) {
+      term("AUTH", "← getSession miss (no db row)");
+      return null;
+    }
+    if (row.expiresAt.getTime() <= Date.now()) {
+      term("AUTH", "← getSession expired", { user: row.user.email });
+      return null;
+    }
+    if (row.user.banned) {
+      term("AUTH", "← getSession banned", { user: row.user.email });
+      return null;
+    }
+    term("AUTH", "← getSession token ok", {
+      user: row.user.email,
+      id: row.user.id,
+      via: "prisma",
+    });
 
     return {
       session: {
@@ -183,7 +212,9 @@ export async function getSession(request?: NextRequest) {
       },
     } as AppSession;
   } catch (err) {
-    console.error("[HBS][AUTH-GUARD] session db lookup error", err);
+    term("ERROR", "session db lookup error", {
+      err: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }
@@ -191,8 +222,13 @@ export async function getSession(request?: NextRequest) {
 export async function requireSession(request?: NextRequest) {
   const session = await getSession(request);
   if (!session) {
+    term("AUTH", "requireSession 401");
     return { session: null as null, error: unauthorized("Not authenticated") };
   }
+  term("AUTH", "requireSession ok", {
+    user: session.user.email,
+    role: (session.user as { role?: string | null }).role,
+  });
   return { session, error: null };
 }
 
@@ -202,6 +238,7 @@ export async function requireAdmin(request?: NextRequest) {
 
   const role = (session!.user as { role?: string | null }).role;
   if (role !== "admin") {
+    term("AUTH", "requireAdmin 403", { user: session!.user.email, role });
     return {
       session: null as null,
       error: forbidden("Admin access required"),
@@ -209,12 +246,14 @@ export async function requireAdmin(request?: NextRequest) {
   }
 
   if ((session!.user as { banned?: boolean | null }).banned) {
+    term("AUTH", "requireAdmin banned", { user: session!.user.email });
     return {
       session: null as null,
       error: forbidden("Account is banned"),
     };
   }
 
+  term("AUTH", "requireAdmin ok", { user: session!.user.email });
   return { session: session!, error: null };
 }
 
@@ -246,10 +285,14 @@ export async function writeLog(input: {
   metadata?: unknown;
 }) {
   const level = input.level ?? "INFO";
-  const line = `[HBS][${level}][${input.type}] ${input.message}`;
-  if (level === "ERROR") console.error(line, input.metadata ?? "");
-  else if (level === "WARN") console.warn(line, input.metadata ?? "");
-  else console.log(line, input.metadata ?? "");
+  const tag =
+    level === "ERROR" ? "ERROR" : level === "WARN" ? "WARN" : input.type;
+  term(
+    tag,
+    input.message,
+    input.metadata,
+    level === "ERROR" ? "error" : level === "WARN" ? "warn" : "info",
+  );
 
   try {
     await prisma.systemLog.create({
@@ -269,7 +312,9 @@ export async function writeLog(input: {
       },
     });
   } catch (e) {
-    console.error("[HBS] writeLog failed", e);
+    term("ERROR", "writeLog persist failed", {
+      err: e instanceof Error ? e.message : String(e),
+    });
   }
 }
 

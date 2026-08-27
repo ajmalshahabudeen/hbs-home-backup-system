@@ -1,274 +1,307 @@
-import { NextRequest } from "next/server";
 import fs from "node:fs";
 import path from "node:path";
 import { prisma } from "@workspace/db";
+import type { NextRequest } from "next/server";
+import { withApiLog } from "@/lib/api-log";
+import { encryptAtRestFile } from "@/lib/at-rest";
 import {
-  requireSession,
-  ok,
   badRequest,
-  writeLog,
   clientMeta,
+  ok,
+  requireSession,
+  writeLog,
 } from "@/lib/auth-guard";
-import { ensureUserDir, resolveUserPath, toPosixRel } from "@/lib/storage";
+import { searchNameOf, snapshotVersion } from "@/lib/file-versions";
 import { logAction } from "@/lib/logger";
 import { assertQuota } from "@/lib/quota";
 import { resolveUploadTarget } from "@/lib/share-target";
-import { encryptAtRestFile } from "@/lib/at-rest";
-import { snapshotVersion, searchNameOf } from "@/lib/file-versions";
+import { ensureUserDir, resolveUserPath, toPosixRel } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function POST(request: NextRequest) {
-  const { session, error } = await requireSession(request);
-  if (error) {
-    console.warn(
-      "[HBS][UPLOAD] auth failed",
-      request.headers.get("authorization") ? "has-bearer" : "no-bearer",
-      request.headers.get("cookie") ? "has-cookie" : "no-cookie"
-    );
-    return error;
-  }
-
-  const userId = session.user.id;
-  const contentType = request.headers.get("content-type") || "";
-  const meta = clientMeta(request);
-
-  console.log(
-    `[HBS][UPLOAD] start user=${session.user.email} ct=${contentType.slice(0, 60)}`
-  );
-
-  if (!contentType.includes("multipart/form-data")) {
-    await logAction({
-      type: "USER_UPLOAD",
-      level: "WARN",
-      status: "FAILURE",
-      message: "Upload rejected: multipart/form-data required",
-      userId,
-      userEmail: session.user.email,
-      ...meta,
-    });
-    return badRequest("multipart/form-data required");
-  }
-
-  try {
-    let parentPath = "";
-    let rawName = "";
-    let originalName = "";
-    let onConflict = "rename";
-    let mime: string | null = null;
-    let fileBlob: File | Buffer | null = null;
-    let rawCreationTime: string | null = request.headers.get("x-file-creation-time");
-
-    try {
-      const form = await request.formData();
-      parentPath = toPosixRel(String(form.get("parentPath") || form.get("path") || ""));
-      const customName = String(
-        form.get("fileName") || form.get("name") || form.get("filename") || "",
-      ).trim();
-      originalName = String(form.get("originalName") || form.get("searchName") || customName).trim();
-      onConflict = String(form.get("onConflict") || "rename").toLowerCase();
-      const file = form.get("file");
-
-      if (!rawCreationTime) {
-        rawCreationTime =
-          String(form.get("creationTime") || form.get("capturedAt") || form.get("mtime") || "").trim() ||
-          null;
-      }
-
-      if (file instanceof File) {
-        rawName = customName || file.name || `upload_${Date.now()}`;
-        fileBlob = file;
-        mime = file.type || guessMime(rawName);
-      }
-    } catch (formErr) {
+export const POST = withApiLog(
+  "POST /api/user/upload",
+  async (request: NextRequest) => {
+    const { session, error } = await requireSession(request);
+    if (error) {
       console.warn(
-        "[HBS][UPLOAD] formData() failed, using multipart fallback",
-        formErr instanceof Error ? formErr.message : formErr,
+        "[HBS][UPLOAD] auth failed",
+        request.headers.get("authorization") ? "has-bearer" : "no-bearer",
+        request.headers.get("cookie") ? "has-cookie" : "no-cookie",
       );
-      const fallback = await parseMultipartFallback(request, contentType);
-      if (fallback) {
-        parentPath = toPosixRel(fallback.parentPath);
-        rawName = fallback.customName || fallback.fileName;
-        fileBlob = fallback.fileBuf;
-        mime = fallback.mimeType || guessMime(rawName);
-        if (!rawCreationTime && fallback.creationTime) {
-          rawCreationTime = fallback.creationTime;
-        }
-      }
+      return error;
     }
 
-    if (!fileBlob || !rawName) {
+    const userId = session.user.id;
+    const contentType = request.headers.get("content-type") || "";
+    const meta = clientMeta(request);
+
+    console.log(
+      `[HBS][UPLOAD] start user=${session.user.email} ct=${contentType.slice(0, 60)}`,
+    );
+
+    if (!contentType.includes("multipart/form-data")) {
       await logAction({
         type: "USER_UPLOAD",
         level: "WARN",
         status: "FAILURE",
-        message: "Upload failed: file payload missing",
+        message: "Upload rejected: multipart/form-data required",
         userId,
         userEmail: session.user.email,
         ...meta,
       });
-      return badRequest("file payload missing or unsupported format");
+      return badRequest("multipart/form-data required");
     }
 
-    const target = await resolveUploadTarget(
-      { id: userId, email: session.user.email },
-      parentPath,
-    );
-    const ownerId = target.ownerId;
-    parentPath = target.parentPath;
-
-    ensureUserDir(ownerId);
-    const name = rawName.replace(/[\\/]/g, "_");
-    const incomingSize =
-      Buffer.isBuffer(fileBlob) ? fileBlob.length : Number(fileBlob.size) || 0;
-    await assertQuota(ownerId, incomingSize);
-    const intendedRel = toPosixRel(parentPath ? `${parentPath}/${name}` : name);
-
-    let fileDate: Date | undefined;
-    if (rawCreationTime) {
-      const num = Number(rawCreationTime);
-      if (!isNaN(num) && num > 0) {
-        fileDate = new Date(num);
-      } else {
-        const d = new Date(rawCreationTime);
-        if (!isNaN(d.getTime())) fileDate = d;
-      }
-    }
-
-    const checkOnly =
-      request.headers.get("x-check-only") === "1" ||
-      new URL(request.url).searchParams.get("check") === "1";
-    const existing = await prisma.backupFile.findUnique({
-      where: { userId_path: { userId: ownerId, path: intendedRel } },
-    });
-
-    if (checkOnly && existing) {
-      return ok({
-        duplicate: true,
-        file: {
-          ...existing,
-          size: Number(existing.size),
-        },
-      });
-    }
-
-    if (
-      existing &&
-      onConflict === "ask" &&
-      incomingSize > 0 &&
-      Number(existing.size) !== incomingSize
-    ) {
-      return ok(
-        {
-          conflict: true,
-          existing: { ...existing, size: Number(existing.size) },
-          suggestedName: `${splitName(name).stem} (2)${splitName(name).ext}`,
-        },
-        { status: 409 },
+    try {
+      let parentPath = "";
+      let rawName = "";
+      let originalName = "";
+      let onConflict = "rename";
+      let mime: string | null = null;
+      let fileBlob: File | Buffer | null = null;
+      let rawCreationTime: string | null = request.headers.get(
+        "x-file-creation-time",
       );
-    }
 
-    if (existing && onConflict === "overwrite" && Number(existing.size) !== incomingSize) {
-      await snapshotVersion({
-        userId: ownerId,
-        fileId: existing.id,
-        name: existing.name,
-        relPath: existing.path,
-        size: Number(existing.size),
-        mimeType: existing.mimeType,
-      });
-    }
-
-    const rel =
-      existing && onConflict === "overwrite"
-        ? intendedRel
-        : await uniqueUserRel(ownerId, parentPath, name, incomingSize);
-
-    const abs = resolveUserPath(ownerId, rel);
-    fs.mkdirSync(/* turbopackIgnore: true */ path.dirname(abs), {
-      recursive: true,
-    });
-    const bytes = await writeIncomingFile(abs, fileBlob);
-    await encryptAtRestFile(abs);
-
-    if (fileDate) {
       try {
-        fs.utimesSync(abs, fileDate, fileDate);
-      } catch {
-        // ignore
+        const form = await request.formData();
+        parentPath = toPosixRel(
+          String(form.get("parentPath") || form.get("path") || ""),
+        );
+        const customName = String(
+          form.get("fileName") ||
+            form.get("name") ||
+            form.get("filename") ||
+            "",
+        ).trim();
+        originalName = String(
+          form.get("originalName") || form.get("searchName") || customName,
+        ).trim();
+        onConflict = String(form.get("onConflict") || "rename").toLowerCase();
+        const file = form.get("file");
+
+        if (!rawCreationTime) {
+          rawCreationTime =
+            String(
+              form.get("creationTime") ||
+                form.get("capturedAt") ||
+                form.get("mtime") ||
+                "",
+            ).trim() || null;
+        }
+
+        if (file instanceof File) {
+          rawName = customName || file.name || `upload_${Date.now()}`;
+          fileBlob = file;
+          mime = file.type || guessMime(rawName);
+        }
+      } catch (formErr) {
+        console.warn(
+          "[HBS][UPLOAD] formData() failed, using multipart fallback",
+          formErr instanceof Error ? formErr.message : formErr,
+        );
+        const fallback = await parseMultipartFallback(request, contentType);
+        if (fallback) {
+          parentPath = toPosixRel(fallback.parentPath);
+          rawName = fallback.customName || fallback.fileName;
+          fileBlob = fallback.fileBuf;
+          mime = fallback.mimeType || guessMime(rawName);
+          if (!rawCreationTime && fallback.creationTime) {
+            rawCreationTime = fallback.creationTime;
+          }
+        }
       }
-    }
 
-    const rowData = {
-      userId: ownerId,
-      path: rel,
-      name: path.posix.basename(rel),
-      parentPath,
-      isDir: false,
-      size: BigInt(bytes),
-      mimeType: mime,
-      searchName: searchNameOf(originalName || name),
-      ...(fileDate ? { createdAt: fileDate, updatedAt: fileDate } : {}),
-    };
+      if (!fileBlob || !rawName) {
+        await logAction({
+          type: "USER_UPLOAD",
+          level: "WARN",
+          status: "FAILURE",
+          message: "Upload failed: file payload missing",
+          userId,
+          userEmail: session.user.email,
+          ...meta,
+        });
+        return badRequest("file payload missing or unsupported format");
+      }
 
-    const row = await prisma.backupFile.upsert({
-      where: { userId_path: { userId: ownerId, path: rel } },
-      create: rowData,
-      update: {
+      const target = await resolveUploadTarget(
+        { id: userId, email: session.user.email },
+        parentPath,
+      );
+      const ownerId = target.ownerId;
+      parentPath = target.parentPath;
+
+      ensureUserDir(ownerId);
+      const name = rawName.replace(/[\\/]/g, "_");
+      const incomingSize = Buffer.isBuffer(fileBlob)
+        ? fileBlob.length
+        : Number(fileBlob.size) || 0;
+      await assertQuota(ownerId, incomingSize);
+      const intendedRel = toPosixRel(
+        parentPath ? `${parentPath}/${name}` : name,
+      );
+
+      let fileDate: Date | undefined;
+      if (rawCreationTime) {
+        const num = Number(rawCreationTime);
+        if (!isNaN(num) && num > 0) {
+          fileDate = new Date(num);
+        } else {
+          const d = new Date(rawCreationTime);
+          if (!isNaN(d.getTime())) fileDate = d;
+        }
+      }
+
+      const checkOnly =
+        request.headers.get("x-check-only") === "1" ||
+        new URL(request.url).searchParams.get("check") === "1";
+      const existing = await prisma.backupFile.findUnique({
+        where: { userId_path: { userId: ownerId, path: intendedRel } },
+      });
+
+      if (checkOnly && existing) {
+        return ok({
+          duplicate: true,
+          file: {
+            ...existing,
+            size: Number(existing.size),
+          },
+        });
+      }
+
+      if (
+        existing &&
+        onConflict === "ask" &&
+        incomingSize > 0 &&
+        Number(existing.size) !== incomingSize
+      ) {
+        return ok(
+          {
+            conflict: true,
+            existing: { ...existing, size: Number(existing.size) },
+            suggestedName: `${splitName(name).stem} (2)${splitName(name).ext}`,
+          },
+          { status: 409 },
+        );
+      }
+
+      if (
+        existing &&
+        onConflict === "overwrite" &&
+        Number(existing.size) !== incomingSize
+      ) {
+        await snapshotVersion({
+          userId: ownerId,
+          fileId: existing.id,
+          name: existing.name,
+          relPath: existing.path,
+          size: Number(existing.size),
+          mimeType: existing.mimeType,
+        });
+      }
+
+      const rel =
+        existing && onConflict === "overwrite"
+          ? intendedRel
+          : await uniqueUserRel(ownerId, parentPath, name, incomingSize);
+
+      const abs = resolveUserPath(ownerId, rel);
+      fs.mkdirSync(/* turbopackIgnore: true */ path.dirname(abs), {
+        recursive: true,
+      });
+      const bytes = await writeIncomingFile(abs, fileBlob);
+      await encryptAtRestFile(abs);
+
+      if (fileDate) {
+        try {
+          fs.utimesSync(abs, fileDate, fileDate);
+        } catch {
+          // ignore
+        }
+      }
+
+      const rowData = {
+        userId: ownerId,
+        path: rel,
+        name: path.posix.basename(rel),
+        parentPath,
+        isDir: false,
         size: BigInt(bytes),
         mimeType: mime,
         searchName: searchNameOf(originalName || name),
         ...(fileDate ? { createdAt: fileDate, updatedAt: fileDate } : {}),
-      },
-    });
+      };
 
-    await writeLog({
-      type: "USER_UPLOAD",
-      message: `User uploaded ${rel} (${bytes} bytes)`,
-      userId,
-      userEmail: session.user.email,
-      ...meta,
-      metadata: { path: rel, bytes, mime, creationTime: fileDate?.toISOString() },
-    });
-
-    console.log(
-      `[HBS][UPLOAD] ok user=${session.user.email} path=${rel} bytes=${bytes}`,
-    );
-
-    try {
-      const { notifyShareRecipients } = await import("@/lib/inbox");
-      await notifyShareRecipients(ownerId, parentPath, `${session.user.email} uploaded ${path.posix.basename(rel)}`);
-    } catch {
-      /* ignore */
-    }
-
-    return ok(
-      {
-        file: {
-          ...row,
-          size: Number(row.size),
+      const row = await prisma.backupFile.upsert({
+        where: { userId_path: { userId: ownerId, path: rel } },
+        create: rowData,
+        update: {
+          size: BigInt(bytes),
+          mimeType: mime,
+          searchName: searchNameOf(originalName || name),
+          ...(fileDate ? { createdAt: fileDate, updatedAt: fileDate } : {}),
         },
-      },
-      { status: 201 },
-    );
-  } catch (e) {
-    await logAction({
-      type: "USER_UPLOAD",
-      level: "ERROR",
-      status: "FAILURE",
-      message: `Upload error: ${e instanceof Error ? e.message : String(e)}`,
-      userId,
-      userEmail: session.user.email,
-      ...meta,
-    });
-    return badRequest(e instanceof Error ? e.message : "Upload failed");
-  }
-}
+      });
+
+      await writeLog({
+        type: "USER_UPLOAD",
+        message: `User uploaded ${rel} (${bytes} bytes)`,
+        userId,
+        userEmail: session.user.email,
+        ...meta,
+        metadata: {
+          path: rel,
+          bytes,
+          mime,
+          creationTime: fileDate?.toISOString(),
+        },
+      });
+
+      console.log(
+        `[HBS][UPLOAD] ok user=${session.user.email} path=${rel} bytes=${bytes}`,
+      );
+
+      try {
+        const { notifyShareRecipients } = await import("@/lib/inbox");
+        await notifyShareRecipients(
+          ownerId,
+          parentPath,
+          `${session.user.email} uploaded ${path.posix.basename(rel)}`,
+        );
+      } catch {
+        /* ignore */
+      }
+
+      return ok(
+        {
+          file: {
+            ...row,
+            size: Number(row.size),
+          },
+        },
+        { status: 201 },
+      );
+    } catch (e) {
+      await logAction({
+        type: "USER_UPLOAD",
+        level: "ERROR",
+        status: "FAILURE",
+        message: `Upload error: ${e instanceof Error ? e.message : String(e)}`,
+        userId,
+        userEmail: session.user.email,
+        ...meta,
+      });
+      return badRequest(e instanceof Error ? e.message : "Upload failed");
+    }
+  },
+);
 
 async function parseMultipartFallback(
   request: NextRequest,
-  contentType: string
+  contentType: string,
 ): Promise<{
   fileBuf: Buffer;
   fileName: string;
@@ -306,9 +339,17 @@ async function parseMultipartFallback(
 
       if (fieldName === "parentPath" || fieldName === "path") {
         parentPath = rawBody.trim();
-      } else if (fieldName === "fileName" || fieldName === "name" || fieldName === "filename") {
+      } else if (
+        fieldName === "fileName" ||
+        fieldName === "name" ||
+        fieldName === "filename"
+      ) {
         customName = rawBody.trim();
-      } else if (fieldName === "creationTime" || fieldName === "capturedAt" || fieldName === "mtime") {
+      } else if (
+        fieldName === "creationTime" ||
+        fieldName === "capturedAt" ||
+        fieldName === "mtime"
+      ) {
         creationTime = rawBody.trim();
       } else if (fieldName === "file" || rawHeaders.includes("filename=")) {
         const filenameMatch = rawHeaders.match(/filename="([^"]+)"/i);
@@ -323,7 +364,14 @@ async function parseMultipartFallback(
     }
 
     if (fileBuf && fileName) {
-      return { fileBuf, fileName, customName, mimeType, parentPath, creationTime };
+      return {
+        fileBuf,
+        fileName,
+        customName,
+        mimeType,
+        parentPath,
+        creationTime,
+      };
     }
   } catch {
     // fallback failed
@@ -366,7 +414,10 @@ async function uniqueUserRel(
   }
 }
 
-async function writeIncomingFile(abs: string, source: File | Buffer): Promise<number> {
+async function writeIncomingFile(
+  abs: string,
+  source: File | Buffer,
+): Promise<number> {
   if (Buffer.isBuffer(source)) {
     await fs.promises.writeFile(/* turbopackIgnore: true */ abs, source);
     return source.length;

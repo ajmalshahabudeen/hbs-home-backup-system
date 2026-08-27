@@ -1,6 +1,8 @@
 import { auth } from "@workspace/auth";
 import { toNextJsHandler } from "better-auth/next-js";
 import { NextRequest } from "next/server";
+import { withApiLog } from "@/lib/api-log";
+import { term } from "@/lib/term-log";
 
 const rawHandler = toNextJsHandler(auth);
 
@@ -14,6 +16,7 @@ function withTrustedOrigin(request: NextRequest): NextRequest {
   const referer = request.headers.get("referer");
 
   if (origin && origin !== "null") {
+    term("AUTH", "origin present", { origin }, "trace");
     return request;
   }
 
@@ -35,6 +38,7 @@ function withTrustedOrigin(request: NextRequest): NextRequest {
         "http://localhost:38480"
   ).replace(/\/+$/, "");
 
+  term("AUTH", "injected origin from host", { fallback, host });
   const headers = new Headers(request.headers);
   headers.set("origin", fallback);
   if (!referer || referer === "null") {
@@ -53,10 +57,16 @@ function withTrustedOrigin(request: NextRequest): NextRequest {
   } as ConstructorParameters<typeof NextRequest>[1]);
 }
 
-export async function GET(request: NextRequest) {
-  return rawHandler.GET(withTrustedOrigin(request));
-}
+export const GET = withApiLog(
+  "GET /api/auth/[...all]",
+  async (request: NextRequest) => {
+    return rawHandler.GET(withTrustedOrigin(request));
+  },
+);
 
-export async function POST(request: NextRequest) {
-  return rawHandler.POST(withTrustedOrigin(request));
-}
+export const POST = withApiLog(
+  "POST /api/auth/[...all]",
+  async (request: NextRequest) => {
+    return rawHandler.POST(withTrustedOrigin(request));
+  },
+);

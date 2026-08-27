@@ -2,9 +2,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { prisma } from "@workspace/db";
 import { resolveUserPath, toPosixRel } from "@/lib/storage";
+import { term } from "@/lib/term-log";
 
 export function searchNameOf(originalName: string): string {
-  return originalName.replace(/\.hbsenc$/i, "").trim().toLowerCase();
+  return originalName
+    .replace(/\.hbsenc$/i, "")
+    .trim()
+    .toLowerCase();
 }
 
 export async function snapshotVersion(opts: {
@@ -16,7 +20,13 @@ export async function snapshotVersion(opts: {
   mimeType?: string | null;
 }) {
   const abs = resolveUserPath(opts.userId, opts.relPath);
-  if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) return;
+  if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
+    term("FS", "snapshotVersion skip (missing file)", {
+      fileId: opts.fileId,
+      rel: opts.relPath,
+    });
+    return;
+  }
   const last = await prisma.fileVersion.findFirst({
     where: { fileId: opts.fileId },
     orderBy: { version: "desc" },
@@ -36,5 +46,11 @@ export async function snapshotVersion(opts: {
       size: BigInt(opts.size),
       mimeType: opts.mimeType ?? null,
     },
+  });
+  term("FS", "snapshotVersion", {
+    fileId: opts.fileId,
+    version,
+    storedRel,
+    size: opts.size,
   });
 }

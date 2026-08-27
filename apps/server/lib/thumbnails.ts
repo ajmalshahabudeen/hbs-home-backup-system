@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { redisGetBuffer, redisSetBuffer } from "@/lib/redis";
+import { term } from "@/lib/term-log";
 
 const THUMB_W = 360;
 const THUMB_H = 360;
@@ -15,7 +16,7 @@ function placeholderJpeg(): Buffer {
   // tiny valid JPEG
   return Buffer.from(
     "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAn/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAGcP//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAQUCf//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQMBAT8Bf//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQIBAT8Bf//Z",
-    "base64"
+    "base64",
   );
 }
 
@@ -32,8 +33,10 @@ export async function getOrCreateThumbnail(opts: {
 
   const cached = await redisGetBuffer(key);
   if (cached && cached.length > 100) {
+    term("THUMB", "cache HIT", { relPath, bytes: cached.length });
     return { buffer: cached, contentType: "image/jpeg", cached: true };
   }
+  term("THUMB", "cache MISS, generating", { relPath, mimeType });
 
   const isImage = mimeType?.startsWith("image/") ?? false;
   const isVideo = mimeType?.startsWith("video/") ?? false;
@@ -41,9 +44,12 @@ export async function getOrCreateThumbnail(opts: {
   try {
     if (isImage) {
       const sharp = (await import("sharp")).default;
-      const buf = await sharp(plaintext ?? /* turbopackIgnore: true */ absPath, {
-        failOn: "none",
-      })
+      const buf = await sharp(
+        plaintext ?? /* turbopackIgnore: true */ absPath,
+        {
+          failOn: "none",
+        },
+      )
         .rotate()
         .resize(THUMB_W, THUMB_H, {
           fit: "cover",
@@ -60,6 +66,7 @@ export async function getOrCreateThumbnail(opts: {
       } catch {
         // ignore disk cache write
       }
+      term("THUMB", "image jpeg ok", { relPath, bytes: buf.length });
       return { buffer: buf, contentType: "image/jpeg", cached: false };
     }
 
@@ -77,7 +84,7 @@ export async function getOrCreateThumbnail(opts: {
         const { execFileSync } = await import("node:child_process");
         const tmpOut = path.join(
           path.dirname(absPath),
-          `.hbs-thumb-${Date.now()}.jpg`
+          `.hbs-thumb-${Date.now()}.jpg`,
         );
         execFileSync(
           "ffmpeg",
@@ -93,14 +100,15 @@ export async function getOrCreateThumbnail(opts: {
             `scale=${THUMB_W}:${THUMB_H}:force_original_aspect_ratio=increase,crop=${THUMB_W}:${THUMB_H}`,
             tmpOut,
           ],
-          { timeout: 15000, stdio: "ignore" }
+          { timeout: 15000, stdio: "ignore" },
         );
+        term("PY", "ffmpeg video thumb", { relPath, tmpOut });
         if (fs.existsSync(/* turbopackIgnore: true */ tmpOut)) {
           const buf = fs.readFileSync(/* turbopackIgnore: true */ tmpOut);
           try {
             fs.renameSync(
               /* turbopackIgnore: true */ tmpOut,
-              /* turbopackIgnore: true */ diskThumb
+              /* turbopackIgnore: true */ diskThumb,
             );
           } catch {
             try {
@@ -126,7 +134,9 @@ export async function getOrCreateThumbnail(opts: {
             <polygon points="170,150 170,210 230,180" fill="#e2e8f0"/>
             <text x="50%" y="88%" text-anchor="middle" fill="#94a3b8" font-size="18" font-family="sans-serif">VIDEO</text>
           </svg>`;
-        const buf = await sharp(Buffer.from(svg)).jpeg({ quality: 70 }).toBuffer();
+        const buf = await sharp(Buffer.from(svg))
+          .jpeg({ quality: 70 })
+          .toBuffer();
         await redisSetBuffer(key, buf, THUMB_TTL);
         try {
           fs.writeFileSync(/* turbopackIgnore: true */ diskThumb, buf);
@@ -140,7 +150,10 @@ export async function getOrCreateThumbnail(opts: {
       }
     }
   } catch (e) {
-    console.warn("[HBS][THUMB] generate failed", relPath, e);
+    term("WARN", "thumb generate failed", {
+      relPath,
+      err: e instanceof Error ? e.message : String(e),
+    });
   }
 
   return {

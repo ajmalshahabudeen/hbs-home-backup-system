@@ -1,7 +1,8 @@
-import path from "node:path";
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
-import { execSync } from "node:child_process";
+import path from "node:path";
+import { term } from "@/lib/term-log";
 
 /**
  * Resolve the backup storage root.
@@ -39,10 +40,7 @@ export function getStorageRoot(): string {
     return path.normalize(resolved);
   }
 
-  return path.resolve(
-    /* turbopackIgnore: true */ process.cwd(),
-    resolved
-  );
+  return path.resolve(/* turbopackIgnore: true */ process.cwd(), resolved);
 }
 
 /** Host-facing path from env (e.g. G:/HBS-Backups) — may differ from container path. */
@@ -78,9 +76,16 @@ export function resolveUserPath(userId: string, relativePath = ""): string {
   const rootResolved = path.resolve(/* turbopackIgnore: true */ root);
 
   if (full !== rootResolved && !full.startsWith(rootResolved + path.sep)) {
+    term("ERROR", "path traversal blocked", { userId, relativePath });
     throw new Error("Invalid path: traversal blocked");
   }
 
+  term(
+    "FS",
+    "resolveUserPath",
+    { userId, rel: relativePath || ".", abs: full },
+    "trace",
+  );
   return full;
 }
 
@@ -96,8 +101,13 @@ export function ensureStorageReady(): {
     const probe = path.join(root, ".hbs-write-probe");
     fs.writeFileSync(probe, String(Date.now()));
     fs.unlinkSync(probe);
+    term("FS", "storage ready", { root });
     return { ok: true, root };
   } catch (e) {
+    term("ERROR", "storage not writable", {
+      root,
+      err: e instanceof Error ? e.message : String(e),
+    });
     return {
       ok: false,
       root,
@@ -109,6 +119,7 @@ export function ensureStorageReady(): {
 export function ensureUserDir(userId: string): string {
   const dir = userStorageRoot(userId);
   fs.mkdirSync(dir, { recursive: true });
+  term("FS", "ensureUserDir", { userId, dir }, "trace");
   return dir;
 }
 
@@ -163,6 +174,7 @@ function diskFromDf(target: string): DiskUsage | null {
       encoding: "utf8",
       timeout: 3000,
     });
+    term("PY", "df -kP", { target, preview: out.trim().split("\n").pop() });
     const lines = out.trim().split("\n");
     const data = lines[lines.length - 1];
     if (!data) return null;
@@ -220,7 +232,9 @@ function storageDisplayName(hostPath: string, containerPath: string): string {
   const drive = parseDriveLetter(hostPath);
   if (drive) {
     const rest = hostPath.replace(/\\/g, "/").replace(/^[A-Za-z]:\/?/, "");
-    return rest ? `${drive} ${rest.split("/").filter(Boolean).join(" / ")}` : `${drive} Drive`;
+    return rest
+      ? `${drive} ${rest.split("/").filter(Boolean).join(" / ")}`
+      : `${drive} Drive`;
   }
   const base = path.basename(hostPath || containerPath) || "storage";
   return base;
@@ -248,6 +262,14 @@ export function getStorageInfo(): StorageInfo {
   const ready = ensureStorageReady();
   const exists = fs.existsSync(/* turbopackIgnore: true */ containerPath);
   const disk = getDiskUsage(containerPath);
+  term("FS", "getStorageInfo", {
+    hostPath,
+    containerPath,
+    writable: ready.ok,
+    exists,
+    usedPercent: disk.usedPercent,
+    error: ready.error || disk.error,
+  });
 
   return {
     ok: ready.ok && disk.available !== false,

@@ -1,6 +1,6 @@
-import { prisma } from "@workspace/db";
 import net from "node:net";
-import { writeLog } from "./auth-guard";
+import { prisma } from "@workspace/db";
+import { term } from "./term-log";
 
 export interface PushResult {
   success: boolean;
@@ -19,15 +19,17 @@ export async function sendDeviceWakeupPush(
     body?: string;
     serverUrl?: string;
     forceNotification?: boolean;
-  }
+  },
 ): Promise<PushResult> {
   if (!pushToken || !pushToken.trim()) {
+    term("PUSH", "wakeup skipped — empty token");
     return { success: false, error: "Empty push token" };
   }
 
   const title = options?.title || "HBS Cloud Backup";
   const body = options?.body || "Syncing camera roll in background...";
   const serverUrl = options?.serverUrl || "";
+  term("PUSH", "→ Expo wakeup", { title, serverUrl: serverUrl || "(none)" });
 
   try {
     const payload = {
@@ -59,7 +61,14 @@ export async function sendDeviceWakeupPush(
 
     if (!res.ok) {
       const errText = await res.text();
-      return { success: false, error: `Expo Push API HTTP ${res.status}: ${errText}` };
+      term("WARN", "Expo push HTTP error", {
+        status: res.status,
+        errText: errText.slice(0, 200),
+      });
+      return {
+        success: false,
+        error: `Expo Push API HTTP ${res.status}: ${errText}`,
+      };
     }
 
     const data: any = await res.json();
@@ -77,9 +86,15 @@ export async function sendDeviceWakeupPush(
       ticketId: ticket?.id,
     };
   } catch (err) {
+    term("ERROR", "Expo wakeup failed", {
+      err: err instanceof Error ? err.message : String(err),
+    });
     return {
       success: false,
-      error: err instanceof Error ? err.message : "Failed to dispatch push notification",
+      error:
+        err instanceof Error
+          ? err.message
+          : "Failed to dispatch push notification",
     };
   }
 }
@@ -88,8 +103,12 @@ export async function sendDeviceWakeupPush(
  * Probes a local IP address on common ports (8081 Metro, 80 HTTP, 443 HTTPS, 5555 ADB)
  * with a fast 400ms timeout to detect if a phone is awake on the LAN.
  */
-export async function probeLanHost(ip: string, timeoutMs: number = 400): Promise<boolean> {
+export async function probeLanHost(
+  ip: string,
+  timeoutMs: number = 400,
+): Promise<boolean> {
   if (!ip || ip === "127.0.0.1" || ip === "localhost") return false;
+  term("SCAN", "→ probeLanHost", { ip, timeoutMs });
 
   const candidatePorts = [8081, 19000, 80, 443, 5555];
 
@@ -136,9 +155,13 @@ export async function probeLanHost(ip: string, timeoutMs: number = 400): Promise
       }
     });
 
-    if (reachable) return true;
+    if (reachable) {
+      term("SCAN", "← probeLanHost online", { ip, port });
+      return true;
+    }
   }
 
+  term("SCAN", "← probeLanHost offline", { ip });
   return false;
 }
 
@@ -147,6 +170,7 @@ export async function probeLanHost(ip: string, timeoutMs: number = 400): Promise
  * and sends wake-up push signals to prompt background auto-sync.
  */
 export async function scanAndWakeupDevices(serverUrl?: string) {
+  term("SCAN", "→ scanAndWakeupDevices", { serverUrl: serverUrl || "(none)" });
   try {
     const devices = await prisma.mobileDevice.findMany({
       where: {
@@ -203,6 +227,11 @@ export async function scanAndWakeupDevices(serverUrl?: string) {
       });
     }
 
+    term("SCAN", "← scanAndWakeupDevices", {
+      scanned: devices.length,
+      online: results.filter((r) => r.isOnlineOnLan).length,
+      pushed: results.filter((r) => r.pushSent).length,
+    });
     return {
       success: true,
       scannedCount: devices.length,
@@ -210,6 +239,9 @@ export async function scanAndWakeupDevices(serverUrl?: string) {
       timestamp: new Date().toISOString(),
     };
   } catch (e) {
+    term("ERROR", "scanAndWakeupDevices failed", {
+      err: e instanceof Error ? e.message : String(e),
+    });
     return {
       success: false,
       error: e instanceof Error ? e.message : "Scan and wakeup failed",
