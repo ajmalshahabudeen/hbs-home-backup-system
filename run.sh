@@ -77,6 +77,7 @@ load_env() {
   HEALTH_URL="${HEALTH_URL:-${APP_URL}/api/health}"
   HOST_STORAGE_PATH="${HOST_STORAGE_PATH:-./data/storage}"
   normalize_host_storage
+  detect_lan_hostname
 }
 
 # Normalize Windows drive letters so Docker Compose bind mounts work.
@@ -118,6 +119,31 @@ normalize_host_storage() {
   HOST_STORAGE_PATH="$p"
   export HOST_STORAGE_PATH
   log "Normalized HOST_STORAGE_PATH=${HOST_STORAGE_PATH}"
+}
+
+detect_lan_hostname() {
+  if [[ -n "${HBS_HOSTNAME:-}" ]]; then
+    export HBS_HOSTNAME
+    ok "LAN hostname (env): ${HBS_HOSTNAME}"
+    return
+  fi
+  local mdns=""
+  if command -v python >/dev/null 2>&1; then
+    mdns="$(python "$ROOT_DIR/python/get_hostname.py" 2>/dev/null | sed -n 's/.*"mdns":"\([^"]*\)".*/\1/p')"
+  elif command -v python3 >/dev/null 2>&1; then
+    mdns="$(python3 "$ROOT_DIR/python/get_hostname.py" 2>/dev/null | sed -n 's/.*"mdns":"\([^"]*\)".*/\1/p')"
+  fi
+  if [[ -z "$mdns" ]]; then
+    local hn
+    hn="$(hostname 2>/dev/null | tr '[:upper:]' '[:lower:]' | tr -d '\r')"
+    hn="${hn%%.*}"
+    if [[ -n "$hn" && "$hn" != "localhost" ]]; then
+      mdns="${hn}.local"
+    fi
+  fi
+  HBS_HOSTNAME="${mdns:-zoro.local}"
+  export HBS_HOSTNAME
+  ok "LAN hostname: ${HBS_HOSTNAME}"
 }
 
 ensure_storage() {

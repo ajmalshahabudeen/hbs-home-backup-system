@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hbs_app_flutter/core/utils/lan_host.dart';
 import 'package:hbs_app_flutter/core/utils/formatters.dart';
 import 'package:hbs_app_flutter/core/utils/media_merger.dart';
 import 'package:hbs_app_flutter/core/utils/media_path_filter.dart';
@@ -241,6 +242,23 @@ void main() {
       expect(
         GoogleSignInErrors.message(code: 'clientConfigurationError', description: 'missing serverClientId'),
         'missing serverClientId',
+      );
+    });
+  });
+
+  group('LanHost', () {
+    test('defaults to zoro.local and prefers hostname over IP', () {
+      expect(kDefaultLanHost, 'zoro.local');
+      expect(kDefaultLanUrl, 'http://zoro.local:38480');
+      expect(LanHost.defaultUrl, kDefaultLanUrl);
+      expect(LanHost.isIpHost('192.168.1.10'), isTrue);
+      expect(LanHost.isHostnameUrl('http://zoro.local:38480'), isTrue);
+      expect(LanHost.isHostnameUrl('http://192.168.1.10:38480'), isFalse);
+      expect(
+        LanHost.advertisedUrlFromHealth({
+          'lan': {'hostname': 'zoro.local', 'url': 'http://zoro.local:38480'},
+        }),
+        'http://zoro.local:38480',
       );
     });
   });

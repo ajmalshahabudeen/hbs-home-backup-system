@@ -4,6 +4,7 @@ import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:mime/mime.dart';
+import '../core/utils/lan_host.dart';
 import '../core/utils/session_token_cleaner.dart';
 import '../core/utils/vault_crypto.dart';
 import '../models/backup_file_item.dart';
@@ -34,7 +35,7 @@ class ApiService {
     ),
   );
 
-  String _serverUrl = 'http://192.168.1.100:38480';
+  String _serverUrl = LanHost.defaultUrl;
   String? _sessionToken;
 
   void updateConfig({required String serverUrl, String? sessionToken}) {
@@ -64,7 +65,7 @@ class ApiService {
     return Options(headers: headers);
   }
 
-  Future<bool> checkHealth(String url) async {
+  Future<Map<String, dynamic>?> fetchHealth(String url) async {
     try {
       final cleanUrl = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
       final res = await _dio.get(
@@ -74,10 +75,15 @@ class ApiService {
           receiveTimeout: const Duration(milliseconds: 3500),
         ),
       );
-      return res.statusCode == 200;
+      if (res.statusCode != 200 || res.data is! Map) return null;
+      return Map<String, dynamic>.from(res.data as Map);
     } catch (_) {
-      return false;
+      return null;
     }
+  }
+
+  Future<bool> checkHealth(String url) async {
+    return (await fetchHealth(url)) != null;
   }
 
   Future<Map<String, dynamic>> getFiles({

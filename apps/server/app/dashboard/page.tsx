@@ -45,6 +45,7 @@ import {
   YAxis,
 } from "recharts";
 import { formatBytes, relativeTime } from "@/lib/format";
+import { HostnameSetup } from "@/components/hostname-setup";
 
 type StatsResponse = {
   stats: {
@@ -580,10 +581,12 @@ export default function DashboardPage() {
         </Card>
       </div>
 
+      <HostnameSetup />
+
       <Card>
         <CardHeader>
           <CardTitle>Pair a phone</CardTitle>
-          <CardDescription>Scan this QR in HBS Cloud to set the server URL</CardDescription>
+          <CardDescription>Scan this QR in HBS Cloud to set the server URL (hostname, not IP)</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
           <img

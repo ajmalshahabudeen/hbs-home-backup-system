@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/utils/lan_host.dart';
 import '../../core/widgets/glass_card.dart';
 import '../../providers/server_provider.dart';
 import '../../services/lan_scanner_service.dart';
@@ -167,7 +168,9 @@ class _LanScannerModalState extends ConsumerState<LanScannerModal> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      server.url,
+                                      server.viaHostname
+                                          ? server.url
+                                          : (server.hostname != null ? '${server.url}  ·  ${server.hostname}' : server.url),
                                       style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
                                     ),
                                     Text(
@@ -228,7 +231,7 @@ class _LanScannerModalState extends ConsumerState<LanScannerModal> {
                   child: TextField(
                     controller: _manualController,
                     decoration: InputDecoration(
-                      hintText: 'http://192.168.1.100:38480',
+                      hintText: LanHost.defaultUrl,
                       filled: true,
                       fillColor: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),

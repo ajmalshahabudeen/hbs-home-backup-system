@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { withApiLog } from "@/lib/api-log";
 import { ok } from "@/lib/auth-guard";
 import { ensureStorageReady, getStorageRoot } from "@/lib/storage";
+import { getLanHostInfo } from "@/lib/lan-host";
 import { term } from "@/lib/term-log";
 
 export const dynamic = "force-dynamic";
@@ -94,6 +95,7 @@ export const GET = withApiLog(
       pair: {
         qr: "/api/pair/qr",
       },
+      lan: getLanHostInfo(),
       google: {
         enabled: Boolean(
           process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET,

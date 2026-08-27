@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:workmanager/workmanager.dart';
+import '../../core/utils/lan_host.dart';
 import '../../services/api_service.dart';
 import '../../services/backup_index_db.dart';
 import '../../services/storage_service.dart';
@@ -12,7 +13,7 @@ void hbsBackgroundDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     WidgetsFlutterBinding.ensureInitialized();
     await StorageService().init();
-    final url = StorageService().getString('hbs_server_url', defaultValue: 'http://192.168.1.100:38480');
+    final url = StorageService().getString('hbs_server_url', defaultValue: LanHost.defaultUrl);
     final token = await StorageService().getSessionToken();
     if (token == null || token.isEmpty) return true;
     ApiService().updateConfig(serverUrl: url, sessionToken: token);

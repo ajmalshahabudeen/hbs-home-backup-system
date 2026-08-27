@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/utils/lan_host.dart';
 import '../models/server_info.dart';
 import '../services/api_service.dart';
 import '../services/lan_scanner_service.dart';
@@ -7,46 +8,55 @@ import '../services/storage_service.dart';
 class ServerNotifier extends StateNotifier<ServerInfo> {
   ServerNotifier()
       : super(ServerInfo(
-          url: StorageService().getString('hbs_server_url', defaultValue: 'http://192.168.1.100:38480'),
+          url: StorageService().getString('hbs_server_url', defaultValue: LanHost.defaultUrl),
         )) {
     _init();
   }
 
   Future<void> _init() async {
-    final savedUrl = StorageService().getString('hbs_server_url', defaultValue: 'http://192.168.1.100:38480');
+    final savedUrl = StorageService().getString('hbs_server_url', defaultValue: LanHost.defaultUrl);
     state = state.copyWith(url: savedUrl);
     ApiService().updateConfig(serverUrl: savedUrl);
 
-    // Initial Health Check
     final isHealthy = await checkHealth(savedUrl);
-    if (!isHealthy) {
-      // Auto-scan LAN for reachable server
-      autoDiscoverAndConnect();
+    if (isHealthy) return;
+
+    if (savedUrl != LanHost.defaultUrl) {
+      final hostOk = await checkHealth(LanHost.defaultUrl);
+      if (hostOk) return;
     }
+    autoDiscoverAndConnect();
   }
 
   Future<bool> checkHealth(String url) async {
     final sw = Stopwatch()..start();
-    final ok = await ApiService().checkHealth(url);
+    final data = await ApiService().fetchHealth(url);
     sw.stop();
 
-    if (ok) {
-      state = state.copyWith(
-        url: url,
-        isConnected: true,
-        pingMs: sw.elapsedMilliseconds,
-      );
-      ApiService().updateConfig(serverUrl: url);
-      await StorageService().setString('hbs_server_url', url);
-      return true;
-    } else {
+    if (data == null) {
       state = state.copyWith(isConnected: false);
       return false;
     }
+
+    var chosen = LanHost.stripUrl(url);
+    final advertised = LanHost.advertisedUrlFromHealth(data);
+    if (advertised != null && advertised != chosen && LanHost.isHostnameUrl(advertised)) {
+      final hostOk = await ApiService().fetchHealth(advertised);
+      if (hostOk != null) chosen = advertised;
+    }
+
+    state = state.copyWith(
+      url: chosen,
+      isConnected: true,
+      pingMs: sw.elapsedMilliseconds,
+    );
+    ApiService().updateConfig(serverUrl: chosen);
+    await StorageService().setString('hbs_server_url', chosen);
+    return true;
   }
 
   Future<void> setServerUrl(String url) async {
-    final clean = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
+    final clean = LanHost.stripUrl(url);
     state = state.copyWith(url: clean);
     await StorageService().setString('hbs_server_url', clean);
     ApiService().updateConfig(serverUrl: clean);

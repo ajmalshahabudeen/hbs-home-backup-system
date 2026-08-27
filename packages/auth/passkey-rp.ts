@@ -29,8 +29,8 @@ export function runWithPasskeyRequestContext<T>(
 }
 
 function envRp(): string {
-  const fromEnv = (process.env.HBS_PASSKEY_RP_ID || "").trim();
-  if (fromEnv) return fromEnv;
+  const fromEnv = (process.env.HBS_PASSKEY_RP_ID || process.env.HBS_HOSTNAME || "").trim();
+  if (fromEnv) return fromEnv.replace(/^https?:\/\//, "").replace(/:\d+$/, "").split("/")[0] || fromEnv;
   const fallback =
     process.env.BETTER_AUTH_URL ||
     process.env.NEXT_PUBLIC_APP_URL ||
