@@ -1,7 +1,7 @@
 name: hbs_app_flutter
 description: "HBS Cloud Drive & Photos - High-Performance Flutter Client"
 publish_to: 'none'
-version: 1.0.427072026
+version: 1.0.527072026
 
 environment:
   sdk: ^3.12.1
