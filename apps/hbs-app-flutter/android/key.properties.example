@@ -1,0 +1,6 @@
+# Copy to key.properties (gitignored) for local release builds.
+# CI injects the same fields from GitHub Actions secrets.
+storePassword=replace-me
+keyPassword=replace-me
+keyAlias=hbscloud
+storeFile=keystore/hbs-release.jks

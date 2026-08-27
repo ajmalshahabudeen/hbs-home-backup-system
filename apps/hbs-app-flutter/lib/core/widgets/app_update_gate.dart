@@ -80,7 +80,9 @@ class _AppUpdateGateState extends State<AppUpdateGate> {
         builder: (ctx) => AlertDialog(
           title: const Text('Install update'),
           content: Text(
-            'Downloaded ${release.tag} (${received > 0 && total > 0 ? '${(received / 1024 / 1024).toStringAsFixed(1)} MB' : 'APK'}). Allow installs from HBS Cloud if Android asks.',
+            'Downloaded ${release.tag} (${received > 0 && total > 0 ? '${(received / 1024 / 1024).toStringAsFixed(1)} MB' : 'APK'}).\n\n'
+            'If Android says the package conflicts with an already installed app, uninstall HBS Cloud first, then install this APK. '
+            'That happens when the old build was signed with a different key (debug vs GitHub release).',
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),

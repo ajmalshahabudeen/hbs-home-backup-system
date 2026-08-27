@@ -1,4 +1,7 @@
+import 'dart:async';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:photo_manager/photo_manager.dart';
 import '../core/utils/media_merger.dart';
 import '../core/widgets/filter_sort_bar.dart';
 import '../models/photo_media_item.dart';
@@ -61,7 +64,30 @@ class MediaState {
 
 class MediaNotifier extends StateNotifier<MediaState> {
   MediaNotifier() : super(const MediaState()) {
+    PhotoManager.addChangeCallback(_onLibraryChange);
+    PhotoManager.startChangeNotify();
     loadMedia();
+  }
+
+  Timer? _libraryDebounce;
+
+  void _onLibraryChange(MethodCall _) {
+    _libraryDebounce?.cancel();
+    _libraryDebounce = Timer(const Duration(milliseconds: 500), loadMedia);
+  }
+
+  @override
+  void dispose() {
+    _libraryDebounce?.cancel();
+    PhotoManager.removeChangeCallback(_onLibraryChange);
+    PhotoManager.stopChangeNotify();
+    super.dispose();
+  }
+
+  Future<void> reloadIfEmpty() async {
+    if (state.items.isEmpty && !state.isLoading) {
+      await loadMedia();
+    }
   }
 
   Future<void> loadMedia() async {

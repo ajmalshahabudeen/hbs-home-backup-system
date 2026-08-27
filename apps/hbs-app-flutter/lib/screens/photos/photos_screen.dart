@@ -125,6 +125,12 @@ class PhotosScreen extends ConsumerWidget {
                                         fontWeight: FontWeight.w700,
                                       ),
                                     ),
+                                    const SizedBox(height: 16),
+                                    TextButton.icon(
+                                      onPressed: () => mediaNotifier.loadMedia(),
+                                      icon: const Icon(Icons.refresh_rounded),
+                                      label: const Text('Grant access / retry'),
+                                    ),
                                   ],
                                 ),
                               ),

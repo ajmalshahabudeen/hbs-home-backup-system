@@ -33,17 +33,37 @@ class MediaDiscoveryService {
 
   Future<bool> requestPermissions() async {
     final PermissionState state = await PhotoManager.requestPermissionExtend();
-    return state.isAuth || state.hasAccess;
+    final ok = state.isAuth || state.hasAccess;
+    if (ok) {
+      // First grant: MediaStore is often empty until cache is dropped.
+      await PhotoManager.clearFileCache();
+    }
+    return ok;
+  }
+
+  Future<List<AssetPathEntity>> _assetPaths({required bool onlyAll}) async {
+    Future<List<AssetPathEntity>> fetch() {
+      return PhotoManager.getAssetPathList(
+        type: RequestType.common,
+        onlyAll: onlyAll,
+        filterOption: _allMediaFilter,
+      );
+    }
+
+    var paths = await fetch();
+    if (paths.isEmpty) {
+      await PhotoManager.clearFileCache();
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      paths = await fetch();
+    }
+    return paths;
   }
 
   Future<List<LocalAlbum>> getAlbums() async {
     final hasPerm = await requestPermissions();
     if (!hasPerm) return [];
 
-    final List<AssetPathEntity> paths = await PhotoManager.getAssetPathList(
-      type: RequestType.common,
-      filterOption: _allMediaFilter,
-    );
+    final List<AssetPathEntity> paths = await _assetPaths(onlyAll: false);
 
     final List<LocalAlbum> albums = [];
     for (final path in paths) {
@@ -94,11 +114,7 @@ class MediaDiscoveryService {
 
     AssetPathEntity? targetAlbum = album;
     if (targetAlbum == null) {
-      final albums = await PhotoManager.getAssetPathList(
-        type: RequestType.common,
-        onlyAll: true,
-        filterOption: _allMediaFilter,
-      );
+      final albums = await _assetPaths(onlyAll: true);
       if (albums.isNotEmpty) {
         targetAlbum = albums.first;
       }

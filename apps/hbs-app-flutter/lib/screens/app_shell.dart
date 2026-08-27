@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import '../core/widgets/custom_bottom_nav.dart';
 import '../providers/backup_provider.dart';
+import '../providers/media_provider.dart';
 import '../services/api_service.dart';
 import '../services/notification_service.dart';
 import '../services/watch_folder_service.dart';
@@ -75,6 +76,7 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       ref.read(backupProvider.notifier).autoBackupIfEnabled();
+      ref.read(mediaProvider.notifier).reloadIfEmpty();
       _startLanInbox();
     }
   }
