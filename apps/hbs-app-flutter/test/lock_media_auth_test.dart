@@ -3,6 +3,7 @@ import 'package:hbs_app_flutter/core/utils/formatters.dart';
 import 'package:hbs_app_flutter/core/utils/media_merger.dart';
 import 'package:hbs_app_flutter/core/utils/media_path_filter.dart';
 import 'package:hbs_app_flutter/core/utils/pin_validator.dart';
+import 'package:hbs_app_flutter/core/utils/google_sign_in_errors.dart';
 import 'package:hbs_app_flutter/core/utils/vault_crypto.dart';
 import 'package:hbs_app_flutter/models/photo_media_item.dart';
 import 'package:hbs_app_flutter/models/saved_account.dart';
@@ -225,6 +226,22 @@ void main() {
       expect(AppUpdateService.compare('v1.2.0', '1.1.9'), greaterThan(0));
       expect(AppUpdateService.compare('1.0.0', 'v1.0.0'), 0);
       expect(AppUpdateService.compare('1.0.0', '1.0.1'), lessThan(0));
+    });
+  });
+
+  group('GoogleSignInErrors', () {
+    test('maps canceled after account pick to a config hint', () {
+      final msg = GoogleSignInErrors.message(code: 'canceled');
+      expect(msg.contains('SHA-1'), isTrue);
+      expect(msg.toLowerCase().contains('cancel'), isTrue);
+      expect(GoogleSignInErrors.message(code: 'GoogleSignInExceptionCode.canceled', description: 'cm'), contains('cm'));
+    });
+
+    test('passes through other codes', () {
+      expect(
+        GoogleSignInErrors.message(code: 'clientConfigurationError', description: 'missing serverClientId'),
+        'missing serverClientId',
+      );
     });
   });
 }

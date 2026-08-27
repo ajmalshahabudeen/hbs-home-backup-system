@@ -1,10 +1,13 @@
+import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../config/google_cred.dart';
+import '../core/utils/google_sign_in_errors.dart';
 import '../core/utils/session_token_cleaner.dart';
 import '../models/saved_account.dart';
 import '../models/user_model.dart';
 import 'api_service.dart';
+import 'passkey_service.dart';
 import 'storage_service.dart';
 
 class AuthResult {
@@ -27,6 +30,8 @@ class AuthService {
   static final AuthService _instance = AuthService._internal();
   factory AuthService() => _instance;
   AuthService._internal();
+
+  static String? _googleInitializedFor;
 
   final Dio _dio = Dio(
     BaseOptions(
@@ -138,11 +143,30 @@ class AuthService {
         );
       }
 
-      await GoogleSignIn.instance.initialize(
-        clientId: GoogleCred.androidClientIdOrNull,
-        serverClientId: webClientId,
+      // initialize() must run exactly once. Re-calling it after picking an
+      // account makes Credential Manager report `canceled`.
+      if (_googleInitializedFor != webClientId) {
+        if (_googleInitializedFor != null) {
+          return const AuthResult(
+            success: false,
+            error: 'Google Sign-In is already initialized for a different Web client ID. Restart the app after changing GOOGLE_CLIENT_ID.',
+          );
+        }
+        final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+        await GoogleSignIn.instance.initialize(
+          // Android identifies the app by package + SHA-1, not clientId.
+          // Passing the Android client ID here used to be treated as serverClientId.
+          clientId: isAndroid ? null : GoogleCred.androidClientIdOrNull,
+          serverClientId: webClientId,
+        );
+        _googleInitializedFor = webClientId;
+      }
+      try {
+        await GoogleSignIn.instance.signOut();
+      } catch (_) {}
+      final account = await GoogleSignIn.instance.authenticate(
+        scopeHint: const ['email', 'openid', 'profile'],
       );
-      final account = await GoogleSignIn.instance.authenticate();
       final idToken = account.authentication.idToken;
       if (idToken == null || idToken.isEmpty) {
         return const AuthResult(
@@ -156,6 +180,7 @@ class AuthService {
         data: {
           'provider': 'google',
           'idToken': {'token': idToken},
+          'requestSignUp': true,
         },
         options: Options(
           headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
@@ -190,10 +215,10 @@ class AuthService {
       user ??= await restoreSession(serverUrl: serverUrl);
       return AuthResult(success: true, user: user, token: cleanToken);
     } on GoogleSignInException catch (e) {
-      if (e.code == GoogleSignInExceptionCode.canceled) {
-        return const AuthResult(success: false, error: 'Google sign-in cancelled');
-      }
-      return AuthResult(success: false, error: e.toString());
+      return AuthResult(
+        success: false,
+        error: GoogleSignInErrors.message(code: e.code.name, description: e.description),
+      );
     } catch (e) {
       return AuthResult(success: false, error: e.toString());
     }
@@ -208,6 +233,14 @@ class AuthService {
     final cleanUrl = serverUrl.endsWith('/') ? serverUrl.substring(0, serverUrl.length - 1) : serverUrl;
     final token = await StorageService().getSessionToken() ?? '';
     return '$cleanUrl/auth/passkey-register?token=${Uri.encodeComponent(token)}';
+  }
+
+  Future<AuthResult> signInWithPasskey({required String serverUrl}) {
+    return PasskeyService().signIn(serverUrl: serverUrl);
+  }
+
+  Future<AuthResult> registerPasskey({required String serverUrl}) {
+    return PasskeyService().register(serverUrl: serverUrl);
   }
 
   Future<AuthResult> finishOAuthRedirect({required String serverUrl, required Uri uri}) async {

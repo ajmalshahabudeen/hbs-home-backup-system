@@ -18,7 +18,6 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/storage_service.dart';
 import '../../services/watch_folder_service.dart';
-import '../auth/auth_webview_screen.dart';
 import '../search/search_screen.dart';
 import 'duplicates_screen.dart';
 import 'family_share_screen.dart';
@@ -506,16 +505,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         leading: const Icon(Icons.key_rounded),
                         title: const Text('Register a passkey'),
                         onTap: () async {
-                          final url = await AuthService().passkeyRegisterUrl(serverInfo.url);
-                          if (!context.mounted) return;
-                          final redirect = await AuthWebViewScreen.open(context, url: url, title: 'Register passkey');
-                          if (!context.mounted) return;
-                          if (redirect != null) {
-                            await AuthService().finishOAuthRedirect(serverUrl: serverInfo.url, uri: redirect);
-                          }
+                          final result = await AuthService().registerPasskey(serverUrl: serverInfo.url);
                           if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(redirect == null ? 'Passkey registration cancelled' : 'Passkey registered')),
+                            SnackBar(
+                              content: Text(
+                                result.success
+                                    ? 'Passkey registered'
+                                    : (result.error ?? 'Passkey registration cancelled'),
+                              ),
+                            ),
                           );
                         },
                       ),

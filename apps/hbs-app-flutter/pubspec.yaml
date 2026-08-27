@@ -50,6 +50,7 @@ dependencies:
   package_info_plus: ^9.0.1
   open_filex: ^4.7.0
   webview_flutter: ^4.14.1
+  passkeys: ^2.22.3
 
 dev_dependencies:
   flutter_test:

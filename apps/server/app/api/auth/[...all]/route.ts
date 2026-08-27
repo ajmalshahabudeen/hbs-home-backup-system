@@ -1,4 +1,4 @@
-import { auth } from "@workspace/auth";
+import { auth, runWithPasskeyRequestContext } from "@workspace/auth";
 import { toNextJsHandler } from "better-auth/next-js";
 import { NextRequest } from "next/server";
 import { withApiLog } from "@/lib/api-log";
@@ -57,16 +57,28 @@ function withTrustedOrigin(request: NextRequest): NextRequest {
   } as ConstructorParameters<typeof NextRequest>[1]);
 }
 
+function handle(request: NextRequest, method: "GET" | "POST") {
+  const host =
+    request.headers.get("x-forwarded-host") ||
+    request.headers.get("host") ||
+    request.nextUrl.host;
+  const origin = request.headers.get("origin");
+  return runWithPasskeyRequestContext(host, origin, () => {
+    const req = withTrustedOrigin(request);
+    return method === "GET" ? rawHandler.GET(req) : rawHandler.POST(req);
+  });
+}
+
 export const GET = withApiLog(
   "GET /api/auth/[...all]",
   async (request: NextRequest) => {
-    return rawHandler.GET(withTrustedOrigin(request));
+    return handle(request, "GET");
   },
 );
 
 export const POST = withApiLog(
   "POST /api/auth/[...all]",
   async (request: NextRequest) => {
-    return rawHandler.POST(withTrustedOrigin(request));
+    return handle(request, "POST");
   },
 );

@@ -14,7 +14,8 @@
     "server:dev": "bun run --filter server dev",
     "stack:up": "docker compose up -d --build",
     "stack:down": "docker compose down",
-    "stack:logs": "docker compose logs -f"
+    "stack:logs": "docker compose logs -f",
+    "postinstall": "bun packages/auth/scripts/patch-passkey-rpid.ts"
   },
   "devDependencies": {
     "@workspace/eslint-config": "workspace:*",
