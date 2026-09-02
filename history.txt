@@ -1025,4 +1025,16 @@
   - Verified `flutter test`: 100% passing tests (27/27 tests).
   - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 successful builds with 0 errors.
 
+## Session: 2026-09-02 (Portrait Thumbnail Aspect Ratio Distortion Fix)
+- Resolved issue where portrait / vertical images were distorted and shrunk inside square grid tiles:
+  1. Root Cause: `_AssetThumb` and `MediaThumb` specified both `cacheWidth: 240` and `cacheHeight: 240` simultaneously. In Flutter's engine, setting both dimensions forces `instantiateImageCodec` to non-uniformly squish the decoded bitmap to a 1:1 box, distorting portrait and landscape aspect ratios before `BoxFit.cover` is applied.
+  2. Fix in `lib/core/widgets/media_thumb.dart`:
+     - In `_AssetThumbState`: Removed forced `cacheWidth` and `cacheHeight` from `Image.memory`. `ThumbnailSize.square(targetSize)` already delivers a proportionally-scaled thumbnail from the native platform, allowing `BoxFit.cover` to fill the square tile with natural center-cropping and 0 distortion.
+     - In `Image.file`: Set `cacheWidth: targetSize` and removed `cacheHeight` so Flutter proportionally scales down local file textures while preserving original aspect ratios.
+- Build & Quality Verification:
+  - Verified `flutter analyze`: 0 issues found.
+  - Verified `flutter test`: 100% passing tests (27/27 tests).
+  - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 successful builds with 0 errors.
+
+
 
