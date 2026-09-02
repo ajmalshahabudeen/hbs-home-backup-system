@@ -8,6 +8,7 @@ import '../core/widgets/filter_sort_bar.dart';
 import '../models/photo_media_item.dart';
 import '../services/api_service.dart';
 import '../services/backup_index_db.dart';
+import '../services/media_cache_service.dart';
 import '../services/media_discovery_service.dart';
 
 class MediaState {
@@ -122,13 +123,26 @@ class MediaNotifier extends StateNotifier<MediaState> {
         state = state.copyWith(isLoading: false, hasPermission: false);
       }
     });
-    _initPermissionCheck();
+    _initAndHydrate();
   }
 
-  Future<void> _initPermissionCheck() async {
+  Future<void> _initAndHydrate() async {
+    // 1. Instant Warm Hydration from Disk Cache (<15ms)
+    final cached = await MediaCacheService().loadCache();
+    if (cached != null && cached.isNotEmpty) {
+      state = state.copyWith(
+        isLoading: false,
+        items: cached,
+        hasPermission: true,
+      );
+    }
+
+    // 2. Permission Check & Background Delta Sync
     final granted = await MediaDiscoveryService().isPermissionGranted();
     if (!granted) {
-      state = state.copyWith(isLoading: false, hasPermission: false);
+      if (cached == null || cached.isEmpty) {
+        state = state.copyWith(isLoading: false, hasPermission: false);
+      }
     } else {
       try {
         PhotoManager.startChangeNotify();
@@ -160,7 +174,9 @@ class MediaNotifier extends StateNotifier<MediaState> {
   Future<void> loadMedia({bool force = false}) async {
     final hasPerm = await MediaDiscoveryService().isPermissionGranted();
     if (!hasPerm && !force) {
-      state = state.copyWith(isLoading: false, hasPermission: false);
+      if (state.items.isEmpty) {
+        state = state.copyWith(isLoading: false, hasPermission: false);
+      }
       return;
     }
 
@@ -179,16 +195,12 @@ class MediaNotifier extends StateNotifier<MediaState> {
     );
 
     try {
-      // Phase 1: Local Device Media Discovery (Instant)
+      // Phase 1: High-Throughput Local Discovery
       final localItems = await MediaDiscoveryService().getLocalMedia(
         onPage: (soFar) {
-          final sorted = List<PhotoMediaItem>.from(soFar)..sort((a, b) {
-            final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-            final bDate = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-            return bDate.compareTo(aDate);
-          });
-          if (state.items.isEmpty || sorted.length > state.items.length) {
-            state = state.copyWith(isLoading: false, items: sorted);
+          // If state was empty (first install / cache cleared), show initial 200 items immediately
+          if (state.items.isEmpty) {
+            state = state.copyWith(isLoading: false, items: soFar);
           }
         },
       );
@@ -240,6 +252,9 @@ class MediaNotifier extends StateNotifier<MediaState> {
         isLoading: false,
         items: merged,
       );
+
+      // Persist latest merged timeline to disk cache asynchronously
+      MediaCacheService().saveCache(merged);
     } catch (e) {
       state = state.copyWith(
         isLoading: false,

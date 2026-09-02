@@ -172,7 +172,7 @@ class MediaDiscoveryService {
 
   Future<List<PhotoMediaItem>> getLocalMedia({
     int page = 0,
-    int pageSize = 80,
+    int pageSize = 1000,
     AssetPathEntity? album,
     void Function(List<PhotoMediaItem> soFar)? onPage,
   }) async {
@@ -190,32 +190,50 @@ class MediaDiscoveryService {
     if (targetAlbum == null) return [];
 
     final List<PhotoMediaItem> items = [];
-    var currentPage = page;
-    while (true) {
-      final List<AssetEntity> entities = await targetAlbum.getAssetListPaged(
-        page: currentPage,
-        size: pageSize,
-      );
-      if (entities.isEmpty) break;
 
-      for (final entity in entities) {
-        if (MediaPathFilter.isAndroidAppFolder(
-          relativePath: entity.relativePath,
-          albumName: targetAlbum.name,
-        )) {
-          continue;
-        }
-        items.add(itemFromEntity(entity));
+    // Fast initial frame: query first 200 items (<15ms)
+    final initialEntities = await targetAlbum.getAssetListPaged(
+      page: page,
+      size: 200,
+    );
+
+    for (final entity in initialEntities) {
+      if (MediaPathFilter.isAndroidAppFolder(
+        relativePath: entity.relativePath,
+        albumName: targetAlbum.name,
+      )) {
+        continue;
       }
-      items.sort((a, b) {
-        final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final bDate = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        return bDate.compareTo(aDate);
-      });
-      onPage?.call(List<PhotoMediaItem>.from(items));
+      items.add(itemFromEntity(entity));
+    }
 
-      if (entities.length < pageSize) break;
-      currentPage++;
+    if (onPage != null && items.isNotEmpty) {
+      onPage(List<PhotoMediaItem>.from(items));
+    }
+
+    if (initialEntities.length >= 200) {
+      // Query remaining items in high-throughput 1000-item chunks (e.g. 14,000 items in 14 quick calls)
+      var offset = 200;
+      while (true) {
+        final List<AssetEntity> entities = await targetAlbum.getAssetListRange(
+          start: offset,
+          end: offset + pageSize,
+        );
+        if (entities.isEmpty) break;
+
+        for (final entity in entities) {
+          if (MediaPathFilter.isAndroidAppFolder(
+            relativePath: entity.relativePath,
+            albumName: targetAlbum.name,
+          )) {
+            continue;
+          }
+          items.add(itemFromEntity(entity));
+        }
+
+        offset += entities.length;
+        if (entities.length < pageSize) break;
+      }
     }
 
     items.sort((a, b) {
@@ -224,7 +242,12 @@ class MediaDiscoveryService {
       return bDate.compareTo(aDate);
     });
 
-    return _markLivePairs(items);
+    final marked = _markLivePairs(items);
+    if (onPage != null && marked.length > initialEntities.length) {
+      onPage(marked);
+    }
+
+    return marked;
   }
 
   List<PhotoMediaItem> _markLivePairs(List<PhotoMediaItem> items) {

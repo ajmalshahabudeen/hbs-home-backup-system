@@ -67,6 +67,30 @@ class PhotoMediaItem {
     );
   }
 
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'userId': userId,
+      'path': path,
+      'name': name,
+      'parentPath': parentPath,
+      'mimeType': mimeType,
+      'size': size,
+      'createdAt': createdAt?.toIso8601String(),
+      'updatedAt': updatedAt?.toIso8601String(),
+      'isVideo': isVideo,
+      'url': url,
+      'thumbUrl': thumbUrl,
+      'isLocalOnly': isLocalOnly,
+      'isBackedUp': isBackedUp,
+      'localUri': localUri,
+      'duration': duration,
+      'assetId': assetId,
+      'isLive': isLive,
+      'liveVideoAssetId': liveVideoAssetId,
+    };
+  }
+
   PhotoMediaItem copyWith({
     String? id,
     String? userId,

@@ -297,5 +297,38 @@ void main() {
       expect(filtered.first.id, '2'); // newest first
       expect(filtered.last.id, '1');
     });
+
+    test('PhotoMediaItem toJson and fromJson round trips cleanly', () {
+      final original = PhotoMediaItem(
+        id: 'asset-123',
+        userId: 'u-1',
+        path: '/DCIM/Camera/IMG_001.jpg',
+        name: 'IMG_001.jpg',
+        parentPath: '/DCIM/Camera',
+        mimeType: 'image/jpeg',
+        size: 4096000,
+        createdAt: DateTime(2026, 3, 15, 10, 30),
+        updatedAt: DateTime(2026, 3, 15, 10, 30),
+        isVideo: false,
+        url: '/DCIM/Camera/IMG_001.jpg',
+        thumbUrl: null,
+        isLocalOnly: true,
+        isBackedUp: true,
+        assetId: 'asset-123',
+        isLive: true,
+        liveVideoAssetId: 'asset-vid-123',
+      );
+
+      final json = original.toJson();
+      final restored = PhotoMediaItem.fromJson(json);
+
+      expect(restored.id, original.id);
+      expect(restored.name, original.name);
+      expect(restored.size, original.size);
+      expect(restored.isBackedUp, isTrue);
+      expect(restored.isLive, isTrue);
+      expect(restored.liveVideoAssetId, 'asset-vid-123');
+      expect(restored.createdAt, original.createdAt);
+    });
   });
 }
