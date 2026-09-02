@@ -38,19 +38,26 @@ class FilterSortBar extends StatelessWidget {
     final primary = theme.primaryColor;
 
     return ClipRRect(
+      borderRadius: BorderRadius.circular(18.0),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
         child: Container(
           height: 42,
-          padding: const EdgeInsets.symmetric(horizontal: 14.0),
+          padding: const EdgeInsets.symmetric(horizontal: 12.0),
           decoration: BoxDecoration(
-            color: (isDark ? theme.cardColor : Colors.white).withValues(alpha: 0.8),
-            border: Border(
-              bottom: BorderSide(
-                color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06),
-                width: 1,
-              ),
+            color: (isDark ? theme.cardColor : Colors.white).withValues(alpha: 0.75),
+            borderRadius: BorderRadius.circular(18.0),
+            border: Border.all(
+              color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.06),
+              width: 1,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05),
+                blurRadius: 16,
+                offset: const Offset(0, 3),
+              ),
+            ],
           ),
           child: Row(
             children: [

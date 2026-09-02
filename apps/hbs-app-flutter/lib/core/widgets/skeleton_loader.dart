@@ -3,8 +3,13 @@ import 'package:shimmer/shimmer.dart';
 
 class SkeletonPhotoGrid extends StatelessWidget {
   final int columns;
+  final EdgeInsetsGeometry padding;
 
-  const SkeletonPhotoGrid({super.key, this.columns = 3});
+  const SkeletonPhotoGrid({
+    super.key,
+    this.columns = 3,
+    this.padding = EdgeInsets.zero,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +23,7 @@ class SkeletonPhotoGrid extends StatelessWidget {
       baseColor: baseColor,
       highlightColor: highlightColor,
       child: GridView.builder(
-        padding: EdgeInsets.zero,
+        padding: padding,
         physics: const NeverScrollableScrollPhysics(),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: columns,

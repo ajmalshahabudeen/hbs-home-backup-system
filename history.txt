@@ -972,6 +972,19 @@
   - Verified `flutter analyze`: 0 issues found.
   - Verified `flutter test`: 26/26 passing tests.
 
-
-
-
+## Session: 2026-09-02 (Photos Screen Floating Overlay & Auto-Hide on Scroll Completed)
+- Implemented floating frosted glass overlay architecture and auto-hiding filter on scroll for `apps/hbs-app-flutter/lib/screens/photos/photos_screen.dart`:
+  1. Converted `PhotosScreen` to `ConsumerStatefulWidget` with `ScrollController` and `_isFilterVisible` state.
+  2. Overhauled layout into full-height `Stack(fit: StackFit.expand)` where the media gallery spans the full screen, scrolling seamlessly underneath frosted glass.
+  3. Configured top sliver spacer (`SliverToBoxAdapter(child: SizedBox(height: topOverlayHeight))`) ensuring the top section (first date header/photos) starts cleanly below the filter section when unscrolled.
+  4. Added `NotificationListener<UserScrollNotification>` and `_scrollController` scroll listener:
+     - Scrolling down into photos (`ScrollDirection.reverse`) sets `_isFilterVisible = false`, collapsing the filter section into the header to maximize media viewing height.
+     - Scrolling back up (`ScrollDirection.forward`) or reaching the top (`offset <= 10`) sets `_isFilterVisible = true`, restoring the filter.
+  5. Wrapped filter and quick action chips in `ClipRect` + `AnimatedAlign` (`heightFactor: 1.0 -> 0.0`) and `AnimatedOpacity` (`opacity: 1.0 -> 0.0`) with `Curves.easeInOutCubic`.
+  6. Updated `FilterSortBar` with floating frosted glass pill styling (`borderRadius: 18`, `BackdropFilter`, drop shadow).
+  7. Added optional `padding` support to `SkeletonPhotoGrid` in `lib/core/widgets/skeleton_loader.dart`.
+  8. Configured `RefreshIndicator(edgeOffset: topOverlayHeight)` and bottom sliver padding for `CustomBottomNav`.
+- Build & Quality Verification:
+  - Verified `flutter analyze`: 0 issues found.
+  - Verified `flutter test`: 100% passing tests (26/26 tests).
+  - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 successful builds with 0 errors.
