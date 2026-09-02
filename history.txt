@@ -909,3 +909,69 @@
 - Build & Quality Verification:
   - Verified Next.js server production build (`bun run build --filter=server`): 100% success with 2 bounded workers.
   - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 successful builds with 0 errors.
+
+## Session: 2026-09-02 (Flutter Media & Storage Permission Dynamic Lifecycle Fix Completed)
+- Diagnosed and resolved startup permission stall and missing state updates on initial app launch in Flutter app (`apps/hbs-app-flutter`):
+  1. Root Causes:
+     - Race condition: `MediaNotifier` (`loadMedia`) and `BackupNotifier` (`loadAlbums`) concurrently fired native permission requests (`PhotoManager.requestPermissionExtend()`) on app launch, causing Android activity permission collision.
+     - Unbounded network block: `MediaNotifier.loadMedia()` attempted to fetch cloud photos via `ApiService().getPhotos()` which waited 15s for connection timeout on offline/unreachable servers while keeping `isLoading: true` and rendering `SkeletonPhotoGrid`.
+     - Stalled lifecycle: When permission was granted via the OS dialog, `reloadIfEmpty()` was skipped due to `isLoading: true`, `PhotoManager` change observer had not started, and `BackupNotifier` had no permission listener.
+  2. Media Discovery Service (`lib/services/media_discovery_service.dart`):
+     - Implemented single in-flight permission mutex (`_inFlightPermissionRequest`) to deduplicate concurrent requests.
+     - Added broadcast stream `onPermissionGranted` and `isPermissionGranted()` check.
+     - Automatically clears photo cache (`PhotoManager.clearFileCache()`) and initiates native change notifications (`PhotoManager.startChangeNotify()`) upon permission grant.
+     - Added `openSettings()` helper to open application settings.
+  3. Media Provider (`lib/providers/media_provider.dart`):
+     - Subscribed to `onPermissionGranted` and `PhotoManager.addChangeCallback` to automatically reload photos whenever permission is granted.
+     - Implemented fast two-stage loading: immediately mounts local device media (dismissing skeleton loader in milliseconds) before initiating a background cloud sync with a 4s timeout limit.
+  4. Backup Provider (`lib/providers/backup_provider.dart`) & Album Picker Modal (`lib/screens/backup/album_picker_modal.dart`):
+     - Subscribed `BackupNotifier` to `onPermissionGranted` to automatically load device albums upon permission grant.
+     - Updated `AlbumPickerModal` to auto-fetch albums on open and added explicit "Grant Access / Refresh" action.
+  5. App Shell (`lib/screens/app_shell.dart`) & Photos Screen (`lib/screens/photos/photos_screen.dart`):
+     - Updated `didChangeAppLifecycleState(AppLifecycleState.resumed)` to immediately refresh `loadMedia()` and `loadAlbums()` when returning from the OS permission dialog or system settings.
+     - Added "Grant Access / Retry" and "Settings" recovery buttons on empty/permission states in `PhotosScreen`.
+- Build & Quality Verification:
+  - Verified `flutter analyze`: 0 issues found.
+  - Verified `flutter test`: 100% passing tests (25/25 tests).
+  - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 successful builds with 0 errors.
+  - Verified Next.js server production build (`bun run build --filter=server`): 100% success.
+
+## Session: 2026-09-02 (Photos Timeline Chronological Ordering Fix Completed)
+- Fixed chronological ordering in `PhotosScreen` (`apps/hbs-app-flutter/lib/screens/photos/photos_screen.dart`):
+  1. Configured `FilterOptionGroup` with `OrderOption(type: OrderOptionType.createDate, asc: false)` in `MediaDiscoveryService._assetPaths`, forcing native MediaStore and PHPhotoLibrary to query and return newest assets first on page 0.
+  2. Added descending sort by `createdAt` in `MediaDiscoveryService.getLocalMedia` before emitting `onPage` stream chunks and final asset lists.
+  3. Added descending sort by `createdAt` in `MediaNotifier.loadMedia` and `MediaState.filteredItems`.
+  4. Updated `PhotosScreen._groupByDate` to sort items latest-first (newest to oldest) before grouping into date sections, ensuring the latest photos appear at the top of the timeline.
+- Build & Quality Verification:
+  - Verified `flutter analyze`: 0 issues found.
+  - Verified `flutter test`: 100% passing tests (25/25 tests).
+
+## Session: 2026-09-02 (Instant Permission Prompt & Zero-Skeleton Loading Fix Completed)
+- Resolved infinite skeleton loading when media permissions are not granted in `apps/hbs-app-flutter`:
+  1. `MediaState` (`lib/providers/media_provider.dart`) & `BackupState` (`lib/providers/backup_provider.dart`):
+     - Added `hasPermission` state variable.
+     - `MediaNotifier` and `BackupNotifier` perform instant upfront permission checks via `MediaDiscoveryService.isPermissionGranted()`.
+     - When ungranted, immediately sets `hasPermission = false` and `isLoading = false` without displaying skeleton loaders or triggering network calls.
+  2. `PhotosScreen` (`lib/screens/photos/photos_screen.dart`):
+     - Evaluates `!mediaState.hasPermission` first: directly displays the "Media Access Required" card with "Grant Access" and "Settings" buttons with 0ms loading delay.
+     - Skeleton loader (`SkeletonPhotoGrid`) only renders if `hasPermission == true` and media is actively loading.
+  3. `BackupScreen` (`lib/screens/backup/backup_screen.dart`) & `AlbumPickerModal` (`lib/screens/backup/album_picker_modal.dart`):
+     - Displays prominent permission warning banner on `BackupScreen` when ungranted.
+     - In `AlbumPickerModal`, directly presents "Media Access Required" with "Grant Access" and "Settings" buttons without showing circular progress spinners.
+- Build & Quality Verification:
+  - Verified `flutter analyze`: 0 issues found.
+  - Verified `flutter test`: 100% passing tests (26/26 tests).
+  - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 successful builds with 0 errors.
+
+## Session: 2026-09-02 (Unmodifiable List In-Place Sort Fix in MediaState Completed)
+- Fixed `Unsupported operation: Cannot modify an unmodifiable list` in `MediaState.filteredItems` (`apps/hbs-app-flutter/lib/providers/media_provider.dart`):
+  1. Root Cause: When `items` is empty (`const []`), calling `list.sort()` directly on the unmodifiable constant list threw an uncaught exception during widget build.
+  2. Solution: Created a mutable clone `final sorted = List<PhotoMediaItem>.from(list); sorted.sort(...)` before returning.
+  3. Added unit test `MediaState.filteredItems handles empty const list without throwing and sorts latest first` in `test/lock_media_auth_test.dart`.
+- Build & Quality Verification:
+  - Verified `flutter analyze`: 0 issues found.
+  - Verified `flutter test`: 26/26 passing tests.
+
+
+
+

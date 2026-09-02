@@ -75,8 +75,9 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      ref.read(mediaProvider.notifier).loadMedia();
+      ref.read(backupProvider.notifier).loadAlbums();
       ref.read(backupProvider.notifier).autoBackupIfEnabled();
-      ref.read(mediaProvider.notifier).reloadIfEmpty();
       _startLanInbox();
     }
   }

@@ -2,8 +2,9 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/backup_provider.dart';
+import '../../services/media_discovery_service.dart';
 
-class AlbumPickerModal extends ConsumerWidget {
+class AlbumPickerModal extends ConsumerStatefulWidget {
   const AlbumPickerModal({super.key});
 
   static void show(BuildContext context) {
@@ -16,7 +17,22 @@ class AlbumPickerModal extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AlbumPickerModal> createState() => _AlbumPickerModalState();
+}
+
+class _AlbumPickerModalState extends ConsumerState<AlbumPickerModal> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (ref.read(backupProvider).hasPermission && ref.read(backupProvider).albums.isEmpty) {
+        ref.read(backupProvider.notifier).loadAlbums();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final primary = theme.primaryColor;
@@ -74,15 +90,78 @@ class AlbumPickerModal extends ConsumerWidget {
             const SizedBox(height: 16),
 
             Expanded(
-              child: backupState.isLoadingAlbums
-                  ? const Center(child: CircularProgressIndicator())
-                  : backupState.albums.isEmpty
-                      ? Center(
-                          child: Text(
-                            'No albums found on device',
-                            style: TextStyle(color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6)),
+              child: !backupState.hasPermission
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.lock_outline_rounded,
+                            size: 48,
+                            color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.4),
                           ),
-                        )
+                          const SizedBox(height: 12),
+                          Text(
+                            'Media access is required to view albums',
+                            style: TextStyle(color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7)),
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              ElevatedButton.icon(
+                                onPressed: () async {
+                                  await MediaDiscoveryService().requestPermissions(force: true);
+                                  await backupNotifier.loadAlbums(force: true);
+                                },
+                                icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
+                                label: const Text('Grant Access'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: primary,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              OutlinedButton.icon(
+                                onPressed: () => MediaDiscoveryService().openSettings(),
+                                icon: const Icon(Icons.settings_outlined, size: 18),
+                                label: const Text('Settings'),
+                                style: OutlinedButton.styleFrom(
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    )
+                  : backupState.isLoadingAlbums
+                      ? const Center(child: CircularProgressIndicator())
+                      : backupState.albums.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.folder_off_outlined,
+                                    size: 48,
+                                    color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.4),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    'No albums found on device',
+                                    style: TextStyle(color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7)),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  TextButton.icon(
+                                    onPressed: () => backupNotifier.loadAlbums(force: true),
+                                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                                    label: const Text('Refresh'),
+                                  ),
+                                ],
+                              ),
+                            )
                       : ListView.separated(
                           itemCount: backupState.albums.length,
                           separatorBuilder: (_, __) => const SizedBox(height: 8),

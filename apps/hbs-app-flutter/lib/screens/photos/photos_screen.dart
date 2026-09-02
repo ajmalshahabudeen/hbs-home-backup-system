@@ -21,8 +21,14 @@ class PhotosScreen extends ConsumerWidget {
   const PhotosScreen({super.key});
 
   Map<String, List<PhotoMediaItem>> _groupByDate(List<PhotoMediaItem> items) {
+    final sorted = List<PhotoMediaItem>.from(items)..sort((a, b) {
+      final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bDate = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return bDate.compareTo(aDate);
+    });
+
     final Map<String, List<PhotoMediaItem>> groups = {};
-    for (final item in items) {
+    for (final item in sorted) {
       final key = Formatters.timelineKey(item.createdAt);
       groups.putIfAbsent(key.isEmpty ? 'Unknown' : key, () => []).add(item);
     }
@@ -99,44 +105,119 @@ class PhotosScreen extends ConsumerWidget {
 
           // Main Gallery Grid
           Expanded(
-            child: mediaState.isLoading && items.isEmpty
-                ? SkeletonPhotoGrid(columns: mediaState.density)
-                : RefreshIndicator(
-                    onRefresh: () => mediaNotifier.loadMedia(),
-                    color: primary,
-                    child: items.isEmpty
-                        ? ListView(
+            child: !mediaState.hasPermission
+                ? ListView(
+                    children: [
+                      SizedBox(height: MediaQuery.of(context).size.height * 0.18),
+                      Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 32),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              SizedBox(height: MediaQuery.of(context).size.height * 0.25),
-                              Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.photo_library_outlined,
-                                      size: 56,
-                                      color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.3),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Text(
-                                      'No photos found',
-                                      style: theme.textTheme.titleMedium?.copyWith(
-                                        color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6),
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 16),
-                                    TextButton.icon(
-                                      onPressed: () => mediaNotifier.loadMedia(),
-                                      icon: const Icon(Icons.refresh_rounded),
-                                      label: const Text('Grant access / retry'),
-                                    ),
-                                  ],
+                              Container(
+                                width: 72,
+                                height: 72,
+                                decoration: BoxDecoration(
+                                  color: primary.withValues(alpha: 0.12),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.photo_library_outlined,
+                                  size: 36,
+                                  color: primary,
                                 ),
                               ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Media Access Required',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Grant permission to access your device photos and videos to view your gallery and back them up.',
+                                textAlign: TextAlign.center,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7),
+                                  height: 1.4,
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  ElevatedButton.icon(
+                                    onPressed: () async {
+                                      await MediaDiscoveryService().requestPermissions(force: true);
+                                      await mediaNotifier.loadMedia(force: true);
+                                    },
+                                    icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
+                                    label: const Text('Grant Access'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: primary,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  OutlinedButton.icon(
+                                    onPressed: () => MediaDiscoveryService().openSettings(),
+                                    icon: const Icon(Icons.settings_outlined, size: 18),
+                                    label: const Text('Settings'),
+                                    style: OutlinedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ],
-                          )
-                        : CustomScrollView(
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : mediaState.isLoading && items.isEmpty
+                    ? SkeletonPhotoGrid(columns: mediaState.density)
+                    : RefreshIndicator(
+                        onRefresh: () => mediaNotifier.loadMedia(),
+                        color: primary,
+                        child: items.isEmpty
+                            ? ListView(
+                                children: [
+                                  SizedBox(height: MediaQuery.of(context).size.height * 0.25),
+                                  Center(
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.photo_library_outlined,
+                                          size: 56,
+                                          color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.3),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          'No photos found',
+                                          style: theme.textTheme.titleMedium?.copyWith(
+                                            color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6),
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 16),
+                                        TextButton.icon(
+                                          onPressed: () => mediaNotifier.loadMedia(force: true),
+                                          icon: const Icon(Icons.refresh_rounded),
+                                          label: const Text('Refresh'),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : CustomScrollView(
                             physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                             slivers: groups.entries.map((group) {
                               return SliverMainAxisGroup(

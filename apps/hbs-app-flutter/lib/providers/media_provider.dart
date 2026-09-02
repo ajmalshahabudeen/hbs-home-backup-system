@@ -11,6 +11,7 @@ import '../services/media_discovery_service.dart';
 
 class MediaState {
   final bool isLoading;
+  final bool hasPermission;
   final List<PhotoMediaItem> items;
   final MediaCategoryFilter category;
   final int density;
@@ -19,6 +20,7 @@ class MediaState {
 
   const MediaState({
     this.isLoading = false,
+    this.hasPermission = true,
     this.items = const [],
     this.category = MediaCategoryFilter.all,
     this.density = 3,
@@ -40,11 +42,19 @@ class MediaState {
       list = list.where((e) => e.name.toLowerCase().contains(q)).toList();
     }
 
-    return list;
+    final sorted = List<PhotoMediaItem>.from(list);
+    sorted.sort((a, b) {
+      final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bDate = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return bDate.compareTo(aDate);
+    });
+
+    return sorted;
   }
 
   MediaState copyWith({
     bool? isLoading,
+    bool? hasPermission,
     List<PhotoMediaItem>? items,
     MediaCategoryFilter? category,
     int? density,
@@ -53,6 +63,7 @@ class MediaState {
   }) {
     return MediaState(
       isLoading: isLoading ?? this.isLoading,
+      hasPermission: hasPermission ?? this.hasPermission,
       items: items ?? this.items,
       category: category ?? this.category,
       density: density ?? this.density,
@@ -63,13 +74,33 @@ class MediaState {
 }
 
 class MediaNotifier extends StateNotifier<MediaState> {
+  StreamSubscription<bool>? _permissionSub;
+  Timer? _libraryDebounce;
+
   MediaNotifier() : super(const MediaState()) {
     PhotoManager.addChangeCallback(_onLibraryChange);
-    PhotoManager.startChangeNotify();
-    loadMedia();
+    _permissionSub = MediaDiscoveryService().onPermissionGranted.listen((granted) {
+      if (granted) {
+        state = state.copyWith(hasPermission: true);
+        loadMedia(force: true);
+      } else {
+        state = state.copyWith(isLoading: false, hasPermission: false);
+      }
+    });
+    _initPermissionCheck();
   }
 
-  Timer? _libraryDebounce;
+  Future<void> _initPermissionCheck() async {
+    final granted = await MediaDiscoveryService().isPermissionGranted();
+    if (!granted) {
+      state = state.copyWith(isLoading: false, hasPermission: false);
+    } else {
+      try {
+        PhotoManager.startChangeNotify();
+      } catch (_) {}
+      loadMedia();
+    }
+  }
 
   void _onLibraryChange(MethodCall _) {
     _libraryDebounce?.cancel();
@@ -78,6 +109,7 @@ class MediaNotifier extends StateNotifier<MediaState> {
 
   @override
   void dispose() {
+    _permissionSub?.cancel();
     _libraryDebounce?.cancel();
     PhotoManager.removeChangeCallback(_onLibraryChange);
     PhotoManager.stopChangeNotify();
@@ -85,39 +117,88 @@ class MediaNotifier extends StateNotifier<MediaState> {
   }
 
   Future<void> reloadIfEmpty() async {
-    if (state.items.isEmpty && !state.isLoading) {
-      await loadMedia();
+    if (state.items.isEmpty) {
+      await loadMedia(force: true);
     }
   }
 
-  Future<void> loadMedia() async {
-    state = state.copyWith(isLoading: true, errorMessage: null);
+  Future<void> loadMedia({bool force = false}) async {
+    final hasPerm = await MediaDiscoveryService().isPermissionGranted();
+    if (!hasPerm && !force) {
+      state = state.copyWith(isLoading: false, hasPermission: false);
+      return;
+    }
+
+    if (force) {
+      final granted = await MediaDiscoveryService().requestPermissions(force: true);
+      if (!granted) {
+        state = state.copyWith(isLoading: false, hasPermission: false);
+        return;
+      }
+    }
+
+    state = state.copyWith(
+      isLoading: state.items.isEmpty,
+      hasPermission: true,
+      errorMessage: null,
+    );
 
     try {
+      // Phase 1: Local Device Media Discovery (Instant)
       final localItems = await MediaDiscoveryService().getLocalMedia(
         onPage: (soFar) {
-          if (state.items.isEmpty || soFar.length > state.items.length) {
-            state = state.copyWith(isLoading: false, items: soFar);
+          final sorted = List<PhotoMediaItem>.from(soFar)..sort((a, b) {
+            final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+            final bDate = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+            return bDate.compareTo(aDate);
+          });
+          if (state.items.isEmpty || sorted.length > state.items.length) {
+            state = state.copyWith(isLoading: false, items: sorted);
           }
         },
       );
 
-      final serverPhotos = <PhotoMediaItem>[];
-      var offset = 0;
-      while (true) {
-        final page = await ApiService().getPhotos(offset: offset, limit: 80).catchError((_) => <PhotoMediaItem>[]);
-        if (page.isEmpty) break;
-        serverPhotos.addAll(page);
-        if (page.length < 80) break;
-        offset += 80;
+      final sortedLocal = List<PhotoMediaItem>.from(localItems)..sort((a, b) {
+        final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bDate = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return bDate.compareTo(aDate);
+      });
+
+      // Render local assets immediately if available
+      if (sortedLocal.isNotEmpty || state.items.isEmpty) {
+        state = state.copyWith(isLoading: false, items: sortedLocal);
       }
-      final indexKeys = await BackupIndexDb().getUploadedKeys();
+
+      // Phase 2: Asynchronous Cloud / Server Media Sync (Bounded with 4s timeout)
+      final serverPhotos = <PhotoMediaItem>[];
+      try {
+        var offset = 0;
+        while (true) {
+          final page = await ApiService()
+              .getPhotos(offset: offset, limit: 80)
+              .timeout(const Duration(seconds: 4), onTimeout: () => <PhotoMediaItem>[]);
+          if (page.isEmpty) break;
+          serverPhotos.addAll(page);
+          if (page.length < 80) break;
+          offset += 80;
+        }
+      } catch (_) {
+        // Server offline / LAN timeout - local items remain intact and visible
+      }
+
+      Set<String> uploadedNameSizeKeys = {};
+      Set<String> uploadedNames = {};
+      try {
+        final indexKeys = await BackupIndexDb().getUploadedKeys();
+        uploadedNameSizeKeys = indexKeys.nameSizeKeys;
+        uploadedNames = indexKeys.names;
+      } catch (_) {}
 
       final merged = MediaMerger.merge(
         local: localItems,
         server: serverPhotos,
-        uploadedNameSizeKeys: indexKeys.nameSizeKeys,
-        uploadedNames: indexKeys.names,
+        uploadedNameSizeKeys: uploadedNameSizeKeys,
+        uploadedNames: uploadedNames,
       );
 
       state = state.copyWith(

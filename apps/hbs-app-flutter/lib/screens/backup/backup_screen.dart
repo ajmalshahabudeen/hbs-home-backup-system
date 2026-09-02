@@ -7,6 +7,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/backup_provider.dart';
 import '../../providers/server_provider.dart';
 import '../../services/api_service.dart';
+import '../../services/media_discovery_service.dart';
 import '../../services/storage_service.dart';
 import '../../core/utils/background_backup.dart';
 import '../search/search_screen.dart';
@@ -60,6 +61,78 @@ class BackupScreen extends ConsumerWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
               children: [
+                if (!backupState.hasPermission) ...[
+                  GlassCard(
+                    padding: const EdgeInsets.all(16),
+                    borderRadius: 20,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: Colors.amber.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 22),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Media Permission Required',
+                                    style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700),
+                                  ),
+                                  Text(
+                                    'Grant permission to scan and back up device albums',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: () => MediaDiscoveryService().openSettings(),
+                              icon: const Icon(Icons.settings_outlined, size: 16),
+                              label: const Text('Settings'),
+                              style: OutlinedButton.styleFrom(
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            ElevatedButton.icon(
+                              onPressed: () async {
+                                await MediaDiscoveryService().requestPermissions(force: true);
+                                await backupNotifier.loadAlbums(force: true);
+                              },
+                              icon: const Icon(Icons.check_circle_outline_rounded, size: 16),
+                              label: const Text('Grant Access'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: primary,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
                 // Hero Sync Card
                 GlassCard(
                   padding: const EdgeInsets.all(20),

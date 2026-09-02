@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/utils/background_backup.dart';
 import '../models/sync_state.dart';
@@ -16,6 +17,7 @@ class BackupState {
   final bool autoBackup;
   final int indexedCount;
   final bool isLoadingAlbums;
+  final bool hasPermission;
 
   const BackupState({
     this.albums = const [],
@@ -26,6 +28,7 @@ class BackupState {
     this.autoBackup = false,
     this.indexedCount = 0,
     this.isLoadingAlbums = false,
+    this.hasPermission = true,
   });
 
   BackupState copyWith({
@@ -37,6 +40,7 @@ class BackupState {
     bool? autoBackup,
     int? indexedCount,
     bool? isLoadingAlbums,
+    bool? hasPermission,
   }) {
     return BackupState(
       albums: albums ?? this.albums,
@@ -47,11 +51,15 @@ class BackupState {
       autoBackup: autoBackup ?? this.autoBackup,
       indexedCount: indexedCount ?? this.indexedCount,
       isLoadingAlbums: isLoadingAlbums ?? this.isLoadingAlbums,
+      hasPermission: hasPermission ?? this.hasPermission,
     );
   }
 }
 
 class BackupNotifier extends StateNotifier<BackupState> {
+  StreamSubscription<SyncState>? _queueSub;
+  StreamSubscription<bool>? _permissionSub;
+
   BackupNotifier() : super(const BackupState()) {
     _init();
   }
@@ -70,17 +78,54 @@ class BackupNotifier extends StateNotifier<BackupState> {
       autoBackup: autoBackup,
     );
 
-    UploadQueueService().stateStream.listen((syncState) {
+    _queueSub = UploadQueueService().stateStream.listen((syncState) {
       state = state.copyWith(syncState: syncState);
     });
 
-    loadAlbums();
+    _permissionSub = MediaDiscoveryService().onPermissionGranted.listen((granted) {
+      if (granted) {
+        state = state.copyWith(hasPermission: true);
+        loadAlbums(force: true);
+      } else {
+        state = state.copyWith(isLoadingAlbums: false, hasPermission: false);
+      }
+    });
+
+    MediaDiscoveryService().isPermissionGranted().then((granted) {
+      if (!granted) {
+        state = state.copyWith(isLoadingAlbums: false, hasPermission: false);
+      } else {
+        loadAlbums();
+      }
+    });
+
     refreshIndexCount();
     UploadQueueService().resumePending(concurrency: battery ? 2 : 4);
   }
 
-  Future<void> loadAlbums() async {
-    state = state.copyWith(isLoadingAlbums: true);
+  @override
+  void dispose() {
+    _queueSub?.cancel();
+    _permissionSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> loadAlbums({bool force = false}) async {
+    final hasPerm = await MediaDiscoveryService().isPermissionGranted();
+    if (!hasPerm && !force) {
+      state = state.copyWith(isLoadingAlbums: false, hasPermission: false);
+      return;
+    }
+
+    if (force) {
+      final granted = await MediaDiscoveryService().requestPermissions(force: true);
+      if (!granted) {
+        state = state.copyWith(isLoadingAlbums: false, hasPermission: false);
+        return;
+      }
+    }
+
+    state = state.copyWith(isLoadingAlbums: true, hasPermission: true);
     final albums = await MediaDiscoveryService().getAlbums();
     state = state.copyWith(
       albums: albums,

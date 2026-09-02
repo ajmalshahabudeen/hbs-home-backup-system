@@ -8,6 +8,7 @@ import 'package:hbs_app_flutter/core/utils/google_sign_in_errors.dart';
 import 'package:hbs_app_flutter/core/utils/vault_crypto.dart';
 import 'package:hbs_app_flutter/models/photo_media_item.dart';
 import 'package:hbs_app_flutter/models/saved_account.dart';
+import 'package:hbs_app_flutter/providers/media_provider.dart';
 import 'package:hbs_app_flutter/screens/photos/memories_screen.dart';
 import 'package:hbs_app_flutter/services/app_update_service.dart';
 import 'package:hbs_app_flutter/services/watch_folder_service.dart';
@@ -260,6 +261,41 @@ void main() {
         }),
         'http://zoro.local:38480',
       );
+    });
+  });
+
+  group('MediaState', () {
+    test('filteredItems handles empty const list without throwing and sorts latest first', () {
+      const emptyState = MediaState();
+      expect(emptyState.filteredItems, isEmpty);
+
+      final stateWithItems = MediaState(
+        items: [
+          PhotoMediaItem(
+            id: '1',
+            path: '/p1.jpg',
+            name: 'p1.jpg',
+            size: 100,
+            isVideo: false,
+            url: '',
+            createdAt: DateTime(2025, 1, 1),
+          ),
+          PhotoMediaItem(
+            id: '2',
+            path: '/p2.jpg',
+            name: 'p2.jpg',
+            size: 200,
+            isVideo: false,
+            url: '',
+            createdAt: DateTime(2026, 5, 10),
+          ),
+        ],
+      );
+
+      final filtered = stateWithItems.filteredItems;
+      expect(filtered.length, 2);
+      expect(filtered.first.id, '2'); // newest first
+      expect(filtered.last.id, '1');
     });
   });
 }

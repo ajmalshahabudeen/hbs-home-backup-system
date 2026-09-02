@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:photo_manager/photo_manager.dart';
 import '../core/utils/media_path_filter.dart';
@@ -22,38 +23,96 @@ class MediaDiscoveryService {
   factory MediaDiscoveryService() => _instance;
   MediaDiscoveryService._internal();
 
-  static final FilterOptionGroup _allMediaFilter = FilterOptionGroup(
-    imageOption: const FilterOption(
-      sizeConstraint: SizeConstraint(ignoreSize: true),
-    ),
-    videoOption: const FilterOption(
-      sizeConstraint: SizeConstraint(ignoreSize: true),
-    ),
-  );
+  final StreamController<bool> _permissionStreamController = StreamController<bool>.broadcast();
+  Stream<bool> get onPermissionGranted => _permissionStreamController.stream;
 
-  Future<bool> requestPermissions() async {
-    final PermissionState state = await PhotoManager.requestPermissionExtend();
-    final ok = state.isAuth || state.hasAccess;
-    if (ok) {
-      // First grant: MediaStore is often empty until cache is dropped.
-      await PhotoManager.clearFileCache();
+  Future<bool>? _inFlightPermissionRequest;
+
+  Future<bool> isPermissionGranted() async {
+    try {
+      final state = await PhotoManager.getPermissionState(
+        requestOption: const PermissionRequestOption(),
+      );
+      return state.isAuth || state.hasAccess;
+    } catch (_) {
+      return false;
     }
-    return ok;
   }
+
+  Future<bool> requestPermissions({bool force = false}) async {
+    if (!force) {
+      final alreadyGranted = await isPermissionGranted();
+      if (alreadyGranted) {
+        try {
+          await PhotoManager.startChangeNotify();
+        } catch (_) {}
+        return true;
+      }
+    }
+
+    if (_inFlightPermissionRequest != null) {
+      return _inFlightPermissionRequest!;
+    }
+
+    _inFlightPermissionRequest = _doRequestPermissions();
+    try {
+      return await _inFlightPermissionRequest!;
+    } finally {
+      _inFlightPermissionRequest = null;
+    }
+  }
+
+  Future<bool> _doRequestPermissions() async {
+    try {
+      final PermissionState state = await PhotoManager.requestPermissionExtend();
+      final ok = state.isAuth || state.hasAccess;
+      if (ok) {
+        await PhotoManager.clearFileCache();
+        try {
+          await PhotoManager.startChangeNotify();
+        } catch (_) {}
+        _permissionStreamController.add(true);
+      } else {
+        _permissionStreamController.add(false);
+      }
+      return ok;
+    } catch (_) {
+      _permissionStreamController.add(false);
+      return false;
+    }
+  }
+
+  Future<bool> openSettings() async {
+    try {
+      await PhotoManager.openSetting();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static final FilterOptionGroup _filterOption = FilterOptionGroup(
+    orders: [
+      const OrderOption(
+        type: OrderOptionType.createDate,
+        asc: false,
+      ),
+    ],
+  );
 
   Future<List<AssetPathEntity>> _assetPaths({required bool onlyAll}) async {
     Future<List<AssetPathEntity>> fetch() {
       return PhotoManager.getAssetPathList(
         type: RequestType.common,
         onlyAll: onlyAll,
-        filterOption: _allMediaFilter,
+        filterOption: _filterOption,
       );
     }
 
     var paths = await fetch();
     if (paths.isEmpty) {
       await PhotoManager.clearFileCache();
-      await Future<void>.delayed(const Duration(milliseconds: 400));
+      await Future<void>.delayed(const Duration(milliseconds: 350));
       paths = await fetch();
     }
     return paths;
@@ -63,7 +122,12 @@ class MediaDiscoveryService {
     final hasPerm = await requestPermissions();
     if (!hasPerm) return [];
 
-    final List<AssetPathEntity> paths = await _assetPaths(onlyAll: false);
+    var paths = await _assetPaths(onlyAll: false);
+    if (paths.isEmpty) {
+      await PhotoManager.clearFileCache();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      paths = await _assetPaths(onlyAll: false);
+    }
 
     final List<LocalAlbum> albums = [];
     for (final path in paths) {
@@ -140,11 +204,22 @@ class MediaDiscoveryService {
         }
         items.add(itemFromEntity(entity));
       }
+      items.sort((a, b) {
+        final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bDate = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return bDate.compareTo(aDate);
+      });
       onPage?.call(List<PhotoMediaItem>.from(items));
 
       if (entities.length < pageSize) break;
       currentPage++;
     }
+
+    items.sort((a, b) {
+      final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bDate = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return bDate.compareTo(aDate);
+    });
 
     return _markLivePairs(items);
   }
