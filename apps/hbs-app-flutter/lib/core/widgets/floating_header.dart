@@ -7,6 +7,7 @@ class FloatingHeader extends StatefulWidget {
   final String serverUrl;
   final bool isConnected;
   final String userName;
+  final VoidCallback? onBackTap;
   final VoidCallback? onServerTap;
   final VoidCallback? onSearchTap;
   final VoidCallback? onProfileTap;
@@ -17,6 +18,7 @@ class FloatingHeader extends StatefulWidget {
     required this.serverUrl,
     required this.isConnected,
     this.userName = 'User',
+    this.onBackTap,
     this.onServerTap,
     this.onSearchTap,
     this.onProfileTap,
@@ -92,21 +94,36 @@ class _FloatingHeaderState extends State<FloatingHeader> with SingleTickerProvid
               ),
               child: Row(
                 children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
+                  if (widget.onBackTap != null)
+                    InkWell(
+                      onTap: widget.onBackTap,
                       borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: primary.withValues(alpha: 0.25),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
+                      child: Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                      ],
+                        child: Icon(Icons.arrow_back_rounded, color: primary, size: 20),
+                      ),
+                    )
+                  else
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: primary.withValues(alpha: 0.25),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: const AppLogo(size: 38, borderRadius: 12),
                     ),
-                    child: const AppLogo(size: 38, borderRadius: 12),
-                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(

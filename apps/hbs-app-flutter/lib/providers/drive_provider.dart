@@ -131,8 +131,9 @@ class DriveNotifier extends StateNotifier<DriveState> {
   }
 
   Future<void> navigateUp() async {
-    if (state.currentPath.isEmpty) return;
-    final parts = state.currentPath.split('/');
+    final path = state.currentPath.trim().replaceAll(RegExp(r'^/+|/+$'), '');
+    if (path.isEmpty) return;
+    final parts = path.split('/');
     if (parts.length <= 1) {
       await loadFiles('');
     } else {

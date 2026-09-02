@@ -1061,6 +1061,27 @@
   - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 successful builds with 0 errors.
   - Verified Next.js server production build (`bun run build --filter=server`): 100% success.
 
+## Session: 2026-09-02 (Drive Folder Back Navigation & PopScope Hierarchy Fix Completed)
+- Diagnosed and resolved issue where pressing back inside a subfolder exited or switched screens instead of navigating up to parent folders or main Drive:
+  1. Root Cause:
+     - `DriveScreen` was embedded in `AppShell`'s `IndexedStack` with no `PopScope` attached.
+     - System back gestures / hardware back button popped the top root Navigator route instead of driving folder hierarchy state.
+     - `FloatingHeader` displayed only a static logo without an interactive back button when viewing subfolders.
+  2. Solution in `DriveScreen` (`lib/screens/drive/drive_screen.dart`):
+     - Wrapped `DriveScreen` in `PopScope(canPop: driveState.currentPath.isEmpty, onPopInvokedWithResult: ...)` to intercept Android system/gesture back button and invoke `driveNotifier.navigateUp()` when inside subfolders.
+     - Connected `FloatingHeader(onBackTap: ...)` to `driveNotifier.navigateUp()` with dynamic folder title display.
+     - Added quick `↑ Up` navigation action in the breadcrumbs bar.
+  3. Solution in `FloatingHeader` (`lib/core/widgets/floating_header.dart`):
+     - Added `onBackTap` callback; when provided, swaps the static app logo with an interactive, responsive back button.
+  4. Solution in `DriveNotifier` (`lib/providers/drive_provider.dart`):
+     - Hardened `navigateUp()` against leading/trailing slashes to ensure deterministic parent folder transitions.
+- Build & Quality Verification:
+  - Added unit tests for `DriveState` path hierarchy and `canPop` logic in `test/lock_media_auth_test.dart`.
+  - Verified `flutter analyze`: 0 issues found.
+  - Verified `flutter test`: 100% passing tests (29/29 tests).
+  - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 successful builds with 0 errors.
+
+
 
 
 

@@ -422,111 +422,142 @@ class DriveScreen extends ConsumerWidget {
     final files = driveState.sortedAndFilteredFiles;
     final breadcrumbParts = driveState.currentPath.isEmpty ? <String>[] : driveState.currentPath.split('/');
 
-    return Scaffold(
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          if (driveState.currentPath == 'Trash')
+    return PopScope(
+      canPop: driveState.currentPath.isEmpty,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (driveState.currentPath.isNotEmpty) {
+          driveNotifier.navigateUp();
+        }
+      },
+      child: Scaffold(
+        floatingActionButton: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            if (driveState.currentPath == 'Trash')
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: FloatingActionButton.extended(
+                  heroTag: 'emptyTrash',
+                  onPressed: () async {
+                    await ApiService().emptyTrash();
+                    await driveNotifier.loadFiles('Trash');
+                  },
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                  icon: const Icon(Icons.delete_forever_rounded),
+                  label: const Text('Empty Trash'),
+                ),
+              ),
             Padding(
-              padding: const EdgeInsets.only(bottom: 8),
+              padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
               child: FloatingActionButton.extended(
-                heroTag: 'emptyTrash',
-                onPressed: () async {
-                  await ApiService().emptyTrash();
-                  await driveNotifier.loadFiles('Trash');
-                },
-                backgroundColor: Colors.red,
+                onPressed: () => _handleAddAction(context, ref),
+                backgroundColor: primary,
                 foregroundColor: Colors.white,
-                icon: const Icon(Icons.delete_forever_rounded),
-                label: const Text('Empty Trash'),
+                elevation: 6,
+                icon: const Icon(Icons.add_rounded, size: 22),
+                label: const Text('Add', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
               ),
             ),
-          Padding(
-            padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
-            child: FloatingActionButton.extended(
-              onPressed: () => _handleAddAction(context, ref),
-              backgroundColor: primary,
-              foregroundColor: Colors.white,
-              elevation: 6,
-              icon: const Icon(Icons.add_rounded, size: 22),
-              label: const Text('Add', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+          ],
+        ),
+        body: Column(
+          children: [
+            // Floating Header
+            FloatingHeader(
+              title: driveState.currentPath.isEmpty
+                  ? 'HBS Drive'
+                  : (breadcrumbParts.isNotEmpty ? breadcrumbParts.last : 'HBS Drive'),
+              onBackTap: driveState.currentPath.isNotEmpty ? () => driveNotifier.navigateUp() : null,
+              serverUrl: serverInfo.url,
+              isConnected: serverInfo.isConnected,
+              userName: user?.name ?? 'User',
+              onServerTap: () {
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (_) => const LanScannerModal(),
+                );
+              },
+              onSearchTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SearchScreen()),
+                );
+              },
             ),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Floating Header
-          FloatingHeader(
-            title: 'HBS Drive',
-            serverUrl: serverInfo.url,
-            isConnected: serverInfo.isConnected,
-            userName: user?.name ?? 'User',
-            onServerTap: () {
-              showModalBottomSheet(
-                context: context,
-                isScrollControlled: true,
-                backgroundColor: Colors.transparent,
-                builder: (_) => const LanScannerModal(),
-              );
-            },
-            onSearchTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SearchScreen()),
-              );
-            },
-          ),
 
-          // Breadcrumb Navigation Row
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: Row(
-              children: [
-                GestureDetector(
-                  onTap: () => driveNotifier.loadFiles(''),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.home_rounded, size: 16, color: primary),
-                      const SizedBox(width: 4),
-                      Text('Drive', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: primary)),
-                    ],
-                  ),
-                ),
-                ...breadcrumbParts.asMap().entries.map((entry) {
-                  final idx = entry.key;
-                  final part = entry.value;
-                  final fullPath = breadcrumbParts.sublist(0, idx + 1).join('/');
-
-                  return Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.chevron_right_rounded, size: 16, color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.4)),
-                      GestureDetector(
-                        onTap: () => driveNotifier.loadFiles(fullPath),
-                        child: Text(
-                          part,
-                          style: TextStyle(
-                            fontWeight: idx == breadcrumbParts.length - 1 ? FontWeight.w800 : FontWeight.w500,
-                            fontSize: 13,
-                            color: idx == breadcrumbParts.length - 1 ? theme.textTheme.bodyLarge?.color : primary,
-                          ),
+            // Breadcrumb Navigation Row
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: Row(
+                children: [
+                  if (driveState.currentPath.isNotEmpty) ...[
+                    InkWell(
+                      onTap: () => driveNotifier.navigateUp(),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.arrow_upward_rounded, size: 15, color: primary),
+                            const SizedBox(width: 2),
+                            Text('Up', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: primary)),
+                          ],
                         ),
                       ),
-                    ],
-                  );
-                }),
-                const Spacer(),
-                IconButton(
-                  icon: Icon(driveState.isGridView ? Icons.view_list_rounded : Icons.grid_view_rounded, size: 18),
-                  onPressed: driveNotifier.toggleViewMode,
-                  tooltip: 'Toggle View',
-                  visualDensity: VisualDensity.compact,
-                ),
-              ],
+                    ),
+                    const SizedBox(width: 8),
+                    Container(width: 1, height: 16, color: theme.dividerColor.withValues(alpha: 0.2)),
+                    const SizedBox(width: 8),
+                  ],
+                  GestureDetector(
+                    onTap: () => driveNotifier.loadFiles(''),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.home_rounded, size: 16, color: primary),
+                        const SizedBox(width: 4),
+                        Text('Drive', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: primary)),
+                      ],
+                    ),
+                  ),
+                  ...breadcrumbParts.asMap().entries.map((entry) {
+                    final idx = entry.key;
+                    final part = entry.value;
+                    final fullPath = breadcrumbParts.sublist(0, idx + 1).join('/');
+
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.chevron_right_rounded, size: 16, color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.4)),
+                        GestureDetector(
+                          onTap: () => driveNotifier.loadFiles(fullPath),
+                          child: Text(
+                            part,
+                            style: TextStyle(
+                              fontWeight: idx == breadcrumbParts.length - 1 ? FontWeight.w800 : FontWeight.w500,
+                              fontSize: 13,
+                              color: idx == breadcrumbParts.length - 1 ? theme.textTheme.bodyLarge?.color : primary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  }),
+                  const Spacer(),
+                  IconButton(
+                    icon: Icon(driveState.isGridView ? Icons.view_list_rounded : Icons.grid_view_rounded, size: 18),
+                    onPressed: driveNotifier.toggleViewMode,
+                    tooltip: 'Toggle View',
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ],
+              ),
             ),
-          ),
 
           // File Explorer Content
           Expanded(
@@ -705,6 +736,7 @@ class DriveScreen extends ConsumerWidget {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 }

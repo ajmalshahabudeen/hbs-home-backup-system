@@ -8,6 +8,7 @@ import 'package:hbs_app_flutter/core/utils/google_sign_in_errors.dart';
 import 'package:hbs_app_flutter/core/utils/vault_crypto.dart';
 import 'package:hbs_app_flutter/models/photo_media_item.dart';
 import 'package:hbs_app_flutter/models/saved_account.dart';
+import 'package:hbs_app_flutter/providers/drive_provider.dart';
 import 'package:hbs_app_flutter/providers/media_provider.dart';
 import 'package:hbs_app_flutter/screens/photos/memories_screen.dart';
 import 'package:hbs_app_flutter/services/app_update_service.dart';
@@ -329,6 +330,29 @@ void main() {
       expect(restored.isLive, isTrue);
       expect(restored.liveVideoAssetId, 'asset-vid-123');
       expect(restored.createdAt, original.createdAt);
+    });
+  });
+
+  group('DriveState Navigation', () {
+    test('canPop is true only when at root level', () {
+      const rootState = DriveState(currentPath: '');
+      expect(rootState.currentPath.isEmpty, isTrue);
+
+      const folderState = DriveState(currentPath: 'Documents/Invoices');
+      expect(folderState.currentPath.isEmpty, isFalse);
+    });
+
+    test('parent path segments split properly', () {
+      const folderState = DriveState(currentPath: 'Documents/Invoices/2026');
+      final parts = folderState.currentPath.split('/');
+      expect(parts.length, 3);
+      expect(parts.last, '2026');
+
+      parts.removeLast();
+      expect(parts.join('/'), 'Documents/Invoices');
+
+      parts.removeLast();
+      expect(parts.join('/'), 'Documents');
     });
   });
 }
