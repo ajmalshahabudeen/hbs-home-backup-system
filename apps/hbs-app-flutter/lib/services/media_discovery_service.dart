@@ -146,7 +146,10 @@ class MediaDiscoveryService {
     return albums;
   }
 
+  static final Map<String, AssetEntity> entityCache = {};
+
   PhotoMediaItem itemFromEntity(AssetEntity entity) {
+    entityCache[entity.id] = entity;
     final isVideo = entity.type == AssetType.video;
     final title = entity.title ?? 'media_${entity.id}';
     return PhotoMediaItem(

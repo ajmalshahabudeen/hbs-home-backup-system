@@ -4,17 +4,20 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
 import '../../models/photo_media_item.dart';
+import '../../services/media_discovery_service.dart';
 
 class MediaThumb extends StatelessWidget {
   final PhotoMediaItem item;
   final BoxFit fit;
   final Map<String, String>? httpHeaders;
+  final int targetSize;
 
   const MediaThumb({
     super.key,
     required this.item,
     this.fit = BoxFit.cover,
     this.httpHeaders,
+    this.targetSize = 240,
   });
 
   @override
@@ -29,7 +32,13 @@ class MediaThumb extends StatelessWidget {
     );
 
     if (item.assetId != null && item.assetId!.isNotEmpty) {
-      return _AssetThumb(assetId: item.assetId!, fit: fit, placeholder: placeholder, broken: broken);
+      return _AssetThumb(
+        assetId: item.assetId!,
+        fit: fit,
+        placeholder: placeholder,
+        broken: broken,
+        targetSize: targetSize,
+      );
     }
 
     final url = (item.thumbUrl != null && item.thumbUrl!.isNotEmpty) ? item.thumbUrl! : item.url;
@@ -37,6 +46,11 @@ class MediaThumb extends StatelessWidget {
       return CachedNetworkImage(
         imageUrl: url,
         fit: fit,
+        memCacheWidth: targetSize,
+        memCacheHeight: targetSize,
+        maxWidthDiskCache: targetSize * 2,
+        maxHeightDiskCache: targetSize * 2,
+        filterQuality: FilterQuality.low,
         httpHeaders: httpHeaders,
         placeholder: (context, _) => placeholder,
         errorWidget: (context, _, __) => broken,
@@ -47,7 +61,10 @@ class MediaThumb extends StatelessWidget {
       return Image.file(
         File(url),
         fit: fit,
-        cacheWidth: 320,
+        cacheWidth: targetSize,
+        cacheHeight: targetSize,
+        filterQuality: FilterQuality.low,
+        gaplessPlayback: true,
         errorBuilder: (context, error, stackTrace) => broken,
       );
     }
@@ -61,12 +78,14 @@ class _AssetThumb extends StatefulWidget {
   final BoxFit fit;
   final Widget placeholder;
   final Widget broken;
+  final int targetSize;
 
   const _AssetThumb({
     required this.assetId,
     required this.fit,
     required this.placeholder,
     required this.broken,
+    required this.targetSize,
   });
 
   @override
@@ -74,30 +93,59 @@ class _AssetThumb extends StatefulWidget {
 }
 
 class _AssetThumbState extends State<_AssetThumb> {
+  static final Map<String, Uint8List> _thumbBytesCache = {};
   Uint8List? _bytes;
   bool _failed = false;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _loadBytes();
   }
 
-  Future<void> _load() async {
+  @override
+  void didUpdateWidget(covariant _AssetThumb oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.assetId != widget.assetId) {
+      _loadBytes();
+    }
+  }
+
+  void _loadBytes() {
+    final cached = _thumbBytesCache[widget.assetId];
+    if (cached != null) {
+      _bytes = cached;
+      _failed = false;
+      return;
+    }
+
+    _fetchBytes();
+  }
+
+  Future<void> _fetchBytes() async {
     try {
-      final entity = await AssetEntity.fromId(widget.assetId);
-      final data = await entity?.thumbnailDataWithSize(
-        const ThumbnailSize.square(400),
-        quality: 80,
-      );
-      if (!mounted) return;
-      setState(() {
-        _bytes = data;
-        _failed = data == null;
-      });
+      var entity = MediaDiscoveryService.entityCache[widget.assetId];
+      entity ??= await AssetEntity.fromId(widget.assetId);
+      if (entity != null) {
+        MediaDiscoveryService.entityCache[widget.assetId] = entity;
+        final data = await entity.thumbnailDataWithSize(
+          ThumbnailSize.square(widget.targetSize),
+          quality: 75,
+        );
+        if (data != null) {
+          _thumbBytesCache[widget.assetId] = data;
+          if (mounted) {
+            setState(() {
+              _bytes = data;
+              _failed = false;
+            });
+          }
+          return;
+        }
+      }
+      if (mounted) setState(() => _failed = true);
     } catch (_) {
-      if (!mounted) return;
-      setState(() => _failed = true);
+      if (mounted) setState(() => _failed = true);
     }
   }
 
@@ -105,6 +153,15 @@ class _AssetThumbState extends State<_AssetThumb> {
   Widget build(BuildContext context) {
     if (_failed) return widget.broken;
     if (_bytes == null) return widget.placeholder;
-    return Image.memory(_bytes!, fit: widget.fit, gaplessPlayback: true);
+
+    return Image.memory(
+      _bytes!,
+      fit: widget.fit,
+      cacheWidth: widget.targetSize,
+      cacheHeight: widget.targetSize,
+      gaplessPlayback: true,
+      filterQuality: FilterQuality.low,
+      errorBuilder: (context, error, stackTrace) => widget.broken,
+    );
   }
 }

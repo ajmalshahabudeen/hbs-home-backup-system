@@ -988,3 +988,21 @@
   - Verified `flutter analyze`: 0 issues found.
   - Verified `flutter test`: 100% passing tests (26/26 tests).
   - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 successful builds with 0 errors.
+
+## Session: 2026-09-02 (High-FPS Overhaul & Lag-Free Isolated Filter Animation Completed)
+- Diagnosed and resolved UI screen lag/freeze during filter show/hide and scrolling:
+  1. Root Cause 1 (Full Screen Rebuild on Scroll): Calling `setState` on scroll was re-sorting thousands of photos, re-running `DateFormat` string allocations in `_groupByDate`, and rebuilding all slivers on the UI thread.
+     - Solution: Extracted filter section into dedicated `_FloatingFilterOverlay` widget listening to a lightweight `ValueNotifier<bool>`. Scrolling toggles the notifier with 0 rebuilds of `PhotosScreen` or `CustomScrollView`.
+     - Solution: Memoized `filteredItems` and `dateGroups` in `MediaState` (`media_provider.dart`) computed once on data change instead of on every render.
+     - Solution: Added integer-keyed `_timelineCache` in `Formatters.timelineKey` to eliminate thousands of `DateFormat` string allocations.
+  2. Root Cause 2 (Layout Pass Janks): Replaced `AnimatedAlign` (which triggered CPU relayout 60-120 times/sec) with hardware-accelerated `SizeTransition` + `SlideTransition` + `FadeTransition` with `Curves.fastOutSlowIn`.
+  3. Root Cause 3 (Tile Decoding Delays):
+     - Added static in-memory thumbnail bytes cache (`_thumbBytesCache`) and `MediaDiscoveryService.entityCache` to `MediaThumb` (`media_thumb.dart`).
+     - Added `targetSize: 240`, `cacheWidth: 240`, `cacheHeight: 240`, `gaplessPlayback: true`, and `FilterQuality.low` (bilinear filtering), eliminating thumbnail re-decoding and frame drops.
+  4. Root Cause 4 (Repaint Boundary Layering): Added `RepaintBoundary` around `_FloatingFilterOverlay`, `FloatingHeader`, and `CustomScrollView`, isolating GPU render layers and stopping pulse animations from repainting media tiles.
+  5. Root Cause 5 (GPU Fragment Overload): Replaced stacked `BackdropFilter` widgets on action chips with rich solid translucent surfaces, reducing GPU framebuffer blurs.
+  6. Root Cause 6 (Image Cache Capacity): Increased Flutter's image cache in `main.dart` to 2,500 images and 250MB.
+- Build & Quality Verification:
+  - Verified `flutter analyze`: 0 issues found.
+  - Verified `flutter test`: 100% passing tests (26/26 tests).
+  - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 successful builds with 0 errors.

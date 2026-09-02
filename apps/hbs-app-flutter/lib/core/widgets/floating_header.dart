@@ -64,14 +64,15 @@ class _FloatingHeaderState extends State<FloatingHeader> with SingleTickerProvid
     final isDark = theme.brightness == Brightness.dark;
     final primary = theme.primaryColor;
 
-    return SafeArea(
-      bottom: false,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24.0),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+    return RepaintBoundary(
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24.0),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0),
               decoration: BoxDecoration(
@@ -127,31 +128,33 @@ class _FloatingHeaderState extends State<FloatingHeader> with SingleTickerProvid
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              AnimatedBuilder(
-                                animation: _pulseAnimation,
-                                child: Container(
-                                  width: 7,
-                                  height: 7,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: widget.isConnected ? const Color(0xFF10B981) : const Color(0xFFEF4444),
-                                    boxShadow: widget.isConnected
-                                        ? [
-                                            BoxShadow(
-                                              color: const Color(0xFF10B981).withValues(alpha: 0.6),
-                                              blurRadius: 6,
-                                              spreadRadius: 1,
-                                            ),
-                                          ]
-                                        : null,
+                              RepaintBoundary(
+                                child: AnimatedBuilder(
+                                  animation: _pulseAnimation,
+                                  child: Container(
+                                    width: 7,
+                                    height: 7,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: widget.isConnected ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                                      boxShadow: widget.isConnected
+                                          ? [
+                                              BoxShadow(
+                                                color: const Color(0xFF10B981).withValues(alpha: 0.6),
+                                                blurRadius: 6,
+                                                spreadRadius: 1,
+                                              ),
+                                            ]
+                                          : null,
+                                    ),
                                   ),
+                                  builder: (context, child) {
+                                    return Transform.scale(
+                                      scale: widget.isConnected ? _pulseAnimation.value : 1.0,
+                                      child: child,
+                                    );
+                                  },
                                 ),
-                                builder: (context, child) {
-                                  return Transform.scale(
-                                    scale: widget.isConnected ? _pulseAnimation.value : 1.0,
-                                    child: child,
-                                  );
-                                },
                               ),
                               const SizedBox(width: 6),
                               Flexible(
@@ -207,6 +210,7 @@ class _FloatingHeaderState extends State<FloatingHeader> with SingleTickerProvid
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

@@ -72,9 +72,13 @@ class Formatters {
     return 'other';
   }
 
+  static final Map<int, String> _timelineCache = {};
+  static final DateFormat _timelineFormatter = DateFormat('yyyy · MMMM');
+
   static String timelineKey(DateTime? date) {
     if (date == null) return 'Unknown date';
-    return DateFormat('yyyy · MMMM').format(date);
+    final key = date.year * 100 + date.month;
+    return _timelineCache.putIfAbsent(key, () => _timelineFormatter.format(date));
   }
 
   static bool isHeic(String? mimeType, String? fileName) {

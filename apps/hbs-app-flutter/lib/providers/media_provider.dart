@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:photo_manager/photo_manager.dart';
+import '../core/utils/formatters.dart';
 import '../core/utils/media_merger.dart';
 import '../core/widgets/filter_sort_bar.dart';
 import '../models/photo_media_item.dart';
@@ -17,6 +18,8 @@ class MediaState {
   final int density;
   final String searchQuery;
   final String? errorMessage;
+  final List<PhotoMediaItem>? _cachedFilteredItems;
+  final Map<String, List<PhotoMediaItem>>? _cachedDateGroups;
 
   const MediaState({
     this.isLoading = false,
@@ -26,9 +29,22 @@ class MediaState {
     this.density = 3,
     this.searchQuery = '',
     this.errorMessage,
-  });
+    List<PhotoMediaItem>? filteredItems,
+    Map<String, List<PhotoMediaItem>>? dateGroups,
+  })  : _cachedFilteredItems = filteredItems,
+        _cachedDateGroups = dateGroups;
 
-  List<PhotoMediaItem> get filteredItems {
+  List<PhotoMediaItem> get filteredItems =>
+      _cachedFilteredItems ?? _computeFilteredItems(items, category, searchQuery);
+
+  Map<String, List<PhotoMediaItem>> get dateGroups =>
+      _cachedDateGroups ?? _computeDateGroups(filteredItems);
+
+  static List<PhotoMediaItem> _computeFilteredItems(
+    List<PhotoMediaItem> items,
+    MediaCategoryFilter category,
+    String searchQuery,
+  ) {
     var list = items;
 
     if (category == MediaCategoryFilter.photos) {
@@ -52,6 +68,15 @@ class MediaState {
     return sorted;
   }
 
+  static Map<String, List<PhotoMediaItem>> _computeDateGroups(List<PhotoMediaItem> sorted) {
+    final Map<String, List<PhotoMediaItem>> groups = {};
+    for (final item in sorted) {
+      final key = Formatters.timelineKey(item.createdAt);
+      groups.putIfAbsent(key.isEmpty ? 'Unknown' : key, () => []).add(item);
+    }
+    return groups;
+  }
+
   MediaState copyWith({
     bool? isLoading,
     bool? hasPermission,
@@ -61,14 +86,24 @@ class MediaState {
     String? searchQuery,
     String? errorMessage,
   }) {
+    final newItems = items ?? this.items;
+    final newCategory = category ?? this.category;
+    final newQuery = searchQuery ?? this.searchQuery;
+
+    final bool dataChanged = items != null || category != null || searchQuery != null;
+    final newFiltered = dataChanged ? _computeFilteredItems(newItems, newCategory, newQuery) : filteredItems;
+    final newGroups = dataChanged ? _computeDateGroups(newFiltered) : dateGroups;
+
     return MediaState(
       isLoading: isLoading ?? this.isLoading,
       hasPermission: hasPermission ?? this.hasPermission,
-      items: items ?? this.items,
-      category: category ?? this.category,
+      items: newItems,
+      category: newCategory,
       density: density ?? this.density,
-      searchQuery: searchQuery ?? this.searchQuery,
+      searchQuery: newQuery,
       errorMessage: errorMessage,
+      filteredItems: newFiltered,
+      dateGroups: newGroups,
     );
   }
 }

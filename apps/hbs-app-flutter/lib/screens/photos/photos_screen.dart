@@ -1,14 +1,11 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/utils/formatters.dart';
 import '../../core/widgets/filter_sort_bar.dart';
 import '../../core/widgets/floating_header.dart';
 import '../../core/widgets/media_thumb.dart';
 import '../../core/widgets/live_motion_overlay.dart';
 import '../../core/widgets/skeleton_loader.dart';
-import '../../models/photo_media_item.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/media_provider.dart';
 import '../../providers/server_provider.dart';
@@ -28,7 +25,7 @@ class PhotosScreen extends ConsumerStatefulWidget {
 
 class _PhotosScreenState extends ConsumerState<PhotosScreen> {
   late final ScrollController _scrollController;
-  bool _isFilterVisible = true;
+  final ValueNotifier<bool> _isFilterVisible = ValueNotifier<bool>(true);
 
   @override
   void initState() {
@@ -41,31 +38,16 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
   void dispose() {
     _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
+    _isFilterVisible.dispose();
     super.dispose();
   }
 
   void _handleScroll() {
     if (_scrollController.hasClients && _scrollController.offset <= 10) {
-      if (!_isFilterVisible) {
-        setState(() => _isFilterVisible = true);
+      if (!_isFilterVisible.value) {
+        _isFilterVisible.value = true;
       }
     }
-  }
-
-  Map<String, List<PhotoMediaItem>> _groupByDate(List<PhotoMediaItem> items) {
-    final sorted = List<PhotoMediaItem>.from(items)
-      ..sort((a, b) {
-        final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final bDate = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        return bDate.compareTo(aDate);
-      });
-
-    final Map<String, List<PhotoMediaItem>> groups = {};
-    for (final item in sorted) {
-      final key = Formatters.timelineKey(item.createdAt);
-      groups.putIfAbsent(key.isEmpty ? 'Unknown' : key, () => []).add(item);
-    }
-    return groups;
   }
 
   Widget _buildQuickActionChip(
@@ -78,47 +60,42 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
     final isDark = theme.brightness == Brightness.dark;
     final primary = theme.primaryColor;
 
-    return ClipRRect(
+    return Material(
+      color: isDark ? const Color(0xDD1E1E1E) : const Color(0xEEFFFFFF),
       borderRadius: BorderRadius.circular(14),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Material(
-          color: (isDark ? theme.cardColor : Colors.white).withValues(alpha: 0.75),
-          child: InkWell(
-            onTap: onTap,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.06),
-                  width: 1,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon, size: 14, color: primary),
-                  const SizedBox(width: 5),
-                  Text(
-                    label,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 11,
-                      color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.85),
-                    ),
-                  ),
-                ],
-              ),
+            border: Border.all(
+              color: isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.08),
+              width: 1,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: primary),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 11,
+                  color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.85),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -136,11 +113,10 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
     final user = ref.watch(authProvider).user;
 
     final items = mediaState.filteredItems;
-    final groups = _groupByDate(items);
+    final groups = mediaState.dateGroups;
 
     final safeAreaTop = MediaQuery.paddingOf(context).top;
     final bottomPadding = MediaQuery.paddingOf(context).bottom + 90;
-    // Top overlay contains FloatingHeader (safeAreaTop + 74) + FilterSortBar (42) + gap (6) + action chips (28) + margin (12)
     final topOverlayHeight = safeAreaTop + 162.0;
 
     return Scaffold(
@@ -229,14 +205,14 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
             NotificationListener<UserScrollNotification>(
               onNotification: (notification) {
                 if (notification.direction == ScrollDirection.reverse) {
-                  // User scrolling down into photos list (content moving up) -> hide filter bar for maximum height
-                  if (_isFilterVisible && _scrollController.hasClients && _scrollController.offset > 20) {
-                    setState(() => _isFilterVisible = false);
+                  // Scrolling down into media -> smoothly hide filter overlay
+                  if (_isFilterVisible.value && _scrollController.hasClients && _scrollController.offset > 20) {
+                    _isFilterVisible.value = false;
                   }
                 } else if (notification.direction == ScrollDirection.forward) {
-                  // User scrolling up towards top (content moving down) -> reveal filter bar
-                  if (!_isFilterVisible) {
-                    setState(() => _isFilterVisible = true);
+                  // Scrolling up towards top -> restore filter overlay
+                  if (!_isFilterVisible.value) {
+                    _isFilterVisible.value = true;
                   }
                 }
                 return false;
@@ -277,137 +253,139 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
                           ),
                         ],
                       )
-                    : CustomScrollView(
-                        controller: _scrollController,
-                        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-                        slivers: [
-                          // Top Spacer: Ensures the first date header sits cleanly below the filter overlay initially
-                          SliverToBoxAdapter(
-                            child: SizedBox(height: topOverlayHeight),
-                          ),
+                    : RepaintBoundary(
+                        child: CustomScrollView(
+                          controller: _scrollController,
+                          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                          slivers: [
+                            // Top Spacer: Ensures the first date header sits cleanly below the filter overlay initially
+                            SliverToBoxAdapter(
+                              child: SizedBox(height: topOverlayHeight),
+                            ),
 
-                          // Date Group Sections
-                          ...groups.entries.map((group) {
-                            return SliverMainAxisGroup(
-                              slivers: [
-                                // Date Section Header
-                                SliverToBoxAdapter(
-                                  child: Padding(
-                                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                                    child: Text(
-                                      group.key,
-                                      style: theme.textTheme.titleSmall?.copyWith(
-                                        fontWeight: FontWeight.w800,
-                                        letterSpacing: -0.2,
+                            // Date Group Sections
+                            ...groups.entries.map((group) {
+                              return SliverMainAxisGroup(
+                                slivers: [
+                                  // Date Section Header
+                                  SliverToBoxAdapter(
+                                    child: Padding(
+                                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                                      child: Text(
+                                        group.key,
+                                        style: theme.textTheme.titleSmall?.copyWith(
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: -0.2,
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
 
-                                // Grid for this Date Group
-                                SliverGrid(
-                                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: mediaState.density,
-                                    crossAxisSpacing: 1.5,
-                                    mainAxisSpacing: 1.5,
-                                  ),
-                                  delegate: SliverChildBuilderDelegate(
-                                    (context, index) {
-                                      final item = group.value[index];
-                                      return GestureDetector(
-                                        onTap: () async {
-                                          var resolved = item;
-                                          if (item.assetId != null &&
-                                              item.assetId!.isNotEmpty &&
-                                              !item.url.startsWith('http')) {
-                                            resolved = await MediaDiscoveryService().resolveFile(item);
-                                          }
-                                          if (!context.mounted) return;
-                                          MediaViewerModal.show(context, resolved);
-                                        },
-                                        onLongPress: item.isLive
-                                            ? () => LiveMotionOverlay.play(context, item)
-                                            : null,
-                                        child: Stack(
-                                          fit: StackFit.expand,
-                                          children: [
-                                            MediaThumb(item: item),
-                                            if (item.isBackedUp)
-                                              Positioned(
-                                                top: 4,
-                                                right: 4,
-                                                child: Container(
-                                                  padding: const EdgeInsets.all(3),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.black.withValues(alpha: 0.6),
-                                                    shape: BoxShape.circle,
-                                                  ),
-                                                  child: const Icon(
-                                                    Icons.cloud_done_rounded,
-                                                    color: Color(0xFF10B981),
-                                                    size: 13,
+                                  // Grid for this Date Group
+                                  SliverGrid(
+                                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: mediaState.density,
+                                      crossAxisSpacing: 1.5,
+                                      mainAxisSpacing: 1.5,
+                                    ),
+                                    delegate: SliverChildBuilderDelegate(
+                                      (context, index) {
+                                        final item = group.value[index];
+                                        return GestureDetector(
+                                          onTap: () async {
+                                            var resolved = item;
+                                            if (item.assetId != null &&
+                                                item.assetId!.isNotEmpty &&
+                                                !item.url.startsWith('http')) {
+                                              resolved = await MediaDiscoveryService().resolveFile(item);
+                                            }
+                                            if (!context.mounted) return;
+                                            MediaViewerModal.show(context, resolved);
+                                          },
+                                          onLongPress: item.isLive
+                                              ? () => LiveMotionOverlay.play(context, item)
+                                              : null,
+                                          child: Stack(
+                                            fit: StackFit.expand,
+                                            children: [
+                                              MediaThumb(item: item),
+                                              if (item.isBackedUp)
+                                                Positioned(
+                                                  top: 4,
+                                                  right: 4,
+                                                  child: Container(
+                                                    padding: const EdgeInsets.all(3),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.black.withValues(alpha: 0.6),
+                                                      shape: BoxShape.circle,
+                                                    ),
+                                                    child: const Icon(
+                                                      Icons.cloud_done_rounded,
+                                                      color: Color(0xFF10B981),
+                                                      size: 13,
+                                                    ),
                                                   ),
                                                 ),
-                                              ),
-                                            if (item.isLive)
-                                              Positioned(
-                                                bottom: 4,
-                                                left: 4,
-                                                child: Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.black.withValues(alpha: 0.65),
-                                                    borderRadius: BorderRadius.circular(6),
-                                                  ),
-                                                  child: const Text('LIVE',
-                                                      style: TextStyle(
-                                                          color: Colors.white,
-                                                          fontSize: 9,
-                                                          fontWeight: FontWeight.w800)),
-                                                ),
-                                              ),
-                                            if (item.isVideo)
-                                              Positioned(
-                                                bottom: 4,
-                                                right: 4,
-                                                child: Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.black.withValues(alpha: 0.65),
-                                                    borderRadius: BorderRadius.circular(6),
-                                                  ),
-                                                  child: const Row(
-                                                    mainAxisSize: MainAxisSize.min,
-                                                    children: [
-                                                      Icon(Icons.play_arrow_rounded, color: Colors.white, size: 12),
-                                                      SizedBox(width: 2),
-                                                      Text(
-                                                        'Video',
+                                              if (item.isLive)
+                                                Positioned(
+                                                  bottom: 4,
+                                                  left: 4,
+                                                  child: Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.black.withValues(alpha: 0.65),
+                                                      borderRadius: BorderRadius.circular(6),
+                                                    ),
+                                                    child: const Text('LIVE',
                                                         style: TextStyle(
                                                             color: Colors.white,
                                                             fontSize: 9,
-                                                            fontWeight: FontWeight.w700),
-                                                      ),
-                                                    ],
+                                                            fontWeight: FontWeight.w800)),
                                                   ),
                                                 ),
-                                              ),
-                                          ],
-                                        ),
-                                      );
-                                    },
-                                    childCount: group.value.length,
+                                              if (item.isVideo)
+                                                Positioned(
+                                                  bottom: 4,
+                                                  right: 4,
+                                                  child: Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.black.withValues(alpha: 0.65),
+                                                      borderRadius: BorderRadius.circular(6),
+                                                    ),
+                                                    child: const Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        Icon(Icons.play_arrow_rounded, color: Colors.white, size: 12),
+                                                        SizedBox(width: 2),
+                                                        Text(
+                                                          'Video',
+                                                          style: TextStyle(
+                                                              color: Colors.white,
+                                                              fontSize: 9,
+                                                              fontWeight: FontWeight.w700),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                      childCount: group.value.length,
+                                    ),
                                   ),
-                                ),
-                              ],
-                            );
-                          }),
+                                ],
+                              );
+                            }),
 
-                          // Bottom Spacer to prevent bottom navigation overlap
-                          SliverToBoxAdapter(
-                            child: SizedBox(height: bottomPadding),
-                          ),
-                        ],
+                            // Bottom Spacer to prevent bottom navigation overlap
+                            SliverToBoxAdapter(
+                              child: SizedBox(height: bottomPadding),
+                            ),
+                          ],
+                        ),
                       ),
               ),
             ),
@@ -417,82 +395,174 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
             top: 0,
             left: 0,
             right: 0,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Floating Header
-                FloatingHeader(
-                  title: 'HBS Photos',
-                  serverUrl: serverInfo.url,
-                  isConnected: serverInfo.isConnected,
-                  userName: user?.name ?? 'User',
-                  onServerTap: () {
-                    showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      backgroundColor: Colors.transparent,
-                      builder: (_) => const LanScannerModal(),
-                    );
-                  },
-                  onSearchTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const SearchScreen()),
-                    );
-                  },
-                ),
-
-                // Collapsible Filter & Actions Section
-                ClipRect(
-                  child: AnimatedAlign(
-                    alignment: Alignment.topCenter,
-                    duration: const Duration(milliseconds: 260),
-                    curve: Curves.easeInOutCubic,
-                    heightFactor: _isFilterVisible ? 1.0 : 0.0,
-                    child: AnimatedOpacity(
-                      duration: const Duration(milliseconds: 200),
-                      opacity: _isFilterVisible ? 1.0 : 0.0,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            FilterSortBar(
-                              category: mediaState.category,
-                              density: mediaState.density,
-                              totalCount: items.length,
-                              onCategoryChanged: mediaNotifier.setCategory,
-                              onDensityChanged: mediaNotifier.setDensity,
-                            ),
-                            const SizedBox(height: 6),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                _buildQuickActionChip(
-                                  context,
-                                  icon: Icons.auto_awesome_rounded,
-                                  label: 'On this day',
-                                  onTap: () => Navigator.of(context).push(
-                                    MaterialPageRoute(builder: (_) => const MemoriesScreen()),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                _buildQuickActionChip(
-                                  context,
-                                  icon: Icons.photo_album_outlined,
-                                  label: 'Albums',
-                                  onTap: () => Navigator.of(context).push(
-                                    MaterialPageRoute(builder: (_) => const AlbumsScreen()),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
+            child: _FloatingFilterOverlay(
+              isVisible: _isFilterVisible,
+              header: FloatingHeader(
+                title: 'HBS Photos',
+                serverUrl: serverInfo.url,
+                isConnected: serverInfo.isConnected,
+                userName: user?.name ?? 'User',
+                onServerTap: () {
+                  showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    backgroundColor: Colors.transparent,
+                    builder: (_) => const LanScannerModal(),
+                  );
+                },
+                onSearchTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const SearchScreen()),
+                  );
+                },
+              ),
+              filterBar: FilterSortBar(
+                category: mediaState.category,
+                density: mediaState.density,
+                totalCount: items.length,
+                onCategoryChanged: mediaNotifier.setCategory,
+                onDensityChanged: mediaNotifier.setDensity,
+              ),
+              quickActions: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  _buildQuickActionChip(
+                    context,
+                    icon: Icons.auto_awesome_rounded,
+                    label: 'On this day',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const MemoriesScreen()),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  _buildQuickActionChip(
+                    context,
+                    icon: Icons.photo_album_outlined,
+                    label: 'Albums',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const AlbumsScreen()),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FloatingFilterOverlay extends StatefulWidget {
+  final ValueNotifier<bool> isVisible;
+  final Widget header;
+  final Widget filterBar;
+  final Widget quickActions;
+
+  const _FloatingFilterOverlay({
+    required this.isVisible,
+    required this.header,
+    required this.filterBar,
+    required this.quickActions,
+  });
+
+  @override
+  State<_FloatingFilterOverlay> createState() => _FloatingFilterOverlayState();
+}
+
+class _FloatingFilterOverlayState extends State<_FloatingFilterOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<Offset> _slideAnimation;
+  late final Animation<double> _fadeAnimation;
+  late final Animation<double> _sizeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+      value: widget.isVisible.value ? 1.0 : 0.0,
+    );
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0.0, -0.45),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    ));
+
+    _fadeAnimation = CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0.15, 1.0, curve: Curves.easeOut),
+      reverseCurve: const Interval(0.0, 0.75, curve: Curves.easeIn),
+    );
+
+    _sizeAnimation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.fastOutSlowIn,
+      reverseCurve: Curves.fastOutSlowIn,
+    );
+
+    widget.isVisible.addListener(_onVisibilityChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _FloatingFilterOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isVisible != widget.isVisible) {
+      oldWidget.isVisible.removeListener(_onVisibilityChanged);
+      widget.isVisible.addListener(_onVisibilityChanged);
+    }
+  }
+
+  void _onVisibilityChanged() {
+    if (widget.isVisible.value) {
+      _controller.forward();
+    } else {
+      _controller.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.isVisible.removeListener(_onVisibilityChanged);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Header (always visible & composited in RepaintBoundary)
+          widget.header,
+
+          // Smooth hardware-accelerated animated filter section
+          SizeTransition(
+            sizeFactor: _sizeAnimation,
+            alignment: Alignment.topCenter,
+            child: SlideTransition(
+              position: _slideAnimation,
+              child: FadeTransition(
+                opacity: _fadeAnimation,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      widget.filterBar,
+                      const SizedBox(height: 6),
+                      widget.quickActions,
+                    ],
+                  ),
                 ),
-              ],
+              ),
             ),
           ),
         ],

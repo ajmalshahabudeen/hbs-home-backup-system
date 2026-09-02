@@ -18,6 +18,10 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await enableHighestRefreshRate();
 
+  // Boost image cache for 120 FPS high-density gallery scrolling
+  PaintingBinding.instance.imageCache.maximumSize = 2500;
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 250 * 1024 * 1024; // 250MB
+
   // Initialize Core Services
   await StorageService().init();
   await NotificationService().init();
