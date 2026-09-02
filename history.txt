@@ -1081,6 +1081,24 @@
   - Verified `flutter test`: 100% passing tests (29/29 tests).
   - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 successful builds with 0 errors.
 
+## Session: 2026-09-02 (Drive Media Thumbnails, View Action, and Menu Overflow Fixes Completed)
+- Implemented media thumbnails in Drive Grid & List modes, dedicated View Photo/Video action tile, and resolved bottom sheet overflow and ink splash warnings:
+  1. Thumbnails in Grid & List Views:
+     - Created `DriveThumbnail` component (`apps/hbs-app-flutter/lib/screens/drive/drive_thumbnail.dart`) utilizing `CachedNetworkImage` targeting the existing server thumbnail route (`/api/user/media/{path}?thumb=1`).
+     - Passed clean auth headers (`SessionTokenCleaner.authHeaders(token)`) from `authProvider`.
+     - Added video badge overlays and category-specific fallback badges for images, videos, audio, documents, and archives.
+     - Integrated `DriveThumbnail` across `GridView.builder` and `ListView.separated` in `DriveScreen`.
+  2. View Photo/Video Menu Action:
+     - In `_showFileActions` (`apps/hbs-app-flutter/lib/screens/drive/drive_screen.dart`), added a prominent top action tile for photos, videos, and audio (`View Photo`, `Play Video`, `Play Audio`) that opens `DrivePreviewScreen`.
+  3. Bottom Sheet Overflow & Ink Splash Fixes:
+     - Added `isScrollControlled: true` and wrapped the bottom sheet content in `Material(color: Colors.transparent, child: SafeArea(child: SingleChildScrollView(...)))` with a max height constraint (`0.85 * screenHeight`) and drag handle pill, completely resolving `RenderFlex overflowed by 13 pixels` and `ListTile background color or ink splashes may be invisible`.
+     - Added `android:enableOnBackInvokedCallback="true"` to `apps/hbs-app-flutter/android/app/src/main/AndroidManifest.xml` to eliminate Android 13+ OnBackInvokedCallback warnings.
+- Build & Quality Verification:
+  - Verified `flutter analyze`: 0 issues found.
+  - Verified `flutter test`: 100% passing tests (29/29 tests).
+  - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 successful builds with 0 errors.
+
+
 
 
 

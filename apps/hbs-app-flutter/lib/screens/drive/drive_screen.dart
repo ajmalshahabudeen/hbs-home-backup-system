@@ -5,6 +5,7 @@ import 'package:gal/gal.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/session_token_cleaner.dart';
 import '../../core/widgets/floating_header.dart';
 import '../../core/widgets/glass_card.dart';
 import '../../core/widgets/input_dialog.dart';
@@ -19,6 +20,7 @@ import '../../services/storage_service.dart';
 import '../search/search_screen.dart';
 import '../settings/lan_scanner_modal.dart';
 import 'drive_preview_screen.dart';
+import 'drive_thumbnail.dart';
 import 'upload_modal.dart';
 
 class DriveScreen extends ConsumerWidget {
@@ -127,254 +129,328 @@ class DriveScreen extends ConsumerWidget {
     }
   }
 
-  void _showFileActions(BuildContext context, WidgetRef ref, BackupFileItem file) {
+  void _showFileActions(
+    BuildContext context,
+    WidgetRef ref,
+    BackupFileItem file, {
+    Map<String, String>? mediaHeaders,
+    String? serverUrl,
+  }) {
     final driveNotifier = ref.read(driveProvider.notifier);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final primary = theme.primaryColor;
+    final sUrl = serverUrl ?? ref.read(serverProvider).url;
+    final category = Formatters.getMimeTypeCategory(file.mimeType, file.name);
+    final isMedia = !file.isDir && (category == 'photo' || category == 'video' || category == 'audio');
 
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
         decoration: BoxDecoration(
           color: (isDark ? theme.cardColor : Colors.white).withValues(alpha: 0.95),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  file.isDir ? Icons.folder_rounded : Icons.insert_drive_file_rounded,
-                  color: file.isDir ? const Color(0xFFF59E0B) : theme.primaryColor,
-                  size: 28,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(file.name, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800), maxLines: 1),
-                      Text(
-                        file.isDir ? 'Folder' : '${Formatters.formatBytes(file.size)} • ${Formatters.formatShortDate(file.createdAt)}',
-                        style: theme.textTheme.bodySmall?.copyWith(color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6)),
+        child: Material(
+          color: Colors.transparent,
+          child: SafeArea(
+            top: false,
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(2),
                       ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            if (!file.isDir &&
-                ['photo', 'video', 'audio'].contains(Formatters.getMimeTypeCategory(file.mimeType, file.name)))
-              ListTile(
-                leading: const Icon(Icons.play_circle_outline_rounded),
-                title: const Text('Preview'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  DrivePreviewScreen.open(context, file);
-                },
-              ),
-            ListTile(
-              leading: const Icon(Icons.download_rounded),
-              title: const Text('Download'),
-              onTap: () async {
-                Navigator.of(context).pop();
-                await _downloadFile(context, file);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.edit_rounded),
-              title: const Text('Rename'),
-              onTap: () async {
-                Navigator.of(context).pop();
-                final newName = await InputDialog.show(
-                  context,
-                  title: 'Rename',
-                  initialValue: file.name,
-                  confirmText: 'Rename',
-                );
-                if (newName != null && newName.isNotEmpty && newName != file.name) {
-                  final ok = await driveNotifier.renameFile(file.path, newName);
-                  if (context.mounted) {
-                    if (ok) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Renamed to "$newName"'),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                    } else {
-                      final err = ref.read(driveProvider).errorMessage ?? 'Rename failed';
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(err),
-                          backgroundColor: Colors.red,
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                    }
-                  }
-                }
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.link_rounded),
-              title: const Text('Public link (24h)'),
-              onTap: () async {
-                Navigator.of(context).pop();
-                try {
-                  final data = await ApiService().createPublicLink(fileId: file.id);
-                  final path = data['link']?['path'] ?? data['path'];
-                  final url = '${ref.read(serverProvider).url}$path';
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(url)));
-                  }
-                } catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Link failed: $e')));
-                  }
-                }
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.verified_rounded),
-              title: const Text('Verify checksum'),
-              onTap: () async {
-                Navigator.of(context).pop();
-                try {
-                  final data = await ApiService().verifyChecksum(file.id);
-                  if (context.mounted) {
-                    final ok = data['ok'] == true;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(ok ? 'Checksum OK' : 'Bitrot or mismatch: ${data['actual']}')),
-                    );
-                  }
-                } catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Verify failed: $e')));
-                  }
-                }
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.history_rounded),
-              title: const Text('Versions'),
-              onTap: () async {
-                Navigator.of(context).pop();
-                final versions = await ApiService().fileVersions(file.id);
-                if (!context.mounted) return;
-                await showModalBottomSheet<void>(
-                  context: context,
-                  builder: (ctx) => ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      const Text('File versions', style: TextStyle(fontWeight: FontWeight.w800)),
-                      if (versions.isEmpty) const ListTile(title: Text('No older copies yet')),
-                      ...versions.map((v) => ListTile(
-                            title: Text('v${v['version']} · ${v['name'] ?? file.name}'),
-                            subtitle: Text(v['createdAt']?.toString() ?? ''),
-                            trailing: TextButton(
-                              onPressed: () async {
-                                await ApiService().restoreVersion(
-                                  fileId: file.id,
-                                  version: (v['version'] as num).toInt(),
-                                );
-                                if (ctx.mounted) Navigator.pop(ctx);
-                                await driveNotifier.loadFiles(ref.read(driveProvider).currentPath);
-                              },
-                              child: const Text('Restore'),
-                            ),
-                          )),
-                    ],
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.person_add_alt_1_rounded),
-              title: const Text('Add to person'),
-              onTap: () async {
-                Navigator.of(context).pop();
-                final people = await ApiService().listPeople();
-                if (!context.mounted) return;
-                if (people.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Create a person album in Settings first')),
-                  );
-                  return;
-                }
-                final id = await showDialog<String>(
-                  context: context,
-                  builder: (ctx) => SimpleDialog(
-                    title: const Text('Assign to'),
-                    children: people
-                        .map(
-                          (p) => SimpleDialogOption(
-                            onPressed: () => Navigator.pop(ctx, p['id']?.toString()),
-                            child: Text(p['name']?.toString() ?? ''),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                );
-                if (id == null) return;
-                await ApiService().assignPerson(albumId: id, fileId: file.id);
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Assigned')));
-                }
-              },
-            ),
-            if (file.parentPath == 'Trash')
-              ListTile(
-                leading: const Icon(Icons.restore_from_trash_rounded),
-                title: const Text('Restore'),
-                onTap: () async {
-                  Navigator.of(context).pop();
-                  await ApiService().restoreFile(file.id);
-                  await driveNotifier.loadFiles(ref.read(driveProvider).currentPath);
-                },
-              ),
-            ListTile(
-              leading: const Icon(Icons.delete_outline_rounded, color: Colors.red),
-              title: Text(
-                file.parentPath == 'Trash' ? 'Delete forever' : 'Move to Trash',
-                style: const TextStyle(color: Colors.red),
-              ),
-              onTap: () async {
-                Navigator.of(context).pop();
-                final inTrash = file.parentPath == 'Trash';
-                final confirm = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: Text(inTrash ? 'Delete forever' : 'Move to Trash'),
-                    content: Text(
-                      inTrash
-                          ? 'Permanently delete "${file.name}"? This cannot be undone.'
-                          : 'Move "${file.name}" to Trash?',
                     ),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
-                      ElevatedButton(
-                        onPressed: () => Navigator.of(ctx).pop(true),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-                        child: Text(inTrash ? 'Delete' : 'Trash'),
+                  ),
+                  Row(
+                    children: [
+                      DriveThumbnail(
+                        file: file,
+                        serverUrl: sUrl,
+                        headers: mediaHeaders,
+                        size: 48,
+                        borderRadius: 14,
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                           crossAxisAlignment: CrossAxisAlignment.start,
+                           children: [
+                             Text(
+                               file.name,
+                               style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                               maxLines: 1,
+                               overflow: TextOverflow.ellipsis,
+                             ),
+                             const SizedBox(height: 2),
+                             Text(
+                               file.isDir
+                                   ? 'Folder'
+                                   : '${Formatters.formatBytes(file.size)} • ${Formatters.formatShortDate(file.createdAt)}',
+                               style: theme.textTheme.bodySmall?.copyWith(
+                                 color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6),
+                               ),
+                             ),
+                           ],
+                        ),
                       ),
                     ],
                   ),
-                );
-                if (confirm == true) {
-                  await driveNotifier.deleteFile(file.id, permanent: inTrash);
-                  if (context.mounted && !inTrash) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Moved to Trash')));
-                  }
-                }
-              },
+                  const SizedBox(height: 14),
+                  const Divider(height: 1),
+                  const SizedBox(height: 6),
+                  if (isMedia)
+                    ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      leading: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          category == 'video'
+                              ? Icons.play_arrow_rounded
+                              : (category == 'audio' ? Icons.headphones_rounded : Icons.visibility_rounded),
+                          color: primary,
+                          size: 24,
+                        ),
+                      ),
+                      title: Text(
+                        category == 'video' ? 'Play Video' : (category == 'audio' ? 'Play Audio' : 'View Photo'),
+                        style: TextStyle(fontWeight: FontWeight.w700, color: primary),
+                      ),
+                      subtitle: const Text('Open full screen preview', style: TextStyle(fontSize: 12)),
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        DrivePreviewScreen.open(context, file);
+                      },
+                    ),
+                  ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                    leading: const Icon(Icons.download_rounded),
+                    title: const Text('Download'),
+                    onTap: () async {
+                      Navigator.of(context).pop();
+                      await _downloadFile(context, file);
+                    },
+                  ),
+                  ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                    leading: const Icon(Icons.edit_rounded),
+                    title: const Text('Rename'),
+                    onTap: () async {
+                      Navigator.of(context).pop();
+                      final newName = await InputDialog.show(
+                        context,
+                        title: 'Rename',
+                        initialValue: file.name,
+                        confirmText: 'Rename',
+                      );
+                      if (newName != null && newName.isNotEmpty && newName != file.name) {
+                        final ok = await driveNotifier.renameFile(file.path, newName);
+                        if (context.mounted) {
+                          if (ok) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Renamed to "$newName"'),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          } else {
+                            final err = ref.read(driveProvider).errorMessage ?? 'Rename failed';
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(err),
+                                backgroundColor: Colors.red,
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          }
+                        }
+                      }
+                    },
+                  ),
+                  ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                    leading: const Icon(Icons.link_rounded),
+                    title: const Text('Public link (24h)'),
+                    onTap: () async {
+                      Navigator.of(context).pop();
+                      try {
+                        final data = await ApiService().createPublicLink(fileId: file.id);
+                        final path = data['link']?['path'] ?? data['path'];
+                        final url = '${ref.read(serverProvider).url}$path';
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(url)));
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Link failed: $e')));
+                        }
+                      }
+                    },
+                  ),
+                  ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                    leading: const Icon(Icons.verified_rounded),
+                    title: const Text('Verify checksum'),
+                    onTap: () async {
+                      Navigator.of(context).pop();
+                      try {
+                        final data = await ApiService().verifyChecksum(file.id);
+                        if (context.mounted) {
+                          final ok = data['ok'] == true;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(ok ? 'Checksum OK' : 'Bitrot or mismatch: ${data['actual']}')),
+                          );
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Verify failed: $e')));
+                        }
+                      }
+                    },
+                  ),
+                  ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                    leading: const Icon(Icons.history_rounded),
+                    title: const Text('Versions'),
+                    onTap: () async {
+                      Navigator.of(context).pop();
+                      final versions = await ApiService().fileVersions(file.id);
+                      if (!context.mounted) return;
+                      await showModalBottomSheet<void>(
+                        context: context,
+                        builder: (ctx) => ListView(
+                          padding: const EdgeInsets.all(16),
+                          children: [
+                            const Text('File versions', style: TextStyle(fontWeight: FontWeight.w800)),
+                            if (versions.isEmpty) const ListTile(title: Text('No older copies yet')),
+                            ...versions.map((v) => ListTile(
+                                  title: Text('v${v['version']} · ${v['name'] ?? file.name}'),
+                                  subtitle: Text(v['createdAt']?.toString() ?? ''),
+                                  trailing: TextButton(
+                                    onPressed: () async {
+                                      await ApiService().restoreVersion(
+                                        fileId: file.id,
+                                        version: (v['version'] as num).toInt(),
+                                      );
+                                      if (ctx.mounted) Navigator.pop(ctx);
+                                      await driveNotifier.loadFiles(ref.read(driveProvider).currentPath);
+                                    },
+                                    child: const Text('Restore'),
+                                  ),
+                                )),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                  ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                    leading: const Icon(Icons.person_add_alt_1_rounded),
+                    title: const Text('Add to person'),
+                    onTap: () async {
+                      Navigator.of(context).pop();
+                      final people = await ApiService().listPeople();
+                      if (!context.mounted) return;
+                      if (people.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Create a person album in Settings first')),
+                        );
+                        return;
+                      }
+                      final id = await showDialog<String>(
+                        context: context,
+                        builder: (ctx) => SimpleDialog(
+                          title: const Text('Assign to'),
+                          children: people
+                              .map(
+                                (p) => SimpleDialogOption(
+                                  onPressed: () => Navigator.pop(ctx, p['id']?.toString()),
+                                  child: Text(p['name']?.toString() ?? ''),
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      );
+                      if (id == null) return;
+                      await ApiService().assignPerson(albumId: id, fileId: file.id);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Assigned')));
+                      }
+                    },
+                  ),
+                  if (file.parentPath == 'Trash')
+                    ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                      leading: const Icon(Icons.restore_from_trash_rounded),
+                      title: const Text('Restore'),
+                      onTap: () async {
+                        Navigator.of(context).pop();
+                        await ApiService().restoreFile(file.id);
+                        await driveNotifier.loadFiles(ref.read(driveProvider).currentPath);
+                      },
+                    ),
+                  ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                    leading: const Icon(Icons.delete_outline_rounded, color: Colors.red),
+                    title: Text(
+                      file.parentPath == 'Trash' ? 'Delete forever' : 'Move to Trash',
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                    onTap: () async {
+                      Navigator.of(context).pop();
+                      final inTrash = file.parentPath == 'Trash';
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: Text(inTrash ? 'Delete forever' : 'Move to Trash'),
+                          content: Text(
+                            inTrash
+                                ? 'Permanently delete "${file.name}"? This cannot be undone.'
+                                : 'Move "${file.name}" to Trash?',
+                          ),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+                            ElevatedButton(
+                              onPressed: () => Navigator.of(ctx).pop(true),
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                              child: Text(inTrash ? 'Delete' : 'Trash'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirm == true) {
+                        await driveNotifier.deleteFile(file.id, permanent: inTrash);
+                        if (context.mounted && !inTrash) {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Moved to Trash')));
+                        }
+                      }
+                    },
+                  ),
+                ],
+              ),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -417,7 +493,9 @@ class DriveScreen extends ConsumerWidget {
     final driveState = ref.watch(driveProvider);
     final driveNotifier = ref.read(driveProvider.notifier);
     final serverInfo = ref.watch(serverProvider);
-    final user = ref.watch(authProvider).user;
+    final authState = ref.watch(authProvider);
+    final user = authState.user;
+    final mediaHeaders = SessionTokenCleaner.authHeaders(authState.token);
 
     final files = driveState.sortedAndFilteredFiles;
     final breadcrumbParts = driveState.currentPath.isEmpty ? <String>[] : driveState.currentPath.split('/');
@@ -604,7 +682,13 @@ class DriveScreen extends ConsumerWidget {
                                         if (category == 'photo' || category == 'video' || category == 'audio') {
                                           DrivePreviewScreen.open(context, file);
                                         } else {
-                                          _showFileActions(context, ref, file);
+                                          _showFileActions(
+                                            context,
+                                            ref,
+                                            file,
+                                            mediaHeaders: mediaHeaders,
+                                            serverUrl: serverInfo.url,
+                                          );
                                         }
                                       }
                                     },
@@ -614,26 +698,24 @@ class DriveScreen extends ConsumerWidget {
                                         Row(
                                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                           children: [
-                                            Container(
-                                              width: 42,
-                                              height: 42,
-                                              decoration: BoxDecoration(
-                                                color: file.isDir
-                                                    ? const Color(0xFFF59E0B).withValues(alpha: 0.15)
-                                                    : primary.withValues(alpha: 0.12),
-                                                borderRadius: BorderRadius.circular(14),
-                                              ),
-                                              child: Icon(
-                                                file.isDir ? Icons.folder_rounded : Icons.insert_drive_file_rounded,
-                                                color: file.isDir ? const Color(0xFFF59E0B) : primary,
-                                                size: 22,
-                                              ),
+                                            DriveThumbnail(
+                                              file: file,
+                                              serverUrl: serverInfo.url,
+                                              headers: mediaHeaders,
+                                              size: 44,
+                                              borderRadius: 14,
                                             ),
                                             IconButton(
                                               icon: const Icon(Icons.more_vert_rounded, size: 18),
                                               padding: EdgeInsets.zero,
                                               constraints: const BoxConstraints(),
-                                              onPressed: () => _showFileActions(context, ref, file),
+                                              onPressed: () => _showFileActions(
+                                                context,
+                                                ref,
+                                                file,
+                                                mediaHeaders: mediaHeaders,
+                                                serverUrl: serverInfo.url,
+                                              ),
                                             ),
                                           ],
                                         ),
@@ -678,25 +760,24 @@ class DriveScreen extends ConsumerWidget {
                                         if (category == 'photo' || category == 'video' || category == 'audio') {
                                           DrivePreviewScreen.open(context, file);
                                         } else {
-                                          _showFileActions(context, ref, file);
+                                          _showFileActions(
+                                            context,
+                                            ref,
+                                            file,
+                                            mediaHeaders: mediaHeaders,
+                                            serverUrl: serverInfo.url,
+                                          );
                                         }
                                       }
                                     },
                                     child: Row(
                                       children: [
-                                        // Folder / File Icon
-                                        Container(
-                                          width: 40,
-                                          height: 40,
-                                          decoration: BoxDecoration(
-                                            color: file.isDir ? const Color(0xFFF59E0B).withValues(alpha: 0.15) : primary.withValues(alpha: 0.12),
-                                            borderRadius: BorderRadius.circular(12),
-                                          ),
-                                          child: Icon(
-                                            file.isDir ? Icons.folder_rounded : Icons.insert_drive_file_rounded,
-                                            color: file.isDir ? const Color(0xFFF59E0B) : primary,
-                                            size: 22,
-                                          ),
+                                        DriveThumbnail(
+                                          file: file,
+                                          serverUrl: serverInfo.url,
+                                          headers: mediaHeaders,
+                                          size: 40,
+                                          borderRadius: 12,
                                         ),
                                         const SizedBox(width: 12),
 
@@ -725,7 +806,13 @@ class DriveScreen extends ConsumerWidget {
 
                                         IconButton(
                                           icon: const Icon(Icons.more_vert_rounded, size: 18),
-                                          onPressed: () => _showFileActions(context, ref, file),
+                                          onPressed: () => _showFileActions(
+                                            context,
+                                            ref,
+                                            file,
+                                            mediaHeaders: mediaHeaders,
+                                            serverUrl: serverInfo.url,
+                                          ),
                                         ),
                                       ],
                                     ),
