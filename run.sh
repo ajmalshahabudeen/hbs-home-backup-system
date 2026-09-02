@@ -63,6 +63,22 @@ EOF
 }
 
 load_env() {
+  # Auto-create .env from .env.example if missing
+  if [[ ! -f "$ENV_FILE" && -f "${ENV_FILE}.example" ]]; then
+    cp "${ENV_FILE}.example" "$ENV_FILE" 2>/dev/null || true
+    ok "Created default ${ENV_FILE} from ${ENV_FILE}.example"
+  fi
+
+  # Auto-create apps/server/.env from apps/server/.env.example if missing
+  if [[ ! -f "$ROOT_DIR/apps/server/.env" ]]; then
+    if [[ -f "$ROOT_DIR/apps/server/.env.example" ]]; then
+      cp "$ROOT_DIR/apps/server/.env.example" "$ROOT_DIR/apps/server/.env" 2>/dev/null || true
+      ok "Created default apps/server/.env from apps/server/.env.example"
+    else
+      touch "$ROOT_DIR/apps/server/.env" 2>/dev/null || true
+    fi
+  fi
+
   if [[ -f "$ENV_FILE" ]]; then
     set -a
     # shellcheck disable=SC1090
@@ -150,20 +166,15 @@ ensure_storage() {
   local p="$HOST_STORAGE_PATH"
   log "Storage path (HOST_STORAGE_PATH): ${p}"
 
-  # Create relative paths and Windows drive folders (G:/HBS-Backups)
-  if [[ "$p" == ./* || "$p" == ../* ]]; then
-    mkdir -p "$p" 2>/dev/null || true
-  elif [[ "$p" =~ ^[A-Za-z]:/ ]]; then
+  # Attempt directory creation for relative, Unix, or Windows paths
+  mkdir -p "$p" 2>/dev/null || true
+  if [[ "$p" =~ ^[A-Za-z]:/ ]]; then
     # Git Bash understands /g/HBS-Backups and G:/HBS-Backups
-    mkdir -p "$p" 2>/dev/null || true
-    # Also try MSYS path /g/...
     local drive rest msys
     drive="$(echo "${p:0:1}" | tr '[:upper:]' '[:lower:]')"
     rest="${p:2}"
     msys="/${drive}${rest}"
     mkdir -p "$msys" 2>/dev/null || true
-  elif [[ "$p" == /* ]]; then
-    mkdir -p "$p" 2>/dev/null || true
   fi
 
   if [[ ! -e "$p" ]]; then

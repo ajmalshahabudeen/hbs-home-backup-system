@@ -1,8 +1,18 @@
+import os from "node:os";
 import type { NextConfig } from "next";
+
+// Cap build worker concurrency to avoid OOM in memory-constrained Docker / Ubuntu environments
+const buildCpus = process.env.NEXT_BUILD_CPUS
+  ? Math.max(1, Number(process.env.NEXT_BUILD_CPUS))
+  : Math.min(2, Math.max(1, (os.cpus()?.length || 1) - 1));
 
 const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
+  },
+  experimental: {
+    cpus: buildCpus,
+    webpackMemoryOptimizations: true,
   },
   transpilePackages: [
     "@workspace/ui",

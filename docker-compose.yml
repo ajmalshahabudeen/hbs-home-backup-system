@@ -82,9 +82,11 @@ services:
       - "${APP_PORT:-38480}:38480"
     # Runtime only — do not bake Google IDs into the image.
     # Loads apps/server/.env (GOOGLE_CLIENT_ID / SECRET). DATABASE_URL in that
-    # file is ignored because `environment:` below pins postgres hostname.
     env_file:
-      - apps/server/.env
+      - path: apps/server/.env
+        required: false
+      - path: .env
+        required: false
     environment:
       <<: *storage-env
       NODE_ENV: production

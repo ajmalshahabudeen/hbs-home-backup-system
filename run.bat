@@ -53,6 +53,22 @@ echo [warn] Git Bash not found - using simple Docker fallback.
 echo         Install Git for Windows for the full launcher.
 echo.
 
+REM ----- Auto-create .env and apps/server/.env if missing -----
+if not exist ".env" (
+  if exist ".env.example" (
+    copy /y ".env.example" ".env" >nul 2>&1
+    echo [ ok ] Created .env from .env.example
+  )
+)
+if not exist "apps\server\.env" (
+  if exist "apps\server\.env.example" (
+    copy /y "apps\server\.env.example" "apps\server\.env" >nul 2>&1
+    echo [ ok ] Created apps/server/.env from apps/server/.env.example
+  ) else (
+    type nul > "apps\server\.env" 2>nul
+  )
+)
+
 REM ----- Load .env (KEY=VALUE lines; skip comments) -----
 if exist ".env" (
   echo [ ok ] Loading .env

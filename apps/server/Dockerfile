@@ -36,7 +36,10 @@ COPY apps/server ./apps/server
 # the app via a LAN IP (http://192.168.x.x:38480) → CORS failure.
 ENV DATABASE_URL="postgresql://hbs:hbs@localhost:5432/hbs_backup?schema=public" \
     NEXT_TELEMETRY_DISABLED=1 \
-    NODE_ENV=production
+    NODE_ENV=production \
+    NODE_OPTIONS="--max-old-space-size=2048" \
+    NEXT_BUILD_CPUS=2 \
+    NEXT_DISABLE_SOURCEMAPS=1
 
 RUN bun install --frozen-lockfile || bun install
 
@@ -44,8 +47,8 @@ WORKDIR /app/packages/db
 RUN bunx prisma generate
 
 WORKDIR /app/apps/server
-# Real Node binary (not bun's node shim)
-RUN /usr/local/bin/node ./node_modules/next/dist/bin/next build
+# Real Node binary (not bun's node shim) with memory guard
+RUN NODE_OPTIONS="--max-old-space-size=2048" /usr/local/bin/node ./node_modules/next/dist/bin/next build
 
 # ─── Slim Production Runner (Node 22 only ~300MB) ───────────────────────────
 FROM node:22-bookworm-slim AS runner

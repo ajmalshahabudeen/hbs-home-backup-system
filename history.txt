@@ -675,40 +675,204 @@
 ## Session: 2026-08-25 (Flutter Project Migration Completed)
 - Initialized high-performance native Flutter application `apps/hbs-app-flutter` with Flutter 3.44.1 / Dart 3.12.1.
 - Preserved existing Expo app (`apps/mobile-app`) 100% intact and unaffected.
-- Configured Android permissions and cleartext network security in `AndroidManifest.xml`.
-- Implemented complete 5 accent color palettes (`Amber Gold`, `Ocean Blue`, `Emerald Mint`, `Violet Plum`, `Rose Amber`) and Light/Dark/AMOLED theming with Google Fonts `Manrope`.
-- Built core glassmorphic UI system (`GlassCard`, `FloatingHeader` with animated server connection pulse dot, `CustomBottomNav`, `SkeletonPhotoGrid`, `FilterSortBar`, `InputDialog`).
-- Implemented core services: `ApiService` (Dio + Better-Auth session cleaner), `LanScannerService` (fast subnet scanner with port 38480 candidate short-circuiting), `BackupIndexDb` (high-speed SQLite deduplication table), `DedupeService` (SHA-256 partial sampling hash + local & remote check), `MediaDiscoveryService` (native `photo_manager` asset discovery), `UploadQueueService` (4-worker multi-threaded pool with cancellation and live byte stream), `NotificationService` (ongoing progress and finish alerts), `AppLockService` (biometrics + PIN keypad).
-- Built Riverpod reactive state layer: `theme_provider`, `server_provider`, `auth_provider`, `media_provider`, `drive_provider`, `backup_provider`, and `app_lock_provider`.
-- Built all app screens: `LandingScreen`, `LoginScreen`, `RegisterScreen`, `PhotosScreen` (hybrid timeline, date section headers, density switcher), `MediaViewerModal` (`photo_view` gesture zoom + `chewie` video player), `DriveScreen` (cloud explorer, breadcrumb navigation, multi-file uploader), `BackupScreen` (hero sync progress card, album selector modal), `SettingsScreen` (storage quota, palette picker, cache purge), `SearchScreen`, and `AppLockOverlay`.
-- Verified `flutter analyze` with 0 errors and 0 warnings.
-- Verified `flutter test` with 100% passing unit tests.
-- Verified Turborepo workspace typecheck (`bun run typecheck`) with 3/3 successful builds and zero errors.
-
-## Session: 2026-08-26 (Flutter Android Gradle Build & NDK Compatibility Fixes Completed)
-- Diagnosed and resolved consecutive Android build errors when running `flutter run` / `flutter build apk --debug` in `apps/hbs-app-flutter`:
-  1. Core Library Desugaring for `flutter_local_notifications`:
-     - Enabled `isCoreLibraryDesugaringEnabled = true` in `apps/hbs-app-flutter/android/app/build.gradle.kts`.
-     - Added dependency `coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")`.
   2. NDK 28 Windows Clang ARMv7 Compiler Crash:
      - Identified that NDK 28 (`28.2.13676358`) on Windows crashes with exit code 0xC0000005 during 32-bit ARM (`armeabi-v7a`) code generation for the `jni` native package (`@globalEnv_GetDoubleArrayRegion`).
      - Pinned `ndkVersion = "27.1.12297006"` in `apps/hbs-app-flutter/android/app/build.gradle.kts` and `android/local.properties`.
-     - Added dynamic subprojects evaluation hook in `android/build.gradle.kts` to enforce NDK 27.1 across all plugin subprojects.
-  3. SDK 36 Subproject Alignment (`file_picker` compileSdk mismatch):
-     - Resolved `checkDebugAarMetadata` failure where `file_picker` was locked to `android-34` while `flutter_plugin_android_lifecycle` required API 36+.
-     - Configured root `android/build.gradle.kts` subproject hooks to enforce `compileSdk = 36` across all subproject extensions.
-- Build & Quality Verification:
-  - Verified `flutter build apk --debug`: Built `build\app\outputs\flutter-apk\app-debug.apk` in 33.3s with exit code 0.
-  - Verified `flutter analyze`: 0 issues found.
-  - Verified `flutter test`: 100% passing unit tests.
-  - Verified `bun run typecheck`: 3/3 packages succeeded.
-  - Verified Next.js server production build (`bun run build --filter=server`): 100% success.
-## Session: 2026-08-26 (Flutter Session Persistence & Drive FAB Overhaul Completed)
-- Implemented robust multi-layer session persistence and auto-reauthentication for Flutter mobile client (`apps/hbs-app-flutter`):
-  1. `StorageService` (`lib/services/storage_service.dart`):
-     - Added try-catch wrapped `FlutterSecureStorage` with `SharedPreferences` fallback for secure token (`hbs_auth_session_token`) and credential (`hbs_auth_credentials`) persistence.
-     - Added user model caching (`saveCurrentUser`, `getCurrentUser`) in `SharedPreferences` (`hbs_auth_user`).
-     - Added logout state tracking (`isUserLoggedOut`, `setUserLoggedOut`) and unified `clearAllAuthData()` for clean user sign-out.
+  2. `AuthService` (`lib/services/auth_service.dart`):
+     - Updated `signIn` and `signUp` to sanitize extracted tokens via `SessionTokenCleaner`, persist auth credentials, token, cached user, and reset `isUserLoggedOut = false`.
+     - Overhauled `restoreSession`: checks `isUserLoggedOut`, immediately applies cached token to `ApiService`, validates session with server, and if offline or server is unreachable, retains the cached session rather than kicking the user out to the login screen. If the session expires with 401/403, attempts automatic silent re-authentication with securely saved credentials.
+     - Added `autoAuthenticateUser` helper for background sync tasks and dynamic LAN server discovery.
+     - Updated `signOut` to clear all tokens, credentials, and user data.
+  3. `AuthNotifier` (`lib/providers/auth_provider.dart`):
+     - Implemented `<1ms` instant warm hydration on app startup (`_initSession`) from local disk cache, eliminating blank login flickers and keeping the user permanently logged in across restarts.
+  4. `ServerNotifier` (`lib/providers/server_provider.dart`):
+     - Synchronously initialized state with saved server URL from `StorageService`.
+- Repositioned Floating Action Button ("+") in Drive Screen (`lib/screens/drive/drive_screen.dart`):
+  1. Elevated FAB with safe-area bottom offset: `Padding(padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom + 84))`, placing the "+" button cleanly above the floating `CustomBottomNav` capsule.
+  2. Added full Grid View support (`GridView.builder`) when `driveState.isGridView == true`.
+  3. Increased bottom list and grid scroll padding to `MediaQuery.paddingOf(context).bottom + 160` so the last items are never obscured by the FAB or bottom navigation bar.
+- Verified TypeScript compilation and server build with zero errors.
+
+## Session: 2026-08-24 (HBS Brand Logo Integration for Mobile App)
+- Processed `apps/mobile-app/assets/HBS_Logo.png` into full production asset suite:
+  1. `icon.png`: 1024x1024 high-res app icon.
+  2. `splash-icon.png`: 1024x1024 transparent circular logo for native splash screen.
+  3. `android-icon-foreground.png`: 1024x1024 adaptive icon foreground centered within Android 66% safe zone.
+  4. `android-icon-background.png`: 1024x1024 dark background (#121212).
+  5. `android-icon-monochrome.png`: 432x432 monochrome silhouette for Android 13+ themed icons.
+  6. `favicon.png`: 512x512 web favicon.
+  7. `HBS_Logo_transparent.png`: Anti-aliased transparent alpha mask of circular watercolor planet logo for in-app UI.
+- Updated `apps/mobile-app/app.json`:
+  1. Configured `"android.adaptiveIcon.foregroundImage"` -> `./assets/images/android-icon-foreground.png`.
+  2. Configured `"plugins.expo-splash-screen.image"` and dark variant -> `./assets/images/splash-icon.png`.
+- Updated Splash Screen (`apps/mobile-app/src/app/index.tsx`):
+  1. Replaced placeholder `Ionicons` with `HBS_Logo_transparent.png` via `expo-image` `Image`.
+- Updated Login Screen (`apps/mobile-app/src/app/(auth)/login.tsx`):
+  1. Replaced placeholder `Ionicons` with `HBS_Logo_transparent.png` in brand header.
+- Updated Register Screen (`apps/mobile-app/src/app/(auth)/register.tsx`):
+  1. Added `HBS_Logo_transparent.png` brand logo in header for consistent auth styling.
+- Verified TypeScript compilation (`bun run typecheck`) with zero errors and Next.js server production build (`bun run build --filter=server`) with 100% success.
+
+## Session: 2026-08-24 (Docker Image Size Optimization Completed)
+- Conducted architectural analysis and executed full image size optimization for `apps/server`:
+  1. Refactored `apps/server/lib/queue.ts` into a pure TypeScript / Node.js Celery v2 task dispatcher using `getRedis()` (`ioredis`) and `@workspace/db` Prisma client, completely removing the Python child-process execution dependency (`enqueue_job.py`).
+  2. Refactored `apps/server/docker-entrypoint.sh` to use native Node.js socket health probes (`node:net`) and standalone Prisma execution, completely eliminating the need for `bun` in the production runner.
+  3. Optimized `apps/server/Dockerfile` by removing `python3`, `python3-pip`, `python3-venv`, `pip install requirements.txt`, `ffmpeg`, and `bun` from the `runner` stage, bringing the estimated production container size down from ~1.2GB to ~280MB–350MB.
+  4. Cleaned unused `PYTHON_BIN` and `PYTHON_SCRIPTS_DIR` from `server` service environment in `docker-compose.yml`.
+- Verified TypeScript compilation across all 9 packages (`bun run typecheck`) with zero errors.
+- Fixed Docker build error (`/app/node_modules/@prisma: not found`): removed redundant `COPY node_modules/prisma` directives from `apps/server/Dockerfile` and streamlined `apps/server/docker-entrypoint.sh` to use Node's bundled `npx prisma db push`.
+
+## Session: 2026-08-24 (Settings & Backup Sleek Borderless UI Overhaul Completed)
+- Overhauled `apps/mobile-app/src/app/(tabs)/settings.tsx` and `apps/mobile-app/src/app/(tabs)/backup.tsx` to completely remove heavy card borders, boxy card containers, and harsh outlines in favor of a sleek, modern mobile design:
+  1. `settings.tsx`:
+     - Clean modern 28px header and borderless tone-on-tone profile header row with quick-action sign-out pill.
+     - Redesigned Storage dashboard with borderless group container, bold metrics, compact percentage pill, seamless progress bar track, and clean inline media category indicators (Photos, Videos, Docs).
+     - Modernized Permissions & Diagnostics list with soft squircle icon badges, title/subtext hierarchy, status badges, and inset hairline dividers.
+     - Replaced boxed theme group with a sleek 3-way segmented switcher (`Light`, `Dark`, `System`) and pill-based horizontal accent palette picker.
+     - Streamlined Data & Storage and Connection groups with borderless row layout and live connection status indicators.
+  2. `backup.tsx`:
+     - Transformed Hero section into a sleek borderless overview banner with centered icon badge, clean typography, live progress container with percentage badge, and borderless pill buttons (`Sync Now` / `Select Photos`).
+     - Replaced 3 floating boxed cards with a unified 3-column quick metrics bar with hairline vertical separators (`Uploaded`, `Duplicates`, `Server Status`).
+     - Streamlined Synced Folders, Destination Server, and Sync Preferences into borderless grouped sections with soft icon badges and inset hairline dividers.
+- Verified TypeScript compilation across workspace (`bun run typecheck`) and Next.js server production build (`bun run build --filter=server`) with 100% success and zero errors.
+
+## Session: 2026-08-24 (AMOLED Dark Pure Black Theme Mode Completed)
+- Implemented **AMOLED Dark (Pure Black)** theme mode across `apps/mobile-app`:
+  1. `src/constants/theme.ts`:
+     - Added `createAmoledTheme` helper that maps any active accent palette's dark variant to pure `#000000` AMOLED black background, `#0A0A0A` surfaces, `#000000` tab bar, `#121212` search backgrounds, and `#1E1E1E` borders, while preserving vibrant accent colors on buttons, active badges, highlights, and icons.
+  2. `src/context/ThemeContext.tsx`:
+     - Added `amoledDark`, `isAmoled` flags, and `setAmoledDark` persistent handler (`hbs_app_amoled_dark` in `appStorage`).
+     - Dynamically applies `createAmoledTheme` when in dark mode with AMOLED enabled.
+  3. `src/app/(tabs)/settings.tsx`:
+     - Added **"AMOLED Pure Black"** toggle row under Appearance & Theme with live reactive preview and automatic switch handling.
+  4. `src/app/(tabs)/backup.tsx` & `src/components/CustomTabBar.tsx`:
+     - Synchronized group containers and floating tab bar with `isAmoled` pure black backgrounds.
+- Verified TypeScript compilation across workspace (`bun run typecheck`) and Next.js server build (`bun run build --filter=server`) with 100% success and zero errors.
+
+## Session: 2026-08-24 (Backup Screen Server Integration & Options Optimization Completed)
+- Conducted comprehensive audit of `apps/mobile-app/src/app/(tabs)/backup.tsx` and related services (`backgroundSync.ts`, `api.ts`, `safeMediaLibrary.ts`, `apps/server/app/api/user/upload/check/route.ts`):
+  1. Backend Server Deduplication API (`apps/server/app/api/user/upload/check/route.ts`):
+     - Added support for all parameter aliases (`name` / `fileName`, `size` / `fileSize`, `checksum` / `hash`, `path` / `targetFilePath` / `reqPath`).
+     - Standardized response payload to `{ duplicate: boolean, isDuplicate: boolean, file, existingFile }` ensuring 100% interoperability with mobile and web clients.
+  2. Mobile API Client (`apps/mobile-app/src/services/api.ts`):
+     - Enhanced `checkDuplicate` to send all field aliases and parse both `duplicate` and `isDuplicate` response attributes.
+  3. Safe Media Library (`apps/mobile-app/src/utils/safeMediaLibrary.ts`):
+     - Added `filterAssetsBySelectedAlbums(assets, selectedAlbums)` helper to filter local media assets by user-selected album IDs, categories (`camera`, `whatsapp`, `screenshots`, `downloads`), or names.
+  4. Background Sync Service (`apps/mobile-app/src/services/backgroundSync.ts`):
+     - Added `isNetworkOkForSync(wifiOnly)` using `expo-network` (`Network.getNetworkStateAsync()`).
+     - Added `wifiOnly` preference into `SyncConfig` with default `true` and persistent storage.
+     - Updated `syncPhotosNow` and background task to enforce network (`isNetworkOkForSync`) and battery (`isBatteryOkForSync`) guards, filter assets with `filterAssetsBySelectedAlbums`, and index uploaded assets in `backupIndexDb.markAsUploaded`.
+  5. Backup Screen (`apps/mobile-app/src/app/(tabs)/backup.tsx`):
+     - Connected live server stats hydration (`hbsApi.getUserStats`), dynamically displaying server backed up media counts in the `UPLOADED` metric box with fallback to local SQLite index.
+     - Updated **"Sync Now"** auto-sync engine: enforces server connection, battery warning guard, cellular data prompt when Wi-Fi Only is active, filters assets by user-selected folders, executes parallel upload queue, updates SQLite index, and refreshes server stats.
+     - Updated **"Select Photos"** manual backup engine: enforces connection, battery, and Wi-Fi guards, executes preflight deduplication checks, uploads non-duplicate files, indexes newly uploaded items in SQLite database, and refreshes server metrics.
+     - Connected **"Folders & Albums"** (`FolderSelectorModal`): accurately calculates ready item count for selected albums, saves custom selections, and scopes auto-sync.
+     - Connected all 4 Sync Preferences switches (**Background Auto-Sync**, **Sync Progress Notifications**, **Wi-Fi Only Sync**, **Pause on Low Battery**), verifying system permissions and immediately applying runtime guards.
+     - Removed all dead, unused, and redundant code.
+- Verified TypeScript compilation across all packages (`bun run typecheck`) with zero errors.
+- Verified Next.js server production build (`bun run build --filter=server`) with 100% success and zero errors.
+
+## Session: 2026-08-24 (Autonomous Background Backup & Server Wake-Up Engine Completed)
+- Designed and implemented a fully autonomous zero-interaction background media backup system with server presence detection and wake-up notifications:
+  1. Database Schema (`packages/db/prisma/schema.prisma`):
+     - Added `MobileDevice` model tracking `deviceId`, `deviceName`, `platform`, `pushToken`, `lastIp`, and `lastSeenAt`.
+     - Linked `mobileDevices MobileDevice[]` relation to `User` and regenerated Prisma client (`bun run db:generate`).
+  2. Server Device Registration & Presence APIs (`apps/server`):
+     - Created `POST /api/user/device/register/route.ts`: registers mobile device IDs, names, platforms, local IPs, and push tokens for authenticated users.
+     - Created `POST /api/user/device/ping/route.ts`: lightweight heartbeat endpoint to update `lastSeenAt` and `lastIp`.
+     - Built `apps/server/lib/device-presence.ts`: LAN presence detector probing common mobile ports and sending silent/high-priority Expo Push Notification wake-up payloads (`action: 'autonomous_sync'`).
+     - Created `POST /api/admin/devices/scan/route.ts`: admin/system route to list registered devices, trigger manual presence sweeps, and send test wake-up signals.
+     - Created `scripts/device_scanner.py`: standalone Python presence scanner script that monitors LAN devices and triggers push alerts on configurable 10s–60s intervals.
+  3. Mobile Autonomous Sync Engine (`apps/mobile-app/src/services/autonomousSyncEngine.ts`):
+     - Built `runAutonomousSync` orchestrator:
+       a. Evaluates Wi-Fi Only (`isNetworkOkForSync`) and Low Battery (`isBatteryOkForSync`) constraints from settings.
+       b. Probes server URL; if offline or IP changed, automatically sweeps LAN subnet for active HBS servers on port 38480.
+       c. Automatically re-authenticates against new server IPs using securely stored credentials in `SecureStore` (unless user explicitly tapped "Sign Out").
+       d. Registers device push token and local IP with server.
+       e. Scans camera roll media and performs fast local SQLite index delta checks (`backupIndexDb.isLocallyUploaded`).
+       f. Uploads new/unindexed media files in parallel to `MobileBackups/`, updates SQLite database records, and posts dynamic progress notifications.
+  4. Authentication & Push Notification Enhancements:
+     - Updated `AuthContext.tsx` with `autoAuthenticateUser(targetServerUrl)` and persistent credential management (`hbs_auth_credentials`, `hbs_user_logged_out`).
+     - Updated `safeNotifications.ts` with `getExpoPushTokenAsync()` for safe push token retrieval.
+     - Updated `_layout.tsx` with push notification listener triggering `runAutonomousSync({ force: true, source: 'push_wakeup' })`.
+     - Updated `backgroundSync.ts` to route `BACKGROUND_SYNC_TASK` directly through `runAutonomousSync`.
+- Verified TypeScript compilation across all packages (`bun run typecheck`) with zero errors.
+- Verified Next.js server production build (`bun run build --filter=server`) with 100% success and zero errors.
+
+## Session: 2026-08-25 (EAS Build Frozen Lockfile Fix Completed)
+- Diagnosed EAS build failure during `Install dependencies` (`bun install --frozen-lockfile` exited with error: `lockfile had changes, but lockfile is frozen`).
+- Root cause: `bun.lock` in repository was out-of-sync with dependencies across workspace packages.
+- Ran `bun install` across monorepo to cleanly regenerate and synchronize `bun.lock`.
+- Verified TypeScript compilation (`bun run --filter=mobile-app typecheck`) with zero errors.
+
+## Session: 2026-08-25 (Upload Authentication & Multi-Candidate Session Guard Fix Completed)
+- Investigated root cause of `[HBS][UPLOAD] auth failed has-bearer has-cookie` error when mobile client uploads files to `/api/user/upload`:
+  1. Header Formatting & Double-Prefixing (`apps/mobile-app`):
+     - When `hbs_auth_cookie` (containing `better-auth.session_token=s%3A...`) was passed into `authHeaders`, it generated malformed duplicate prefixes (`Cookie: better-auth.session_token=better-auth.session_token=...` and `Authorization: Bearer better-auth.session_token=...`).
+  2. Server Token Parsing & Signature Handling (`apps/server/lib/auth-guard.ts`):
+     - Better-Auth signed cookies format tokens as `s:<raw_token>.<signature>` or `<raw_token>.<signature>`.
+     - Direct Prisma session lookup (`prisma.session.findUnique({ where: { token } })`) previously queried for the full signed string or cookie string, which failed because the database table stores only the raw unsigned token or session ID.
+- Upgraded Server Session Guard (`apps/server/lib/auth-guard.ts`):
+  1. Built `extractCandidateSessionTokens`: parses `Authorization: Bearer ...`, `x-session-token`, `x-auth-token`, and `Cookie` headers, normalizes quotes, decodes URL components, strips nested cookie prefixes, strips `s:`/`s%3A` signed indicators, and extracts raw tokens before signatures.
+  2. Updated `getSession`: performs multi-candidate lookup with `where: { OR: [{ token: { in: candidates } }, { id: { in: candidates } }] }`, validating active session expiry and user ban status.
+- Upgraded Mobile Auth Client & Services (`apps/mobile-app`):
+  1. Built `cleanSessionToken` in `apps/mobile-app/src/services/api.ts` to sanitize stored tokens and cookies into clean session tokens.
+  2. Updated `authHeaders(token)` to attach clean `Authorization: Bearer <cleanToken>`, `Cookie: better-auth.session_token=<cleanToken>`, and `x-session-token: <cleanToken>`.
+  3. Updated `AuthContext.tsx` (`autoAuthenticateUser`, `refreshSession`, `signIn`, `signUp`) and `useAuthStore.ts` (`restoreSession`) to clean all tokens before caching in SecureStore or sending in request headers.
+- Verified workspace TypeScript compilation (`bun run typecheck`) across all 9 packages with 0 errors.
+- Verified Next.js server production build (`bun run build --filter=server`) with 100% success.
+
+## Session: 2026-08-25 (App Lock with Device Screen Lock & Biometrics Completed)
+- Implemented App Lock using device Screen Lock (Face ID, Touch ID, Fingerprint, Iris, or Device Passcode / PIN / Pattern) for `apps/mobile-app`:
+  1. Installed `expo-local-authentication@57.0.2` via Bun.
+  2. Configured `app.json` with `expo-local-authentication` plugin (`faceIDPermission`) and Android biometric permissions (`USE_BIOMETRIC`, `USE_FINGERPRINT`).
+  3. Created `apps/mobile-app/src/utils/appLock.ts`:
+     - Built `getDeviceSecurityStatus` to query hardware availability, enrollment status, and supported biometric types.
+     - Built `authenticateWithScreenLock` with seamless fallback to device Passcode / PIN / Pattern.
+  4. Created `apps/mobile-app/src/context/AppLockContext.tsx`:
+     - Persistent storage under `hbs_app_lock_enabled`.
+     - AppState lifecycle tracking: auto-locks and prompts for biometric/screen lock verification when returning from background.
+     - Protected enable/disable workflows: requires user to authenticate with screen lock before toggling on or off.
+     - Handles unenrolled devices gracefully with guidance alerts to set up a device PIN/passcode in system settings.
+  5. Created `apps/mobile-app/src/components/AppLockOverlay.tsx`:
+     - Fullscreen glassmorphic lock screen protecting user photos, drives, and sensitive data from glance/unauthorized inspection.
+     - Dynamic biometric indicators (Face ID, Fingerprint, or PIN), "Unlock App" interactive button, and "Sign Out" alternative.
+  6. Updated `apps/mobile-app/src/app/_layout.tsx`:
+     - Wrapped root stack in `AppLockProvider` and mounted `AppLockOverlay`.
+  7. Updated `apps/mobile-app/src/app/(tabs)/settings.tsx`:
+     - Added dedicated **SECURITY & PRIVACY** section with **App Lock (Screen Lock)** toggle and instant **Lock App Now** action.
+- Verified TypeScript compilation across workspace (`bun run typecheck`) with zero errors.
+
+## Session: 2026-08-25 (Edge-to-Edge Photo Loading Skeleton Overhaul)
+- Overhauled `SkeletonPhotoGrid.tsx` and `PhotoGrid.tsx` in `apps/mobile-app`:
+  1. Removed horizontal padding (`paddingHorizontal: 0`) and fake header pill shapes from `SkeletonPhotoGrid.tsx`.
+  2. Realigned skeleton tile geometry with the real photo grid: `GAP = 1`, `borderRadius: 0`, and `itemSize = Math.floor((windowWidth - (columns - 1) * GAP) / columns)`.
+  3. Preserved floating `FilterSortBar` header in place during loading state in `PhotoGrid.tsx`, mounting the skeleton seamlessly with `paddingTop: 48, paddingBottom: 110`.
+  4. Eliminates layout jumping and padding flicker when transitioning from skeleton loader to loaded media.
+- Verified TypeScript compilation across workspace (`bun run typecheck`) with 0 errors.
+
+## Session: 2026-08-25 (On-the-Fly Device Media Streaming & Parallel Cloud Sync)
+- Implemented high-performance on-the-fly media streaming and background server cloud synchronization:
+  1. Created `safeMediaLibrary.streamAssetsAsync` delivering the initial batch (<60 items) natively in <15ms so photos appear instantly on screen (matching native OS gallery behavior) before streaming subsequent chunks in the background with UI micro-yields (`yieldToUI`).
+  2. Updated `photos.tsx` (`fetchPhotos`) to immediately mount the first stream chunk, dismiss the loading skeleton in milliseconds, stream remaining device photos, and then asynchronously sync server cloud photos and update backup statuses in the background.
+  3. Optimized `PhotoGrid.tsx` with `React.useMemo` for filtering, sorting, and grouping, plus an O(1) cached date label formatter, eliminating thousands of repeated `Intl` string allocations and preventing UI stutter on large media libraries.
+- Verified TypeScript compilation across workspace (`bun run typecheck`) with 0 errors.
+
+## Session: 2026-08-25 (Native Gallery Memory Downscaling & Blank Scroll Fix)
+- Resolved blank / disappearing media tiles when scrolling down and back up in `PhotoGrid.tsx` and `photos.tsx`:
+  1. Image Memory Throttling & Downscaling (`PhotoTile`): Enabled `allowDownscaling={true}` in `expo-image` so native Android Glide decodes photos to thumbnail grid dimensions (~130x130) instead of loading full 48MP raw bitmaps into RAM. Changed `transition` from 100 to 0 to prevent fade-in blinking on recycled cells.
+  2. Absolute Server Thumbnail Resolution (`photos.tsx`): Prepend `serverUrl` on all server `url` and `thumbUrl` paths (`http://<ip>:<port>/api/user/media/...`) so cloud photos and backup status thumbnails load directly without failing.
+  3. 2-Stage Clean Batch Hydration: Render initial 80 items in <15ms, then concurrently hydrate full device assets and server cloud media in parallel, eliminating repeated 35x array resets that were resetting FlashList while scrolling.
+  4. FlashList Virtualization Buffer (`PhotoGrid.tsx`): Configured `drawDistance={1500}` on `FlashList` so 2 screen heights of buffer are pre-rendered ahead of the user, preventing unrendered empty areas during fast scroll.
+  5. Disk Cache Save Debouncing (`useMediaStore.ts`): Debounced `saveToCache` with a 1500ms timer to prevent continuous synchronous disk writes while the user is actively scrolling.
+- Verified TypeScript compilation across workspace (`bun run typecheck`) with 0 errors.
+
+## Session: 2026-08-25 (Flutter Project Migration Completed)
+- Initialized high-performance native Flutter application `apps/hbs-app-flutter` with Flutter 3.44.1 / Dart 3.12.1.
+- Preserved existing Expo app (`apps/mobile-app`) 100% intact and unaffected.
+  2. NDK 28 Windows Clang ARMv7 Compiler Crash:
+     - Identified that NDK 28 (`28.2.13676358`) on Windows crashes with exit code 0xC0000005 during 32-bit ARM (`armeabi-v7a`) code generation for the `jni` native package (`@globalEnv_GetDoubleArrayRegion`).
+     - Pinned `ndkVersion = "27.1.12297006"` in `apps/hbs-app-flutter/android/app/build.gradle.kts` and `android/local.properties`.
   2. `AuthService` (`lib/services/auth_service.dart`):
      - Updated `signIn` and `signUp` to sanitize extracted tokens via `SessionTokenCleaner`, persist auth credentials, token, cached user, and reset `isUserLoggedOut = false`.
      - Overhauled `restoreSession`: checks `isUserLoggedOut`, immediately applies cached token to `ApiService`, validates session with server, and if offline or server is unreachable, retains the cached session rather than kicking the user out to the login screen. If the session expires with 401/403, attempts automatic silent re-authentication with securely saved credentials.
@@ -729,3 +893,19 @@
   - Verified `flutter build apk --debug`: Built `build\app\outputs\flutter-apk\app-debug.apk` in 22.0s with exit code 0.
   - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 successful builds.
   - Verified Next.js server production build (`bun run build --filter=server`): 100% success.
+
+## Session: 2026-09-02 (Ubuntu Docker Build OOM & Missing Env File Fix Completed)
+- Diagnosed and resolved two Ubuntu / Linux Docker deployment issues:
+  1. Next.js Docker Build Memory Exhaustion (`ResourceExhausted: cannot allocate memory`):
+     - Root Cause: During `next build` in Docker, Next.js detected all host CPU cores and spawned 30+ worker processes in parallel without a heap memory ceiling, exhausting container RAM on memory-constrained Linux machines.
+     - Solution:
+       a. Updated `apps/server/next.config.ts` with `experimental.cpus: Math.min(2, Math.max(1, (os.cpus()?.length || 1) - 1))` and `experimental.webpackMemoryOptimizations: true`.
+       b. Updated `apps/server/Dockerfile` builder stage with `NODE_OPTIONS="--max-old-space-size=2048"`, `NEXT_BUILD_CPUS=2`, and `NEXT_DISABLE_SOURCEMAPS=1`.
+  2. Missing `apps/server/.env` Docker Compose Failure (`stat apps/server/.env: no such file or directory`):
+     - Root Cause: `apps/server/.env` was not committed to Git; running `docker compose up` on a fresh Linux clone crashed because `docker-compose.yml` strictly required `apps/server/.env`.
+     - Solution:
+       a. Updated `docker-compose.yml` to mark `apps/server/.env` and `.env` as `required: false`.
+       b. Updated `run.sh` and `run.bat` launcher scripts to automatically copy `.env.example` -> `.env` and `apps/server/.env.example` -> `apps/server/.env` if missing on startup.
+- Build & Quality Verification:
+  - Verified Next.js server production build (`bun run build --filter=server`): 100% success with 2 bounded workers.
+  - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 successful builds with 0 errors.
