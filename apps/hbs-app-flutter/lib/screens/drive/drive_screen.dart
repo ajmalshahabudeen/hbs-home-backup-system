@@ -707,6 +707,8 @@ class DriveScreen extends ConsumerWidget {
                                               file: file,
                                               serverUrl: serverInfo.url,
                                               headers: mediaHeaders,
+                                              width: double.infinity,
+                                              height: double.infinity,
                                               borderRadius: 14,
                                             ),
                                           ),

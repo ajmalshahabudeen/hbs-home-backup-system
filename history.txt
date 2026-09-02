@@ -1104,13 +1104,18 @@
      - Updated `GridView.builder` to feature pure, edge-to-edge thumbnails / large icons in the top `Expanded` preview area.
      - Positioned file name, stats (size/date), and context menu icon (`Icons.more_vert_rounded`) in a clean row below each preview.
      - Adjusted `childAspectRatio` to `0.82` with `crossAxisSpacing: 12` and `mainAxisSpacing: 12` for optimal visual balance.
-  2. Fixed `Infinity or NaN toInt` Exception & Sizing Hardening (`apps/hbs-app-flutter/lib/screens/drive/drive_thumbnail.dart`):
-     - Wrapped `DriveThumbnail` in `LayoutBuilder` to accurately read parent box constraints.
-     - Resolved non-finite width/height dimensions (`double.infinity`), preventing `memCacheWidth` calculations from evaluating on infinite values and crashing with `Unsupported operation: Infinity or NaN toInt`.
+## Session: 2026-09-02 (Drive Thumbnail Layout Stabilization in List & Grid Views Completed)
+- Fixed unconstrained layout assertion exceptions in `ListView` and `GridView`:
+  1. Root Cause:
+     - `DriveThumbnail` used `LayoutBuilder` inside unconstrained horizontal `Row` flex items in `ListView`, causing `BoxConstraints forces an infinite width and infinite height` and unlaid out RenderBox assertions.
+  2. Solution in `DriveThumbnail` (`apps/hbs-app-flutter/lib/screens/drive/drive_thumbnail.dart`):
+     - Removed `LayoutBuilder` and replaced with deterministic `SizedBox(width: w, height: h)` container with `Positioned.fill` inside the media stack.
+     - Guaranteed bounded layout across `ListView.separated` (`size: 40`), `_showFileActions` (`size: 48`), and `GridView.builder` (`Expanded` with `width: double.infinity, height: double.infinity`).
 - Build & Quality Verification:
   - Verified `flutter analyze`: 0 issues found.
   - Verified `flutter test`: 100% passing tests (29/29 tests).
   - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 successful builds with 0 errors.
+
 
 
 

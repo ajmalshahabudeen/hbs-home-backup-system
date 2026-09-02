@@ -27,72 +27,59 @@ class DriveThumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final theme = Theme.of(context);
-        final primary = theme.primaryColor;
-        final isDark = theme.brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final primary = theme.primaryColor;
+    final isDark = theme.brightness == Brightness.dark;
 
-        // Resolve finite width and height
-        double? targetW = width ?? size;
-        double? targetH = height ?? size;
+    final w = width ?? size;
+    final h = height ?? size;
+    final finiteDim = (w != null && w.isFinite && h != null && h.isFinite)
+        ? (w < h ? w : h)
+        : ((w != null && w.isFinite) ? w : ((h != null && h.isFinite) ? h : 48.0));
+    final iconSize = (finiteDim * 0.45).clamp(22.0, 56.0);
+    final memWidth = (w != null && w.isFinite) ? (w * 2.5).toInt().clamp(100, 720) : 360;
 
-        if (targetW == null || !targetW.isFinite) {
-          targetW = constraints.maxWidth.isFinite && constraints.maxWidth > 0 ? constraints.maxWidth : null;
-        }
-        if (targetH == null || !targetH.isFinite) {
-          targetH = constraints.maxHeight.isFinite && constraints.maxHeight > 0 ? constraints.maxHeight : null;
-        }
+    if (file.isDir) {
+      return Container(
+        width: w,
+        height: h,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(borderRadius),
+        ),
+        child: Icon(
+          Icons.folder_rounded,
+          color: const Color(0xFFF59E0B),
+          size: iconSize,
+        ),
+      );
+    }
 
-        final finiteDim = (targetW != null && targetH != null)
-            ? (targetW < targetH ? targetW : targetH)
-            : (targetW ?? targetH ?? 48.0);
-        final iconSize = (finiteDim * 0.45).clamp(24.0, 56.0);
-        final rawMemWidth = targetW != null && targetW.isFinite ? (targetW * 2.5) : 360.0;
-        final memWidth = rawMemWidth.isFinite ? rawMemWidth.toInt().clamp(120, 1080) : 360;
+    final category = Formatters.getMimeTypeCategory(file.mimeType, file.name);
 
-        if (file.isDir) {
-          return Container(
-            width: targetW,
-            height: targetH,
+    if (category == 'photo' || category == 'video') {
+      final encodedPath = file.path.split('/').map(Uri.encodeComponent).join('/');
+      final thumbUrl = '$serverUrl/api/user/media/$encodedPath?thumb=1';
+
+      return SizedBox(
+        width: w,
+        height: h,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(borderRadius),
+          child: Stack(
             alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(borderRadius),
-            ),
-            child: Icon(
-              Icons.folder_rounded,
-              color: const Color(0xFFF59E0B),
-              size: iconSize,
-            ),
-          );
-        }
-
-        final category = Formatters.getMimeTypeCategory(file.mimeType, file.name);
-
-        if (category == 'photo' || category == 'video') {
-          final encodedPath = file.path.split('/').map(Uri.encodeComponent).join('/');
-          final thumbUrl = '$serverUrl/api/user/media/$encodedPath?thumb=1';
-
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(borderRadius),
-            child: Stack(
-              alignment: Alignment.center,
-              fit: StackFit.expand,
-              children: [
-                Container(
-                  width: targetW,
-                  height: targetH,
+            children: [
+              Positioned.fill(
+                child: Container(
                   color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.05),
                   child: CachedNetworkImage(
                     imageUrl: thumbUrl,
-                    width: targetW,
-                    height: targetH,
                     fit: fit,
                     memCacheWidth: memWidth,
                     maxHeightDiskCache: 720,
                     maxWidthDiskCache: 720,
-                    filterQuality: FilterQuality.medium,
+                    filterQuality: FilterQuality.low,
                     httpHeaders: headers,
                     placeholder: (_, __) => Container(
                       color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.04),
@@ -116,61 +103,61 @@ class DriveThumbnail extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (category == 'video')
-                  Positioned(
-                    bottom: 6,
-                    right: 6,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2.5),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.7),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.play_arrow_rounded, color: Colors.white, size: 12),
-                          SizedBox(width: 2),
-                          Text('VIDEO', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w700)),
-                        ],
-                      ),
+              ),
+              if (category == 'video')
+                Positioned(
+                  bottom: 6,
+                  right: 6,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2.5),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.7),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.play_arrow_rounded, color: Colors.white, size: 12),
+                        SizedBox(width: 2),
+                        Text('VIDEO', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w700)),
+                      ],
                     ),
                   ),
-              ],
-            ),
-          );
-        }
-
-        // Audio, Document, Archive, or Other
-        Color iconColor = primary;
-        IconData iconData = Icons.insert_drive_file_rounded;
-
-        if (category == 'audio') {
-          iconColor = const Color(0xFF8B5CF6);
-          iconData = Icons.audiotrack_rounded;
-        } else if (category == 'document') {
-          iconColor = const Color(0xFFEF4444);
-          iconData = Icons.description_rounded;
-        } else if (category == 'archive') {
-          iconColor = const Color(0xFFEC4899);
-          iconData = Icons.folder_zip_rounded;
-        }
-
-        return Container(
-          width: targetW,
-          height: targetH,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: iconColor.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(borderRadius),
+                ),
+            ],
           ),
-          child: Icon(
-            iconData,
-            color: iconColor,
-            size: iconSize,
-          ),
-        );
-      },
+        ),
+      );
+    }
+
+    // Audio, Document, Archive, or Other
+    Color iconColor = primary;
+    IconData iconData = Icons.insert_drive_file_rounded;
+
+    if (category == 'audio') {
+      iconColor = const Color(0xFF8B5CF6);
+      iconData = Icons.audiotrack_rounded;
+    } else if (category == 'document') {
+      iconColor = const Color(0xFFEF4444);
+      iconData = Icons.description_rounded;
+    } else if (category == 'archive') {
+      iconColor = const Color(0xFFEC4899);
+      iconData = Icons.folder_zip_rounded;
+    }
+
+    return Container(
+      width: w,
+      height: h,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: iconColor.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(borderRadius),
+      ),
+      child: Icon(
+        iconData,
+        color: iconColor,
+        size: iconSize,
+      ),
     );
   }
 }
