@@ -1,90 +1,22 @@
 import 'dart:ui';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/widgets/input_dialog.dart';
-import '../../providers/drive_provider.dart';
-import '../../services/api_service.dart';
+
+enum UploadAction {
+  uploadFiles,
+  uploadMedia,
+  createFolder,
+}
 
 class UploadModal extends ConsumerWidget {
   const UploadModal({super.key});
 
-  static void show(BuildContext context) {
-    showModalBottomSheet(
+  static Future<UploadAction?> show(BuildContext context) {
+    return showModalBottomSheet<UploadAction>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (_) => const UploadModal(),
     );
-  }
-
-  Future<void> _pickAndUploadFiles(BuildContext context, WidgetRef ref) async {
-    final result = await FilePicker.platform.pickFiles(allowMultiple: true);
-    if (result == null || result.files.isEmpty) return;
-
-    final driveState = ref.read(driveProvider);
-    final driveNotifier = ref.read(driveProvider.notifier);
-
-    if (context.mounted) {
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Uploading ${result.files.length} file(s)...')),
-      );
-    }
-
-    for (final file in result.files) {
-      if (file.path != null) {
-        final data = await ApiService().uploadFile(
-          filePath: file.path!,
-          fileName: file.name,
-          parentPath: driveState.currentPath,
-          onConflict: 'ask',
-        );
-        if (data is Map && data['conflict'] == true && context.mounted) {
-          final choice = await showDialog<String>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text('File already exists'),
-              content: Text('${file.name} is already in this folder with a different size.'),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx, 'skip'), child: const Text('Skip')),
-                TextButton(onPressed: () => Navigator.pop(ctx, 'rename'), child: const Text('Keep both')),
-                TextButton(onPressed: () => Navigator.pop(ctx, 'overwrite'), child: const Text('Replace')),
-              ],
-            ),
-          );
-          if (choice == 'overwrite' || choice == 'rename') {
-            await ApiService().uploadFile(
-              filePath: file.path!,
-              fileName: file.name,
-              parentPath: driveState.currentPath,
-              onConflict: choice,
-            );
-          }
-        }
-      }
-    }
-
-    await driveNotifier.loadFiles(driveState.currentPath);
-
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Upload complete!')),
-      );
-    }
-  }
-
-  Future<void> _handleNewFolder(BuildContext context, WidgetRef ref) async {
-    Navigator.of(context).pop();
-    final folderName = await InputDialog.show(
-      context,
-      title: 'New Folder',
-      placeholder: 'Folder name',
-      confirmText: 'Create',
-    );
-
-    if (folderName != null && folderName.isNotEmpty) {
-      await ref.read(driveProvider.notifier).createFolder(folderName);
-    }
   }
 
   @override
@@ -133,7 +65,7 @@ class UploadModal extends ConsumerWidget {
               title: 'Upload Files',
               subtitle: 'Select documents, archives or any files',
               color: primary,
-              onTap: () => _pickAndUploadFiles(context, ref),
+              onTap: () => Navigator.of(context).pop(UploadAction.uploadFiles),
             ),
             const SizedBox(height: 8),
 
@@ -143,7 +75,7 @@ class UploadModal extends ConsumerWidget {
               title: 'Upload Media',
               subtitle: 'Select photos and videos from gallery',
               color: const Color(0xFF10B981),
-              onTap: () => _pickAndUploadFiles(context, ref),
+              onTap: () => Navigator.of(context).pop(UploadAction.uploadMedia),
             ),
             const SizedBox(height: 8),
 
@@ -153,7 +85,7 @@ class UploadModal extends ConsumerWidget {
               title: 'Create Folder',
               subtitle: 'Organize files into a new subfolder',
               color: const Color(0xFF8B5CF6),
-              onTap: () => _handleNewFolder(context, ref),
+              onTap: () => Navigator.of(context).pop(UploadAction.createFolder),
             ),
             const SizedBox(height: 16),
           ],

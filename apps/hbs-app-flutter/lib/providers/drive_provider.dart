@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/widgets/filter_sort_bar.dart';
 import '../models/backup_file_item.dart';
@@ -87,6 +88,19 @@ class DriveNotifier extends StateNotifier<DriveState> {
     loadFiles();
   }
 
+  String _parseError(dynamic e) {
+    if (e is DioException) {
+      final data = e.response?.data;
+      if (data is Map && data['error'] != null) {
+        return data['error'].toString();
+      }
+      if (e.message != null && e.message!.isNotEmpty) {
+        return e.message!;
+      }
+    }
+    return e.toString();
+  }
+
   Future<void> loadFiles([String path = '']) async {
     state = state.copyWith(isLoading: true, currentPath: path, errorMessage: null);
     try {
@@ -99,7 +113,7 @@ class DriveNotifier extends StateNotifier<DriveState> {
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
-        errorMessage: e.toString(),
+        errorMessage: _parseError(e),
       );
     }
   }
@@ -136,7 +150,7 @@ class DriveNotifier extends StateNotifier<DriveState> {
       await loadFiles(state.currentPath);
       return true;
     } catch (e) {
-      state = state.copyWith(errorMessage: e.toString());
+      state = state.copyWith(errorMessage: _parseError(e));
       return false;
     }
   }
@@ -147,7 +161,7 @@ class DriveNotifier extends StateNotifier<DriveState> {
       await loadFiles(state.currentPath);
       return true;
     } catch (e) {
-      state = state.copyWith(errorMessage: e.toString());
+      state = state.copyWith(errorMessage: _parseError(e));
       return false;
     }
   }
@@ -158,7 +172,7 @@ class DriveNotifier extends StateNotifier<DriveState> {
       await loadFiles(state.currentPath);
       return true;
     } catch (e) {
-      state = state.copyWith(errorMessage: e.toString());
+      state = state.copyWith(errorMessage: _parseError(e));
       return false;
     }
   }

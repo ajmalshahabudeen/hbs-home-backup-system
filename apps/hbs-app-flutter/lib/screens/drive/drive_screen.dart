@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gal/gal.dart';
@@ -22,6 +23,109 @@ import 'upload_modal.dart';
 
 class DriveScreen extends ConsumerWidget {
   const DriveScreen({super.key});
+
+  Future<void> _handleAddAction(BuildContext context, WidgetRef ref) async {
+    final action = await UploadModal.show(context);
+    if (action == null || !context.mounted) return;
+
+    final driveNotifier = ref.read(driveProvider.notifier);
+    final driveState = ref.read(driveProvider);
+
+    switch (action) {
+      case UploadAction.createFolder:
+        final folderName = await InputDialog.show(
+          context,
+          title: 'New Folder',
+          placeholder: 'Folder name',
+          confirmText: 'Create',
+        );
+        if (folderName != null && folderName.trim().isNotEmpty && context.mounted) {
+          final trimmed = folderName.trim();
+          final success = await driveNotifier.createFolder(trimmed);
+          if (context.mounted) {
+            if (success) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Folder "$trimmed" created'),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            } else {
+              final err = ref.read(driveProvider).errorMessage ?? 'Create folder failed';
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(err),
+                  backgroundColor: Colors.red,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+          }
+        }
+        break;
+
+      case UploadAction.uploadFiles:
+      case UploadAction.uploadMedia:
+        final isMedia = action == UploadAction.uploadMedia;
+        final result = await FilePicker.platform.pickFiles(
+          allowMultiple: true,
+          type: isMedia ? FileType.media : FileType.any,
+        );
+        if (result == null || result.files.isEmpty || !context.mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Uploading ${result.files.length} file(s)...'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+
+        for (final file in result.files) {
+          if (file.path != null) {
+            final data = await ApiService().uploadFile(
+              filePath: file.path!,
+              fileName: file.name,
+              parentPath: driveState.currentPath,
+              onConflict: 'ask',
+            );
+            if (data is Map && data['conflict'] == true && context.mounted) {
+              final choice = await showDialog<String>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('File already exists'),
+                  content: Text('${file.name} is already in this folder with a different size.'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx, 'skip'), child: const Text('Skip')),
+                    TextButton(onPressed: () => Navigator.pop(ctx, 'rename'), child: const Text('Keep both')),
+                    TextButton(onPressed: () => Navigator.pop(ctx, 'overwrite'), child: const Text('Replace')),
+                  ],
+                ),
+              );
+              if (choice == 'overwrite' || choice == 'rename') {
+                await ApiService().uploadFile(
+                  filePath: file.path!,
+                  fileName: file.name,
+                  parentPath: driveState.currentPath,
+                  onConflict: choice,
+                );
+              }
+            }
+          }
+        }
+
+        await driveNotifier.loadFiles(driveState.currentPath);
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Upload complete!'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+        break;
+    }
+  }
 
   void _showFileActions(BuildContext context, WidgetRef ref, BackupFileItem file) {
     final driveNotifier = ref.read(driveProvider.notifier);
@@ -94,7 +198,26 @@ class DriveScreen extends ConsumerWidget {
                   confirmText: 'Rename',
                 );
                 if (newName != null && newName.isNotEmpty && newName != file.name) {
-                  await driveNotifier.renameFile(file.path, newName);
+                  final ok = await driveNotifier.renameFile(file.path, newName);
+                  if (context.mounted) {
+                    if (ok) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Renamed to "$newName"'),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    } else {
+                      final err = ref.read(driveProvider).errorMessage ?? 'Rename failed';
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(err),
+                          backgroundColor: Colors.red,
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  }
                 }
               },
             ),
@@ -322,7 +445,7 @@ class DriveScreen extends ConsumerWidget {
           Padding(
             padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
             child: FloatingActionButton.extended(
-              onPressed: () => UploadModal.show(context),
+              onPressed: () => _handleAddAction(context, ref),
               backgroundColor: primary,
               foregroundColor: Colors.white,
               elevation: 6,

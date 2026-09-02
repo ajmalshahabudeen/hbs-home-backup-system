@@ -1036,5 +1036,31 @@
   - Verified `flutter test`: 100% passing tests (27/27 tests).
   - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 successful builds with 0 errors.
 
+## Session: 2026-09-02 (Drive Folder Creation & UploadModal Context Lifecycle Fix Completed)
+- Diagnosed and resolved folder creation failure in Flutter Drive Screen (`apps/hbs-app-flutter/lib/screens/drive`):
+  1. Root Cause 1 (Deactivated Context Lifecycle Crash in `upload_modal.dart`):
+     - When tapping "Create Folder" in `UploadModal`, `Navigator.of(context).pop()` was called using the modal bottom sheet's `BuildContext`, immediately popping and deactivating the widget.
+     - `InputDialog.show(context)` was then invoked with the deactivated context, throwing `FlutterError: Looking up a deactivated widget's ancestor is unsafe` and preventing the folder name dialog from rendering.
+     - Similarly, in `_pickAndUploadFiles`, calling `ScaffoldMessenger.of(context)` after `Navigator.pop` referenced the dead context and failed to show progress/completion notifications.
+  2. Solution in `UploadModal` (`lib/screens/drive/upload_modal.dart`):
+     - Refactored `UploadModal` into a pure action selector returning `UploadAction` (`uploadFiles`, `uploadMedia`, `createFolder`).
+     - Decoupled bottom sheet dismissal from dialog/picker presentation, cleanly resolving the action in the caller widget (`DriveScreen`).
+  3. Solution in `DriveScreen` (`lib/screens/drive/drive_screen.dart`):
+     - Implemented `_handleAddAction` mounted on `DriveScreen`'s context.
+     - Safely presents `InputDialog.show(context)` with valid mounted context.
+     - Added floating status SnackBars for folder creation success and server/network error feedback.
+     - Added success/error feedback SnackBars for the file/folder Rename action.
+  4. Solution in `DriveNotifier` (`lib/providers/drive_provider.dart`):
+     - Added `_parseError` extracting detailed human-readable server error messages from `DioException` (`e.response?.data['error']` or `e.message`) for `createFolder`, `renameFile`, and `deleteFile`.
+  5. Server Route Hardening (`apps/server/app/api/user/files/route.ts`):
+     - Hardened `incomingParent` resolution (`body.parentPath !== undefined ? (body.parentPath || "") : (body.path || "")`) to ensure root folder (`""`) paths are preserved without unintended fallback.
+     - Ensured `searchName: name.toLowerCase()` is stored and updated during folder upsert for search consistency.
+- Build & Quality Verification:
+  - Verified `flutter analyze`: 0 issues found.
+  - Verified `flutter test`: 100% passing tests (27/27 tests).
+  - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 successful builds with 0 errors.
+  - Verified Next.js server production build (`bun run build --filter=server`): 100% success.
+
+
 
 

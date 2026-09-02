@@ -320,7 +320,9 @@ export const POST = withApiLog(
       return badRequest("Invalid JSON body");
     }
 
-    const incomingParent = toPosixRel(body.parentPath || body.path || "");
+    const incomingParent = toPosixRel(
+      body.parentPath !== undefined ? (body.parentPath || "") : (body.path || ""),
+    );
     const name = (body.folderName || body.name)?.trim().replace(/[\\/]/g, "_");
     const isDir = body.isDir !== false;
 
@@ -357,11 +359,12 @@ export const POST = withApiLog(
           userId: ownerId,
           path: rel,
           name,
+          searchName: name.toLowerCase(),
           parentPath,
           isDir,
           size: BigInt(0),
         },
-        update: { isDir, name },
+        update: { isDir, name, searchName: name.toLowerCase() },
       });
 
       const meta = clientMeta(request);
