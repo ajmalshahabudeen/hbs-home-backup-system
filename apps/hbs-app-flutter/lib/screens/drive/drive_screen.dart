@@ -489,6 +489,7 @@ class DriveScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final primary = theme.primaryColor;
+    final isDark = theme.brightness == Brightness.dark;
 
     final driveState = ref.watch(driveProvider);
     final driveNotifier = ref.read(driveProvider.notifier);
@@ -664,16 +665,14 @@ class DriveScreen extends ConsumerWidget {
                                 padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.paddingOf(context).bottom + 160),
                                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                                   crossAxisCount: 2,
-                                  crossAxisSpacing: 10,
-                                  mainAxisSpacing: 10,
-                                  childAspectRatio: 1.05,
+                                  crossAxisSpacing: 12,
+                                  mainAxisSpacing: 12,
+                                  childAspectRatio: 0.82,
                                 ),
                                 itemCount: files.length,
                                 itemBuilder: (context, index) {
                                   final file = files[index];
-                                  return GlassCard(
-                                    padding: const EdgeInsets.all(12),
-                                    borderRadius: 18,
+                                  return InkWell(
                                     onTap: () {
                                       if (file.isDir) {
                                         driveNotifier.navigateToFolder(file.path.isNotEmpty ? file.path : file.name);
@@ -692,53 +691,76 @@ class DriveScreen extends ConsumerWidget {
                                         }
                                       }
                                     },
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            DriveThumbnail(
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(16),
+                                        color: isDark ? Colors.white.withValues(alpha: 0.03) : Colors.black.withValues(alpha: 0.02),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          // Pure Icon or Media Thumbnail
+                                          Expanded(
+                                            child: DriveThumbnail(
                                               file: file,
                                               serverUrl: serverInfo.url,
                                               headers: mediaHeaders,
-                                              size: 44,
                                               borderRadius: 14,
                                             ),
-                                            IconButton(
-                                              icon: const Icon(Icons.more_vert_rounded, size: 18),
-                                              padding: EdgeInsets.zero,
-                                              constraints: const BoxConstraints(),
-                                              onPressed: () => _showFileActions(
-                                                context,
-                                                ref,
-                                                file,
-                                                mediaHeaders: mediaHeaders,
-                                                serverUrl: serverInfo.url,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        const Spacer(),
-                                        Text(
-                                          file.name,
-                                          style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          file.isDir
-                                              ? 'Folder'
-                                              : '${Formatters.formatBytes(file.size)} • ${Formatters.formatShortDate(file.createdAt)}',
-                                          style: theme.textTheme.bodySmall?.copyWith(
-                                            fontSize: 11,
-                                            color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6),
                                           ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ],
+                                          const SizedBox(height: 8),
+
+                                          // Name, details, and menu icon below
+                                          Row(
+                                            crossAxisAlignment: CrossAxisAlignment.center,
+                                            children: [
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Text(
+                                                      file.name,
+                                                      style: theme.textTheme.bodyMedium?.copyWith(
+                                                        fontWeight: FontWeight.w700,
+                                                        fontSize: 13,
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                    const SizedBox(height: 2),
+                                                    Text(
+                                                      file.isDir
+                                                          ? 'Folder'
+                                                          : '${Formatters.formatBytes(file.size)} • ${Formatters.formatShortDate(file.createdAt)}',
+                                                      style: theme.textTheme.bodySmall?.copyWith(
+                                                        fontSize: 11,
+                                                        color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6),
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              IconButton(
+                                                icon: const Icon(Icons.more_vert_rounded, size: 18),
+                                                padding: EdgeInsets.zero,
+                                                constraints: const BoxConstraints(),
+                                                onPressed: () => _showFileActions(
+                                                  context,
+                                                  ref,
+                                                  file,
+                                                  mediaHeaders: mediaHeaders,
+                                                  serverUrl: serverInfo.url,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   );
                                 },
