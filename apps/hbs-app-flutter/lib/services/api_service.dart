@@ -377,6 +377,26 @@ class ApiService {
     return res.data;
   }
 
+  Future<dynamic> batchFileAction({
+    required String action,
+    required List<String> fileIds,
+    String? destinationPath,
+    bool permanent = false,
+  }) async {
+    final token = await _getToken();
+    final res = await _dio.post(
+      '$_serverUrl/api/user/files/batch',
+      data: {
+        'action': action,
+        'fileIds': fileIds,
+        if (destinationPath != null) 'destinationPath': destinationPath,
+        if (permanent) 'permanent': true,
+      },
+      options: _buildOptions(token),
+    );
+    return res.data;
+  }
+
   Future<void> pingDevice({required String deviceId, String? localIp}) async {
     final token = await _getToken();
     await _dio.post(

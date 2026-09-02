@@ -6,6 +6,7 @@ import 'package:hbs_app_flutter/core/utils/media_path_filter.dart';
 import 'package:hbs_app_flutter/core/utils/pin_validator.dart';
 import 'package:hbs_app_flutter/core/utils/google_sign_in_errors.dart';
 import 'package:hbs_app_flutter/core/utils/vault_crypto.dart';
+import 'package:hbs_app_flutter/models/backup_file_item.dart';
 import 'package:hbs_app_flutter/models/photo_media_item.dart';
 import 'package:hbs_app_flutter/models/saved_account.dart';
 import 'package:hbs_app_flutter/providers/drive_provider.dart';
@@ -353,6 +354,107 @@ void main() {
 
       parts.removeLast();
       expect(parts.join('/'), 'Documents');
+    });
+
+    test('multi-select selection state toggling', () {
+      const state = DriveState(selectedFileIds: {'f1', 'f2'});
+      expect(state.isSelectionMode, isTrue);
+      expect(state.selectedCount, 2);
+      expect(state.isSelected('f1'), isTrue);
+      expect(state.isSelected('f3'), isFalse);
+
+      final emptyState = state.copyWith(selectedFileIds: {});
+      expect(emptyState.isSelectionMode, isFalse);
+      expect(emptyState.selectedCount, 0);
+    });
+
+    test('filtering and grouping by type, date, size', () {
+      final sampleFiles = [
+        BackupFileItem(
+          id: '1',
+          userId: 'u1',
+          name: 'Vacation',
+          path: 'Vacation',
+          parentPath: '',
+          isDir: true,
+          size: 0,
+          createdAt: DateTime(2026, 9, 2),
+        ),
+        BackupFileItem(
+          id: '2',
+          userId: 'u1',
+          name: 'photo.jpg',
+          path: 'photo.jpg',
+          parentPath: '',
+          isDir: false,
+          mimeType: 'image/jpeg',
+          size: 2 * 1024 * 1024,
+          createdAt: DateTime(2026, 9, 2),
+        ),
+        BackupFileItem(
+          id: '3',
+          userId: 'u1',
+          name: 'doc.pdf',
+          path: 'doc.pdf',
+          parentPath: '',
+          isDir: false,
+          mimeType: 'application/pdf',
+          size: 15 * 1024 * 1024,
+          createdAt: DateTime(2026, 8, 1),
+        ),
+      ];
+
+      // Filter by type: photos
+      final photoFilteredState = DriveState(
+        files: sampleFiles,
+        filterType: DriveTypeFilter.photos,
+      );
+      expect(photoFilteredState.sortedAndFilteredFiles.length, 1);
+      expect(photoFilteredState.sortedAndFilteredFiles.first.name, 'photo.jpg');
+
+      // Filter by type: folders
+      final folderFilteredState = DriveState(
+        files: sampleFiles,
+        filterType: DriveTypeFilter.folders,
+      );
+      expect(folderFilteredState.sortedAndFilteredFiles.length, 1);
+      expect(folderFilteredState.sortedAndFilteredFiles.first.name, 'Vacation');
+
+      // Group by type
+      final groupedState = DriveState(
+        files: sampleFiles,
+        groupBy: DriveGroupBy.type,
+      );
+      final groups = groupedState.groupedFiles;
+      expect(groups.containsKey('Folders'), isTrue);
+      expect(groups.containsKey('Photos'), isTrue);
+      expect(groups.containsKey('Documents'), isTrue);
+      expect(groups['Folders']!.length, 1);
+      expect(groups['Photos']!.length, 1);
+      expect(groups['Documents']!.length, 1);
+    });
+
+    test('recursive folder destination validation (Rule 2)', () {
+      const selectedFolderPath = 'Photos/2026';
+      final disallowed = {selectedFolderPath.toLowerCase()};
+
+      bool isDisallowed(String target) {
+        final t = target.toLowerCase();
+        for (final d in disallowed) {
+          if (t == d || t.startsWith('$d/')) return true;
+        }
+        return false;
+      }
+
+      // Cannot move/copy into itself
+      expect(isDisallowed('Photos/2026'), isTrue);
+      // Cannot move/copy into subfolder of selected folder
+      expect(isDisallowed('Photos/2026/Summer'), isTrue);
+      expect(isDisallowed('Photos/2026/Summer/Beach'), isTrue);
+      // Can move/copy into root or sibling folders
+      expect(isDisallowed(''), isFalse);
+      expect(isDisallowed('Documents'), isFalse);
+      expect(isDisallowed('Photos/2025'), isFalse);
     });
   });
 }

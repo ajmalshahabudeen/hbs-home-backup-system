@@ -9,8 +9,10 @@ class GlassCard extends StatelessWidget {
   final EdgeInsetsGeometry? padding;
   final EdgeInsetsGeometry? margin;
   final Color? borderColor;
+  final BoxBorder? border;
   final Color? backgroundColor;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
 
   const GlassCard({
     super.key,
@@ -21,8 +23,10 @@ class GlassCard extends StatelessWidget {
     this.padding = const EdgeInsets.all(16.0),
     this.margin,
     this.borderColor,
+    this.border,
     this.backgroundColor,
     this.onTap,
+    this.onLongPress,
   });
 
   @override
@@ -30,8 +34,12 @@ class GlassCard extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final defaultBg = backgroundColor ?? (isDark ? theme.cardColor.withValues(alpha: opacity) : theme.cardColor.withValues(alpha: opacity));
-    final defaultBorder = borderColor ?? (isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06));
+    final defaultBg = backgroundColor ?? theme.cardColor.withValues(alpha: opacity);
+    final defaultBorder = border ??
+        Border.all(
+          color: borderColor ?? (isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06)),
+          width: 1.0,
+        );
 
     Widget content = ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius),
@@ -42,7 +50,7 @@ class GlassCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: defaultBg,
             borderRadius: BorderRadius.circular(borderRadius),
-            border: Border.all(color: defaultBorder, width: 1.0),
+            border: defaultBorder,
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
@@ -60,9 +68,10 @@ class GlassCard extends StatelessWidget {
       content = Padding(padding: margin!, child: content);
     }
 
-    if (onTap != null) {
+    if (onTap != null || onLongPress != null) {
       return GestureDetector(
         onTap: onTap,
+        onLongPress: onLongPress,
         behavior: HitTestBehavior.opaque,
         child: content,
       );
