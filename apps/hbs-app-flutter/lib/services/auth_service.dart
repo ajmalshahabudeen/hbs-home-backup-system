@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../config/google_cred.dart';
+import '../core/backup_engine/backup_engine.dart';
 import '../core/utils/google_sign_in_errors.dart';
 import '../core/utils/session_token_cleaner.dart';
 import '../models/saved_account.dart';
@@ -495,6 +496,14 @@ class AuthService {
 
   Future<void> signOut({required String serverUrl}) async {
     try {
+      UploadQueueEngine().cancelSync();
+      await BackupNotificationManager().cancelSyncNotification();
+      MediaListenerService().stopListening();
+      await cancelBackgroundBackup();
+      NetworkPresenceWatcher().stop();
+      DeviceWakeupServer().stop();
+      await BackupIndexDb().clearQueue();
+
       final token = await StorageService().getSessionToken();
       if (token != null && token.isNotEmpty) {
         final cleanUrl = serverUrl.endsWith('/') ? serverUrl.substring(0, serverUrl.length - 1) : serverUrl;

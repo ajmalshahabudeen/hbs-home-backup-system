@@ -167,7 +167,8 @@ class _AlbumPickerModalState extends ConsumerState<AlbumPickerModal> {
                           separatorBuilder: (_, __) => const SizedBox(height: 8),
                           itemBuilder: (context, index) {
                             final album = backupState.albums[index];
-                            final isSelected = backupState.selectedAlbumIds.contains(album.id);
+                            final isSelected = backupState.selectedAlbumIds.contains(album.id) ||
+                                backupState.selectedAlbumIds.contains(album.name.toLowerCase());
 
                             return InkWell(
                               onTap: () => backupNotifier.toggleAlbum(album.id),

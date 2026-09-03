@@ -3,7 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hbs_app_flutter/core/utils/formatters.dart';
 import 'package:hbs_app_flutter/core/utils/session_token_cleaner.dart';
 import 'package:hbs_app_flutter/core/widgets/glass_card.dart';
+import 'package:hbs_app_flutter/models/photo_media_item.dart';
 import 'package:hbs_app_flutter/models/user_model.dart';
+import 'package:hbs_app_flutter/screens/photos/media_viewer_modal.dart';
 
 void main() {
   group('SessionTokenCleaner Tests', () {
@@ -81,5 +83,35 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   });
+
+  group('MediaViewerModal Video Layout Tests', () {
+    testWidgets('MediaViewerModal mounts with video item and shows top/bottom overlays', (tester) async {
+      const videoItem = PhotoMediaItem(
+        id: 'vid_123',
+        path: 'MobileBackups/sample.mp4',
+        name: 'sample.mp4',
+        size: 1048576,
+        isVideo: true,
+        url: 'https://example.com/sample.mp4',
+        mimeType: 'video/mp4',
+        isBackedUp: true,
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: MediaViewerModal(
+            items: [videoItem],
+            initialIndex: 0,
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('sample.mp4'), findsOneWidget);
+      expect(find.byIcon(Icons.info_outline_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.info_rounded), findsOneWidget);
+    });
+  });
 }
+
 

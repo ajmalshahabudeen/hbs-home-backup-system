@@ -3,6 +3,7 @@ import '../models/user_model.dart';
 import '../services/auth_service.dart';
 import '../services/device_service.dart';
 import '../services/storage_service.dart';
+import 'backup_provider.dart';
 import 'server_provider.dart';
 
 class AuthState {
@@ -226,6 +227,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> signOut() async {
     state = state.copyWith(isLoading: true);
+    await ref.read(backupProvider.notifier).stopAndCancelBackup();
     final serverUrl = ref.read(serverProvider).url;
     await AuthService().signOut(serverUrl: serverUrl);
     state = const AuthState(

@@ -131,6 +131,8 @@ class MediaDiscoveryService {
 
     final List<LocalAlbum> albums = [];
     for (final path in paths) {
+      // Skip the virtual "Recent" / "All" asset collection which aggregates all folders across the phone
+      if (path.isAll) continue;
       if (MediaPathFilter.isAndroidAppFolder(albumName: path.name)) continue;
       final count = await path.assetCountAsync;
       if (count > 0) {
@@ -144,6 +146,40 @@ class MediaDiscoveryService {
     }
 
     return albums;
+  }
+
+  /// Identifies standard camera roll albums (DCIM, Camera, Camera Roll)
+  static bool isCameraRollAlbum(LocalAlbum album) {
+    final name = album.name.trim().toLowerCase();
+    return name == 'camera' ||
+        name == 'dcim' ||
+        name == 'camera roll' ||
+        name == '100media' ||
+        name == '100andfp' ||
+        (Platform.isIOS && (name == 'recents' || name == 'recent'));
+  }
+
+  /// Verifies if a local file path belongs to one of the allowed folder names/paths
+  static bool isFileInAllowedAlbums({
+    required String filePath,
+    required List<String> allowedFolderNames,
+  }) {
+    if (allowedFolderNames.isEmpty) return false;
+    final normalized = filePath.replaceAll('\\', '/').trim().toLowerCase();
+    if (normalized.isEmpty) return false;
+
+    final parts = normalized.split('/').where((p) => p.isNotEmpty).toList();
+    if (parts.length < 2) return false;
+    final parentDir = parts[parts.length - 2];
+    final grandParentDir = parts.length >= 3 ? parts[parts.length - 3] : '';
+
+    for (final raw in allowedFolderNames) {
+      final target = raw.trim().toLowerCase();
+      if (target.isEmpty) continue;
+      if (parentDir == target || grandParentDir == target) return true;
+      if (target.contains('/') && normalized.contains(target)) return true;
+    }
+    return false;
   }
 
   static final Map<String, AssetEntity> entityCache = {};

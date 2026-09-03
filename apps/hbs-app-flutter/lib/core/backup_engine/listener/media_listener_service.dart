@@ -57,7 +57,8 @@ class MediaListenerService {
     _isProcessing = true;
 
     try {
-      // 1. Verify Auto-Backup preference
+      // 1. Verify Auto-Backup preference & session state
+      if (StorageService().isUserLoggedOut()) return 0;
       final autoBackup = StorageService().getBool('hbs_auto_backup', defaultValue: false);
       if (!autoBackup) return 0;
 
@@ -82,19 +83,24 @@ class MediaListenerService {
       final savedAlbumIds = StorageService().getStringList('hbs_backup_selected_albums');
       final allAlbums = await MediaDiscoveryService().getAlbums();
 
-      // If user selected specific folders, only scan those. If none selected, scan all permitted folders.
-      final targetAlbums = savedAlbumIds.isEmpty
-          ? allAlbums
-          : allAlbums.where((a) => savedAlbumIds.contains(a.id)).toList();
+      // If user selected specific folders, only scan those. If none selected, strictly scan Camera Roll only.
+      final List<LocalAlbum> targetAlbums;
+      if (savedAlbumIds.isNotEmpty) {
+        targetAlbums = allAlbums
+            .where((a) => savedAlbumIds.contains(a.id) || savedAlbumIds.contains(a.name.toLowerCase()))
+            .toList();
+      } else {
+        targetAlbums = allAlbums.where(MediaDiscoveryService.isCameraRollAlbum).toList();
+      }
 
-      if (savedAlbumIds.isNotEmpty && targetAlbums.isEmpty) {
+      if (targetAlbums.isEmpty) {
         return 0;
       }
 
-      // 6. Discover local media
+      // 6. Discover local media strictly for targetAlbums (allowFallbackToAll MUST be false)
       final items = await MediaDiscoveryService().getLocalMediaForAlbums(
         targetAlbums,
-        allowFallbackToAll: savedAlbumIds.isEmpty && allAlbums.isNotEmpty,
+        allowFallbackToAll: false,
       );
 
       // 7. Filter media preferences

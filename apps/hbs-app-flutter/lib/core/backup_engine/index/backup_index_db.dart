@@ -288,6 +288,34 @@ class BackupIndexDb {
     await db.delete('upload_queue', where: 'status IN (?, ?)', whereArgs: ['done', 'skipped']);
   }
 
+  /// Completely empties the upload queue table (used on user logout or manual cancel)
+  Future<void> clearQueue() async {
+    final db = await database;
+    await db.delete('upload_queue');
+  }
+
+  /// Deletes a specific item from the queue
+  Future<void> deleteQueueItem(String id) async {
+    final db = await database;
+    await db.delete('upload_queue', where: 'id = ?', whereArgs: [id]);
+  }
+
+  /// Prunes pending queue items that do not belong to the allowed items list
+  Future<void> prunePendingQueueNotIn(Set<String> validIds) async {
+    final db = await database;
+    if (validIds.isEmpty) {
+      await db.delete('upload_queue', where: 'status = ?', whereArgs: ['pending']);
+      return;
+    }
+
+    final placeholders = List.filled(validIds.length, '?').join(', ');
+    await db.delete(
+      'upload_queue',
+      where: 'status = ? AND id NOT IN ($placeholders)',
+      whereArgs: ['pending', ...validIds],
+    );
+  }
+
   Future<List<List<IndexedBackupItem>>> duplicateGroups() async {
     final db = await database;
     final rows = await db.query('backup_index', orderBy: 'checksum ASC, file_name ASC');

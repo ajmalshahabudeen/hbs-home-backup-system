@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:chewie/chewie.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:gal/gal.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:photo_view/photo_view.dart';
@@ -73,6 +73,7 @@ class _MediaViewerModalState extends State<MediaViewerModal> {
 
   @override
   void dispose() {
+    SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     _pageController.dispose();
     super.dispose();
   }
@@ -197,6 +198,9 @@ class _MediaViewerModalState extends State<MediaViewerModal> {
     final theme = Theme.of(context);
     final primary = theme.primaryColor;
     final current = _currentItem;
+    final mediaQuery = MediaQuery.of(context);
+    final topInset = mediaQuery.padding.top + 60.0;
+    final bottomInset = mediaQuery.padding.bottom + 68.0;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -224,6 +228,9 @@ class _MediaViewerModalState extends State<MediaViewerModal> {
                   item: item,
                   isActive: isActive,
                   headers: _headers,
+                  showChrome: _showChrome,
+                  topInset: topInset,
+                  bottomInset: bottomInset,
                   onTap: _toggleChrome,
                 );
               } else {
@@ -490,6 +497,9 @@ class _VideoPlayerPage extends StatefulWidget {
   final PhotoMediaItem item;
   final bool isActive;
   final Map<String, String> headers;
+  final bool showChrome;
+  final double topInset;
+  final double bottomInset;
   final VoidCallback onTap;
 
   const _VideoPlayerPage({
@@ -497,6 +507,9 @@ class _VideoPlayerPage extends StatefulWidget {
     required this.item,
     required this.isActive,
     required this.headers,
+    required this.showChrome,
+    required this.topInset,
+    required this.bottomInset,
     required this.onTap,
   });
 
@@ -506,7 +519,6 @@ class _VideoPlayerPage extends StatefulWidget {
 
 class _VideoPlayerPageState extends State<_VideoPlayerPage> {
   VideoPlayerController? _videoController;
-  ChewieController? _chewieController;
   bool _isInitialized = false;
 
   @override
@@ -557,41 +569,302 @@ class _VideoPlayerPageState extends State<_VideoPlayerPage> {
     try {
       await _videoController!.initialize();
       if (!mounted) return;
-      final primary = Theme.of(context).primaryColor;
-      _chewieController = ChewieController(
-        videoPlayerController: _videoController!,
-        autoPlay: widget.isActive,
-        looping: false,
-        aspectRatio: _videoController!.value.aspectRatio == 0 ? 16 / 9 : _videoController!.value.aspectRatio,
-        allowFullScreen: true,
-        // Lift the video progress bar by 96px to cleanly clear the bottom bar and info icon!
-        // Also add top 72px padding to clear the top action bar!
-        controlsSafeAreaMinimum: const EdgeInsets.only(bottom: 96, top: 72, left: 16, right: 16),
-        materialProgressColors: ChewieProgressColors(
-          playedColor: primary,
-          handleColor: primary,
-        ),
-      );
+      if (widget.isActive) {
+        _videoController!.play();
+      }
       setState(() => _isInitialized = true);
     } catch (_) {}
   }
 
   @override
   void dispose() {
-    _chewieController?.dispose();
     _videoController?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: widget.onTap,
-      child: Center(
-        child: _isInitialized && _chewieController != null
-            ? Chewie(controller: _chewieController!)
-            : const CircularProgressIndicator(color: Colors.white),
-      ),
+    final theme = Theme.of(context);
+    final primary = theme.primaryColor;
+
+    if (!_isInitialized || _videoController == null) {
+      return const Center(child: CircularProgressIndicator(color: Colors.white));
+    }
+
+    final controller = _videoController!;
+    final videoAspect = controller.value.aspectRatio > 0 ? controller.value.aspectRatio : 16 / 9;
+
+    const scrubberHeight = 52.0;
+    final activeBottomPadding = widget.showChrome
+        ? (widget.bottomInset + scrubberHeight + 12.0)
+        : MediaQuery.of(context).padding.bottom;
+    final activeTopPadding = widget.showChrome
+        ? widget.topInset
+        : MediaQuery.of(context).padding.top;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // 1. Centered & fitted video player (never under top bar or bottom bar!)
+        AnimatedPadding(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeInOutCubic,
+          padding: EdgeInsets.only(
+            top: activeTopPadding,
+            bottom: activeBottomPadding,
+          ),
+          child: Center(
+            child: AspectRatio(
+              aspectRatio: videoAspect,
+              child: VideoPlayer(controller),
+            ),
+          ),
+        ),
+
+        // 2. Full-screen gesture detector for tap & double-tap to seek
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.onTap,
+            onDoubleTapDown: (details) {
+              final screenWidth = MediaQuery.of(context).size.width;
+              final isLeft = details.globalPosition.dx < screenWidth / 2;
+              final current = controller.value.position;
+              if (isLeft) {
+                final target = current - const Duration(seconds: 10);
+                controller.seekTo(target < Duration.zero ? Duration.zero : target);
+              } else {
+                final target = current + const Duration(seconds: 10);
+                final maxDur = controller.value.duration;
+                controller.seekTo(target > maxDur ? maxDur : target);
+              }
+            },
+          ),
+        ),
+
+        // 3. Center Play / Pause / Replay Button
+        ValueListenableBuilder<VideoPlayerValue>(
+          valueListenable: controller,
+          builder: (context, value, _) {
+            final isEnded = value.position >= value.duration && value.duration > Duration.zero;
+            final showPlayBtn = widget.showChrome || !value.isPlaying || isEnded;
+
+            if (value.isBuffering) {
+              return const Center(
+                child: SizedBox(
+                  width: 56,
+                  height: 56,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                ),
+              );
+            }
+
+            return AnimatedOpacity(
+              duration: const Duration(milliseconds: 200),
+              opacity: showPlayBtn ? 1.0 : 0.0,
+              child: Center(
+                child: IgnorePointer(
+                  ignoring: !showPlayBtn,
+                  child: Material(
+                    color: Colors.black54,
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: () {
+                        if (isEnded) {
+                          controller.seekTo(Duration.zero);
+                          controller.play();
+                        } else if (value.isPlaying) {
+                          controller.pause();
+                        } else {
+                          controller.play();
+                        }
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(14.0),
+                        child: Icon(
+                          isEnded
+                              ? Icons.replay_rounded
+                              : (value.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded),
+                          size: 46,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+
+        // 4. Video Progress Scrubber (Positioned cleanly ABOVE the bottom action bar!)
+        AnimatedPositioned(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeInOutCubic,
+          left: 12,
+          right: 12,
+          bottom: widget.showChrome ? (widget.bottomInset + 8.0) : -100,
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 200),
+            opacity: widget.showChrome ? 1.0 : 0.0,
+            child: IgnorePointer(
+              ignoring: !widget.showChrome,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E1E1E).withValues(alpha: 0.88),
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: _VideoScrubber(
+                  controller: controller,
+                  primaryColor: primary,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
+  }
+}
+
+class _VideoScrubber extends StatefulWidget {
+  final VideoPlayerController controller;
+  final Color primaryColor;
+
+  const _VideoScrubber({
+    required this.controller,
+    required this.primaryColor,
+  });
+
+  @override
+  State<_VideoScrubber> createState() => _VideoScrubberState();
+}
+
+class _VideoScrubberState extends State<_VideoScrubber> {
+  bool _isDragging = false;
+  double _dragValue = 0.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<VideoPlayerValue>(
+      valueListenable: widget.controller,
+      builder: (context, value, _) {
+        final durationMs = value.duration.inMilliseconds.toDouble();
+        if (durationMs <= 0) return const SizedBox.shrink();
+
+        final currentMs = _isDragging
+            ? _dragValue
+            : value.position.inMilliseconds.clamp(0, durationMs.toInt()).toDouble();
+
+        final curDuration = Duration(milliseconds: currentMs.toInt());
+        final totalDuration = value.duration;
+
+        return Row(
+          children: [
+            Text(
+              _formatDuration(curDuration),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 3.5,
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                  activeTrackColor: widget.primaryColor,
+                  inactiveTrackColor: Colors.white24,
+                  thumbColor: widget.primaryColor,
+                ),
+                child: Slider(
+                  value: currentMs.clamp(0.0, durationMs),
+                  min: 0.0,
+                  max: durationMs,
+                  onChangeStart: (val) {
+                    setState(() {
+                      _isDragging = true;
+                      _dragValue = val;
+                    });
+                  },
+                  onChanged: (val) {
+                    setState(() => _dragValue = val);
+                  },
+                  onChangeEnd: (val) {
+                    widget.controller.seekTo(Duration(milliseconds: val.toInt()));
+                    setState(() => _isDragging = false);
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              _formatDuration(totalDuration),
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.7),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+            const SizedBox(width: 6),
+            IconButton(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              icon: Icon(
+                value.volume == 0 ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
+              onPressed: () {
+                if (value.volume == 0) {
+                  widget.controller.setVolume(1.0);
+                } else {
+                  widget.controller.setVolume(0.0);
+                }
+              },
+            ),
+            IconButton(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              icon: const Icon(Icons.fullscreen_rounded, color: Colors.white, size: 22),
+              onPressed: () {
+                final orientation = MediaQuery.of(context).orientation;
+                if (orientation == Orientation.portrait) {
+                  SystemChrome.setPreferredOrientations([
+                    DeviceOrientation.landscapeLeft,
+                    DeviceOrientation.landscapeRight,
+                  ]);
+                } else {
+                  SystemChrome.setPreferredOrientations([
+                    DeviceOrientation.portraitUp,
+                  ]);
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  String _formatDuration(Duration d) {
+    final minutes = d.inMinutes;
+    final seconds = d.inSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 }

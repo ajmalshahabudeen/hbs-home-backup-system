@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hbs_app_flutter/core/backup_engine/backup_engine.dart';
 import 'package:hbs_app_flutter/models/photo_media_item.dart';
+import 'package:hbs_app_flutter/services/media_discovery_service.dart';
+import 'package:photo_manager/photo_manager.dart';
 
 void main() {
   group('Backup Engine Models', () {
@@ -268,5 +270,112 @@ void main() {
       expect(shouldTriggerBackup(null), isFalse);
     });
   });
+
+  group('Allowed Folders Filtering & Logout Termination', () {
+    test('MediaDiscoveryService.isCameraRollAlbum identifies camera folders and rejects others', () {
+      bool check(String name) {
+        return MediaDiscoveryService.isCameraRollAlbum(LocalAlbum(
+          id: 'test_id',
+          name: name,
+          assetCount: 10,
+          entity: FakeAssetPathEntity(id: 'test_id', name: 'test_name'),
+        ));
+      }
+
+      // Camera roll folders
+      expect(check('Camera'), isTrue);
+      expect(check('DCIM'), isTrue);
+      expect(check('camera roll'), isTrue);
+      expect(check('100MEDIA'), isTrue);
+
+      // Other / random folders must NOT be classified as camera roll
+      expect(check('Download'), isFalse);
+      expect(check('WhatsApp Images'), isFalse);
+      expect(check('Screenshots'), isFalse);
+      expect(check('Telegram'), isFalse);
+      expect(check('Reddit'), isFalse);
+      expect(check('Twitter'), isFalse);
+      expect(check('Cache'), isFalse);
+    });
+
+    test('MediaDiscoveryService.isFileInAllowedAlbums matches allowed folders and rejects unallowed paths', () {
+      final allowed = ['Camera', 'DCIM'];
+
+      // Camera files
+      expect(MediaDiscoveryService.isFileInAllowedAlbums(
+        filePath: '/storage/emulated/0/DCIM/Camera/IMG_20260903_120000.jpg',
+        allowedFolderNames: allowed,
+      ), isTrue);
+
+      expect(MediaDiscoveryService.isFileInAllowedAlbums(
+        filePath: 'C:\\Users\\User\\Pictures\\Camera\\photo.jpg',
+        allowedFolderNames: allowed,
+      ), isTrue);
+
+      // Random / unallowed folder files must be rejected
+      expect(MediaDiscoveryService.isFileInAllowedAlbums(
+        filePath: '/storage/emulated/0/Download/invoice.pdf_thumb.png',
+        allowedFolderNames: allowed,
+      ), isFalse);
+
+      expect(MediaDiscoveryService.isFileInAllowedAlbums(
+        filePath: '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/photo.jpg',
+        allowedFolderNames: allowed,
+      ), isFalse);
+
+      expect(MediaDiscoveryService.isFileInAllowedAlbums(
+        filePath: '/storage/emulated/0/Pictures/Screenshots/screenshot.png',
+        allowedFolderNames: allowed,
+      ), isFalse);
+
+      // Allowed when WhatsApp is explicitly in allowed list
+      expect(MediaDiscoveryService.isFileInAllowedAlbums(
+        filePath: '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/photo.jpg',
+        allowedFolderNames: ['WhatsApp Images'],
+      ), isTrue);
+    });
+
+    test('Target album resolution strictly isolates Camera Roll when no folders selected', () {
+      final albums = [
+        LocalAlbum(id: 'c1', name: 'Camera', assetCount: 100, entity: FakeAssetPathEntity(id: 'c1', name: 'Camera')),
+        LocalAlbum(id: 's1', name: 'Screenshots', assetCount: 50, entity: FakeAssetPathEntity(id: 's1', name: 'Screenshots')),
+        LocalAlbum(id: 'd1', name: 'Download', assetCount: 30, entity: FakeAssetPathEntity(id: 'd1', name: 'Download')),
+        LocalAlbum(id: 'w1', name: 'WhatsApp Images', assetCount: 200, entity: FakeAssetPathEntity(id: 'w1', name: 'WhatsApp Images')),
+      ];
+
+      // When selected is empty: MUST ONLY select Camera, never Downloads/WhatsApp/Screenshots
+      const selected = <String>[];
+      final targetAlbums = selected.isNotEmpty
+          ? albums.where((a) => selected.contains(a.id) || selected.contains(a.name.toLowerCase())).toList()
+          : albums.where(MediaDiscoveryService.isCameraRollAlbum).toList();
+
+      expect(targetAlbums.length, 1);
+      expect(targetAlbums.first.name, 'Camera');
+
+      // When user explicitly selected Screenshots:
+      final userSelected = ['s1'];
+      final userTargets = albums.where((a) => userSelected.contains(a.id) || userSelected.contains(a.name.toLowerCase())).toList();
+      expect(userTargets.length, 1);
+      expect(userTargets.first.name, 'Screenshots');
+    });
+
+    test('UploadQueueEngine cancelSync resets sync state and cancels tokens', () {
+      final engine = UploadQueueEngine();
+      engine.cancelSync();
+
+      expect(engine.isCancelled, isTrue);
+      expect(engine.isSyncing, isFalse);
+      expect(engine.currentState.syncStepMessage, 'Backup cancelled');
+    });
+  });
+}
+
+class FakeAssetPathEntity extends Fake implements AssetPathEntity {
+  @override
+  final String id;
+  @override
+  final String name;
+
+  FakeAssetPathEntity({required this.id, required this.name});
 }
 

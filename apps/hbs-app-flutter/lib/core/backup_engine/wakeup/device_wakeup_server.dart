@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import '../../../services/storage_service.dart';
 
 typedef WakeCallback = Future<void> Function(Map<String, dynamic> payload);
 
@@ -91,6 +92,13 @@ class DeviceWakeupServer {
 
       // 2. Server Wakeup Command
       if (request.method == 'POST' && (path == '/wake' || path == '/wakeup')) {
+        if (StorageService().isUserLoggedOut()) {
+          response.statusCode = HttpStatus.unauthorized;
+          response.write(jsonEncode({'error': 'User is logged out', 'status': 'ignored'}));
+          await response.close();
+          return;
+        }
+
         final bodyStr = await utf8.decoder.bind(request).join();
         Map<String, dynamic> payload = {};
         if (bodyStr.isNotEmpty) {

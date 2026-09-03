@@ -9,6 +9,7 @@ import '../providers/backup_provider.dart';
 import '../providers/media_provider.dart';
 import '../services/api_service.dart';
 import '../services/notification_service.dart';
+import '../services/storage_service.dart';
 import '../services/watch_folder_service.dart';
 import 'backup/backup_screen.dart';
 import 'drive/drive_screen.dart';
@@ -92,6 +93,8 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
   void dispose() {
     NetworkPresenceWatcher().stop();
     DeviceWakeupServer().stop();
+    UploadQueueEngine().cancelSync();
+    BackupNotificationManager().cancelSyncNotification();
     _inboxTimer?.cancel();
     _inboxStream?.cancel();
     WidgetsBinding.instance.removeObserver(this);
@@ -101,6 +104,7 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      if (StorageService().isUserLoggedOut()) return;
       ref.read(mediaProvider.notifier).loadMedia();
       ref.read(backupProvider.notifier).loadAlbums();
       ref.read(backupProvider.notifier).autoBackupIfEnabled();

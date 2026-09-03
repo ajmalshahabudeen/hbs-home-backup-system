@@ -117,7 +117,8 @@ class BackupNotifier extends StateNotifier<BackupState> {
       }
     });
 
-    if (autoBackup) {
+    final isLoggedOut = storage.isUserLoggedOut();
+    if (autoBackup && !isLoggedOut) {
       MediaListenerService().startListening();
     }
     _mediaListenerSub = MediaListenerService().onNewMediaDetected.listen((_) {
@@ -135,7 +136,9 @@ class BackupNotifier extends StateNotifier<BackupState> {
     refreshIndexCount();
     checkAndHydrateIndex();
     refreshBatteryOptimizationStatus();
-    UploadQueueEngine().resumePending(concurrency: battery ? 2 : 4);
+    if (!isLoggedOut) {
+      UploadQueueEngine().resumePending(concurrency: battery ? 2 : 4);
+    }
   }
 
   @override
@@ -225,8 +228,26 @@ class BackupNotifier extends StateNotifier<BackupState> {
 
     state = state.copyWith(isLoadingAlbums: true, hasPermission: true);
     final albums = await MediaDiscoveryService().getAlbums();
+
+    var selectedIds = List<String>.from(state.selectedAlbumIds);
+    if (selectedIds.isEmpty) {
+      final saved = StorageService().getStringList('hbs_backup_selected_albums');
+      if (saved.isNotEmpty) {
+        selectedIds = saved;
+      } else {
+        // Auto-select standard Camera Roll by default so only Camera is uploaded, never random folders
+        final cameraAlbum = albums.where(MediaDiscoveryService.isCameraRollAlbum).firstOrNull ??
+            albums.where((a) => a.name.toLowerCase().contains('camera') || a.name.toLowerCase().contains('dcim')).firstOrNull;
+        if (cameraAlbum != null) {
+          selectedIds = [cameraAlbum.id];
+          await StorageService().setStringList('hbs_backup_selected_albums', selectedIds);
+        }
+      }
+    }
+
     state = state.copyWith(
       albums: albums,
+      selectedAlbumIds: selectedIds,
       isLoadingAlbums: false,
     );
   }
@@ -245,6 +266,8 @@ class BackupNotifier extends StateNotifier<BackupState> {
     }
     state = state.copyWith(selectedAlbumIds: list);
     await StorageService().setStringList('hbs_backup_selected_albums', list);
+    // Clear any queue items that do not belong to the new selection
+    await BackupIndexDb().clearQueue();
   }
 
   Future<void> setBatterySaver(bool enabled) async {
@@ -271,6 +294,10 @@ class BackupNotifier extends StateNotifier<BackupState> {
   }
 
   Future<void> startSync() async {
+    if (StorageService().isUserLoggedOut()) return;
+    final token = await StorageService().getSessionToken();
+    if (token == null || token.isEmpty) return;
+
     // 1. Strict permission verification before scanning or accessing device media
     final hasPerm = await MediaDiscoveryService().isPermissionGranted();
     if (!hasPerm) {
@@ -293,16 +320,24 @@ class BackupNotifier extends StateNotifier<BackupState> {
       await loadAlbums();
     }
 
-    final targetAlbums = selected.isEmpty
-        ? state.albums
-        : state.albums.where((a) => selected.contains(a.id)).toList();
+    final List<LocalAlbum> targetAlbums;
+    if (selected.isNotEmpty) {
+      targetAlbums = state.albums
+          .where((a) => selected.contains(a.id) || selected.contains(a.name.toLowerCase()))
+          .toList();
+    } else {
+      // If user hasn't explicitly chosen folders, STRICTLY target the Camera Roll album, NEVER all albums
+      targetAlbums = state.albums.where(MediaDiscoveryService.isCameraRollAlbum).toList();
+    }
 
-    // If user selected folders but none matched, do not fallback to entire device library
-    if (selected.isNotEmpty && targetAlbums.isEmpty) {
+    // If target folders not found, do not fallback to entire device library
+    if (targetAlbums.isEmpty) {
       state = state.copyWith(
         syncState: state.syncState.copyWith(
           isSyncing: false,
-          syncStepMessage: 'Selected folders not found on device',
+          syncStepMessage: selected.isNotEmpty
+              ? 'Selected folders not found on device'
+              : 'No camera folder found to back up',
         ),
       );
       return;
@@ -310,7 +345,7 @@ class BackupNotifier extends StateNotifier<BackupState> {
 
     final itemsToSync = (await MediaDiscoveryService().getLocalMediaForAlbums(
       targetAlbums,
-      allowFallbackToAll: selected.isEmpty && state.albums.isNotEmpty,
+      allowFallbackToAll: false,
     )).where((item) {
       final includePhotos = StorageService().getBool('hbs_backup_photos', defaultValue: true);
       final includeVideos = StorageService().getBool('hbs_backup_videos', defaultValue: true);
@@ -358,6 +393,9 @@ class BackupNotifier extends StateNotifier<BackupState> {
   }
 
   Future<void> autoBackupIfEnabled({bool force = false}) async {
+    if (StorageService().isUserLoggedOut()) return;
+    final token = await StorageService().getSessionToken();
+    if (token == null || token.isEmpty) return;
     if ((!force && !state.autoBackup) || state.syncState.isSyncing) return;
     final hasPerm = await MediaDiscoveryService().isPermissionGranted();
     if (!hasPerm) return;
@@ -367,6 +405,22 @@ class BackupNotifier extends StateNotifier<BackupState> {
   Future<void> cancelSync() async {
     UploadQueueEngine().cancelSync();
     await BackupNotificationManager().cancelSyncNotification();
+    await BackupIndexDb().clearQueue();
+  }
+
+  Future<void> stopAndCancelBackup() async {
+    UploadQueueEngine().cancelSync();
+    await BackupNotificationManager().cancelSyncNotification();
+    MediaListenerService().stopListening();
+    await cancelBackgroundBackup();
+    await BackupIndexDb().clearQueue();
+    state = state.copyWith(
+      syncState: const SyncState(
+        isSyncing: false,
+        syncStepMessage: 'Backup stopped',
+      ),
+      isMediaListening: false,
+    );
   }
 
   Future<void> purgeAndRebuildIndex() async {

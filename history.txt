@@ -1306,3 +1306,52 @@
      - Ran `flutter test`: 100% passing tests (53/53 tests).
      - Ran `bun run typecheck`: 3/3 packages passed (FULL TURBO).
      - Ran `bun run build --filter=server`: 100% success in 32s.
+
+## Session: 2026-09-03 (MediaViewerModal Video Player Overlay & Scrubber Elevation Fix Completed)
+- Diagnosed and resolved video player overlay occlusion and progress bar scrubber collision in `MediaViewerModal` (`apps/hbs-app-flutter/lib/screens/photos/media_viewer_modal.dart`):
+  1. Root Cause Analysis:
+     - Chewie's `MaterialControls` ignored `controlsSafeAreaMinimum.bottom` in normal non-fullscreen mode because `SafeArea(bottom: chewieController.isFullScreen)` evaluates `bottom` to false unless fullscreen.
+     - Chewie hardcoded `_buildBottomBar()` at `bottom: 0` inside the widget stack with a fixed 72px height, placing the video progress bar slider at the exact vertical position as `MediaViewerModal`'s bottom action bar.
+     - As a result, the bottom action bar's Details/Info button (`Icons.info_rounded`) and download buttons directly occluded Chewie's progress bar slider, capturing user taps when trying to scrub playback.
+     - In portrait orientation, Chewie's outer `calculateAspectRatio(context)` forced the player container into a landscape aspect ratio box (2:1), while unconstrained full-screen heights allowed portrait/tall videos to extend beneath both the top action bar overlay and bottom action bar overlay.
+     - Chewie's internal `_buildHitArea` gesture recognizers intercepted taps, preventing `_toggleChrome` from toggling modal chrome consistently.
+  2. Solution:
+     - Replaced Chewie with a bespoke, zero-dependency `VideoPlayer` architecture integrated directly with `MediaViewerModal`:
+     - Dynamic Safe Area Insets: Computed `topInset = mediaQuery.padding.top + 60.0` and `bottomInset = mediaQuery.padding.bottom + 68.0`.
+     - Contained Video Frame: Wrapped `VideoPlayer` in `AnimatedPadding(top: activeTopPadding, bottom: activeBottomPadding)` with `Center(child: AspectRatio(aspectRatio: videoAspect))`. Guarantees neither the top nor bottom of any video (portrait, square, or landscape) is ever obscured under the top or bottom layout overlay.
+     - Floating Glassmorphic Scrubber Capsule: Created `_VideoScrubber` positioned inside an elevated glassmorphic pill at `bottom: widget.bottomInset + 8.0` with `Color(0xFF1E1E1E).withValues(alpha: 0.88)`, rounded 28px corners, border highlights, and drop shadow.
+     - The progress scrubber floats cleanly 8px ABOVE the bottom action bar, completely clearing the Details/Info button (`Icons.info_rounded`), download button, and upload button with zero overlap.
+     - Smooth Interactive Seeking: Interactive `Slider` with custom thumb/track dimensions (`trackHeight: 3.5`, `thumbRadius: 6`), tabular figure timestamps (`FontFeature.tabularFigures()`), volume mute/unmute toggle, and fullscreen orientation toggle (`SystemChrome.setPreferredOrientations`).
+     - Center Play/Pause/Replay Button: Large circular translucent button in center that smoothly fades in when paused or when chrome is shown, and fades out during playback.
+     - Gesture Controls: Unified full-screen tap to toggle chrome cleanly without swallowed events, plus double-tap left/right to seek -10s/+10s.
+  3. Test Suite & Verification:
+     - Added widget test in `test/widget_test.dart` asserting that `MediaViewerModal` with video item mounts cleanly, renders top/bottom chrome, and handles layout without exceptions.
+     - Verified `dart analyze lib test`: 0 issues found (Clean).
+     - Verified `flutter test`: 100% passing tests (54/54 tests).
+     - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 packages passed (FULL TURBO).
+     - Verified Next.js server production build (`bun run build --filter=server`): 100% success in 34.4s.
+
+## Session: 2026-09-03 (Backup Allowed Folders Isolation & Logout Termination Implementation)
+- Analyzed and resolved two critical issues in the Flutter backup engine:
+  1. Backup uploading random folder files (Downloads, WhatsApp, Screenshots, caches) and displaying them in notifications.
+  2. Backup continuing to upload and show notification drawer progress after the user logs out.
+- Implementation details:
+  1. Excluded `path.isAll` ("Recent" / "All" virtual collection) in `MediaDiscoveryService.getAlbums()`, ensuring only physical folders appear in albums.
+  2. Added `isCameraRollAlbum` and `isFileInAllowedAlbums` helper utilities in `MediaDiscoveryService`.
+  3. Strict Camera Roll Isolation:
+     - In `BackupNotifier.loadAlbums()`, automatically auto-selected standard Camera Roll by default if user hasn't selected custom folders.
+     - In `BackupNotifier.startSync()`, `MediaListenerService.processNewMediaChanges()`, and `BackgroundWorker.hbsBackgroundDispatcher()`, if no custom folders are chosen, strictly scoped discovery to Camera Roll with `allowFallbackToAll: false`.
+  4. Work Queue & Database Hardening:
+     - Added `BackupIndexDb().clearQueue()`, `deleteQueueItem()`, and `prunePendingQueueNotIn()`.
+     - In `UploadQueueEngine.startSync()`, pruned pending queue items that do not belong to the allowed files.
+     - In `UploadQueueEngine` worker loop, added guards verifying that each file is not an Android app private directory (`MediaPathFilter`) and resides in the user's allowed folder list before attempting upload and showing notification progress.
+     - In `BackupNotifier.toggleAlbum()`, cleared pending queue so deselected folders do not have leftover uploads.
+  5. Immediate Graceful Backup Termination on Logout:
+     - In `AuthNotifier.signOut()` and `AuthService.signOut()`, wired immediate backup engine cancellation: calls `UploadQueueEngine().cancelSync()`, aborts in-flight HTTP uploads (`Dio.CancelToken`), dismisses notification drawer progress with `BackupNotificationManager().cancelSyncNotification()`, stops `MediaListenerService()`, cancels `WorkManager` background backup, stops `NetworkPresenceWatcher` and `DeviceWakeupServer`, and empties SQLite queue table with `BackupIndexDb().clearQueue()`.
+     - Added `isUserLoggedOut()` and session token guards across `UploadQueueEngine.startSync()`, worker loop, `resumePending()`, `autoBackupIfEnabled()`, `AppShell.didChangeAppLifecycleState()`, `DeviceWakeupServer` (`/wake` handler), and `BackupApiClient.uploadFile()`.
+- Test Suite & Verification:
+  - Added unit test suite in `test/backup_engine_test.dart` validating `isCameraRollAlbum`, `isFileInAllowedAlbums`, target album isolation logic, and `UploadQueueEngine.cancelSync()`.
+  - Verified `dart analyze lib test`: 0 issues found (Clean).
+  - Verified `flutter test`: 100% passing tests (58/58 tests).
+  - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 packages passed (FULL TURBO).
+  - Verified Next.js server production build (`bun run build --filter=server`): 100% success.

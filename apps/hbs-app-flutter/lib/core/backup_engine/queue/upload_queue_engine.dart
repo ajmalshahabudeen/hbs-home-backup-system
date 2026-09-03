@@ -6,6 +6,7 @@ import '../../../models/photo_media_item.dart';
 import '../../../models/sync_state.dart';
 import '../../../services/media_discovery_service.dart';
 import '../../../services/storage_service.dart';
+import '../../utils/media_path_filter.dart';
 import '../client/backup_api_client.dart';
 import '../dedupe/dedupe_engine.dart';
 import '../index/backup_index_db.dart';
@@ -93,6 +94,10 @@ class UploadQueueEngine {
     bool showNotifications = true,
   }) async {
     if (_isRunning) return;
+    if (StorageService().isUserLoggedOut()) return;
+    final token = await StorageService().getSessionToken();
+    if (token == null || token.isEmpty) return;
+
     if (!await _wifiOk()) {
       _updateState(_currentState.copyWith(
         isSyncing: false,
@@ -102,6 +107,8 @@ class UploadQueueEngine {
     }
 
     if (items != null && items.isNotEmpty) {
+      final validIds = items.map((e) => e.id).toSet();
+      await BackupIndexDb().prunePendingQueueNotIn(validIds);
       await enqueueItems(items);
     }
 
@@ -141,6 +148,12 @@ class UploadQueueEngine {
       for (int i = 0; i < concurrency; i++) {
         workers.add(Future(() async {
           while (lock.isNotEmpty && _isRunning) {
+            if (_isCancelled || _currentCancelToken?.isCancelled == true) break;
+            if (StorageService().isUserLoggedOut()) {
+              cancelSync();
+              break;
+            }
+
             final row = lock.removeAt(0);
             final id = row['id']?.toString() ?? '';
             final name = row['file_name']?.toString() ?? 'file';
@@ -203,6 +216,31 @@ class UploadQueueEngine {
               if (path.isEmpty || !await file.exists()) {
                 failed++;
                 await BackupIndexDb().markQueueStatus(id, 'failed');
+                continue;
+              }
+
+              // Verify file is not in hidden app-private directories
+              if (MediaPathFilter.isAndroidAppFolder(filePath: path)) {
+                skipped++;
+                await BackupIndexDb().deleteQueueItem(id);
+                continue;
+              }
+
+              // Strict allowed folders guard: verify file path is in user-allowed albums
+              final savedAlbumIds = StorageService().getStringList('hbs_backup_selected_albums');
+              final allAlbums = await MediaDiscoveryService().getAlbums();
+              final allowedNames = (savedAlbumIds.isNotEmpty
+                      ? allAlbums.where((a) => savedAlbumIds.contains(a.id) || savedAlbumIds.contains(a.name.toLowerCase()))
+                      : allAlbums.where(MediaDiscoveryService.isCameraRollAlbum))
+                  .map((a) => a.name.toLowerCase())
+                  .toList();
+
+              if (allowedNames.isNotEmpty && !MediaDiscoveryService.isFileInAllowedAlbums(
+                filePath: path,
+                allowedFolderNames: allowedNames,
+              )) {
+                skipped++;
+                await BackupIndexDb().deleteQueueItem(id);
                 continue;
               }
 
@@ -293,6 +331,9 @@ class UploadQueueEngine {
   }
 
   Future<void> resumePending({int concurrency = 2}) async {
+    if (StorageService().isUserLoggedOut()) return;
+    final token = await StorageService().getSessionToken();
+    if (token == null || token.isEmpty) return;
     final pending = await BackupIndexDb().pendingUploads();
     if (pending.isEmpty) return;
     await startSync(concurrency: concurrency);
@@ -302,6 +343,7 @@ class UploadQueueEngine {
     _isRunning = false;
     _isCancelled = true;
     _currentCancelToken?.cancel('User cancelled');
+    _currentCancelToken = null;
     BackupNotificationManager().cancelSyncNotification();
     _updateState(_currentState.copyWith(
       isSyncing: false,

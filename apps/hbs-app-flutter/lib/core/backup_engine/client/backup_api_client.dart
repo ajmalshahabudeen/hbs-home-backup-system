@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import '../../../models/user_stats.dart';
 import '../../../services/api_service.dart';
+import '../../../services/storage_service.dart';
 
 class BackupApiClient {
   static final BackupApiClient _instance = BackupApiClient._internal();
@@ -36,6 +37,9 @@ class BackupApiClient {
     CancelToken? cancelToken,
     void Function(int sent, int total)? onSendProgress,
   }) {
+    if (StorageService().isUserLoggedOut()) {
+      throw Exception('User is logged out');
+    }
     return _api.uploadFile(
       filePath: filePath,
       fileName: fileName,

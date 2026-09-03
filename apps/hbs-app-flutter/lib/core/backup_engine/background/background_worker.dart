@@ -16,6 +16,11 @@ void hbsBackgroundDispatcher() {
     WidgetsFlutterBinding.ensureInitialized();
     try {
       await StorageService().init();
+      final isLoggedOut = StorageService().isUserLoggedOut();
+      if (isLoggedOut) {
+        await cancelBackgroundBackup();
+        return true;
+      }
       final autoBackup = StorageService().getBool('hbs_auto_backup', defaultValue: false);
       if (!autoBackup) return true;
 
@@ -40,11 +45,20 @@ void hbsBackgroundDispatcher() {
       if (hasPerm) {
         final savedAlbumIds = StorageService().getStringList('hbs_backup_selected_albums');
         final allAlbums = await MediaDiscoveryService().getAlbums();
-        final targetAlbums = savedAlbumIds.isEmpty
-            ? allAlbums
-            : allAlbums.where((a) => savedAlbumIds.contains(a.id)).toList();
+        final List<LocalAlbum> targetAlbums;
+        if (savedAlbumIds.isNotEmpty) {
+          targetAlbums = allAlbums
+              .where((a) => savedAlbumIds.contains(a.id) || savedAlbumIds.contains(a.name.toLowerCase()))
+              .toList();
+        } else {
+          targetAlbums = allAlbums.where(MediaDiscoveryService.isCameraRollAlbum).toList();
+        }
 
-        final items = await MediaDiscoveryService().getLocalMediaForAlbums(targetAlbums);
+        if (targetAlbums.isNotEmpty) {
+          final items = await MediaDiscoveryService().getLocalMediaForAlbums(
+            targetAlbums,
+            allowFallbackToAll: false,
+          );
 
         // Filter media preferences (photos, videos, max size, raw)
         final includePhotos = StorageService().getBool('hbs_backup_photos', defaultValue: true);
@@ -64,8 +78,9 @@ void hbsBackgroundDispatcher() {
           return true;
         }).toList();
 
-        // Enqueue only unbacked delta items
-        await UploadQueueEngine().enqueueItems(eligible, filterIndexed: true);
+          // Enqueue only unbacked delta items
+          await UploadQueueEngine().enqueueItems(eligible, filterIndexed: true);
+        }
       }
 
       // Resume any pending queue items (concurrency: 1 in background to conserve resources)
