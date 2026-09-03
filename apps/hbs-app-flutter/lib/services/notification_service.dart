@@ -66,6 +66,9 @@ class NotificationService {
   }
 
   Future<void> cancelSyncNotification() async {
-    await _plugin.cancel(syncNotificationId);
+    await BackupNotificationManager().cancelSyncNotification();
+    try {
+      await _plugin.cancel(syncNotificationId);
+    } catch (_) {}
   }
 }

@@ -568,14 +568,38 @@ class BackupScreen extends ConsumerWidget {
                   width: double.infinity,
                   height: 54,
                   child: ElevatedButton.icon(
-                    icon: Icon(isSyncing ? Icons.sync_rounded : Icons.cloud_upload_rounded),
+                    icon: Icon(
+                      isSyncing
+                          ? Icons.sync_rounded
+                          : (!backupState.hasPermission ? Icons.lock_outline_rounded : Icons.cloud_upload_rounded),
+                    ),
                     label: Text(
-                      isSyncing ? 'Sync in Progress...' : 'Start Auto-Sync Now',
+                      isSyncing
+                          ? 'Sync in Progress...'
+                          : (!backupState.hasPermission ? 'Grant Permission to Start Sync' : 'Start Auto-Sync Now'),
                       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                     ),
                     onPressed: isSyncing
                         ? null
                         : () async {
+                            // Verify media permission before touching any media files
+                            final hasPerm = await MediaDiscoveryService().isPermissionGranted();
+                            if (!hasPerm) {
+                              final granted = await MediaDiscoveryService().requestPermissions(force: true);
+                              await backupNotifier.loadAlbums(force: true);
+                              if (!granted) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Media permission is required to back up device photos'),
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                }
+                                return;
+                              }
+                            }
+
                             try {
                               final stats = await ApiService().getUserStats();
                               final quota = stats.quotaBytes;

@@ -18,9 +18,12 @@ class UploadQueueEngine {
 
   bool _isRunning = false;
   bool get isRunning => _isRunning;
-
+  bool _isCancelled = false;
   CancelToken? _currentCancelToken;
   SyncState _currentState = const SyncState();
+
+  bool get isSyncing => _currentState.isSyncing;
+  bool get isCancelled => _isCancelled;
   SyncState get currentState => _currentState;
 
   final StreamController<SyncState> _stateController = StreamController<SyncState>.broadcast();
@@ -103,6 +106,8 @@ class UploadQueueEngine {
     }
 
     _isRunning = true;
+    _isCancelled = false;
+    BackupNotificationManager().resetCancellation();
     _currentCancelToken = CancelToken();
 
     var pending = await BackupIndexDb().pendingUploads();
@@ -158,7 +163,7 @@ class UploadQueueEngine {
               skippedCount: skipped,
             ));
 
-            if (showNotifications) {
+            if (showNotifications && !_isCancelled && _isRunning) {
               BackupNotificationManager().showSyncProgress(
                 current: synced + skipped + failed + 1,
                 total: pending.length,
@@ -254,6 +259,18 @@ class UploadQueueEngine {
       await Future.wait(workers);
       await BackupIndexDb().clearFinishedQueue();
 
+      if (_isCancelled || _currentCancelToken?.isCancelled == true) {
+        await BackupNotificationManager().cancelSyncNotification();
+        _updateState(_currentState.copyWith(
+          isSyncing: false,
+          syncedCount: synced,
+          failedCount: failed,
+          skippedCount: skipped,
+          syncStepMessage: 'Backup cancelled',
+        ));
+        return;
+      }
+
       _updateState(_currentState.copyWith(
         isSyncing: false,
         syncedCount: synced,
@@ -283,11 +300,12 @@ class UploadQueueEngine {
 
   void cancelSync() {
     _isRunning = false;
+    _isCancelled = true;
     _currentCancelToken?.cancel('User cancelled');
     BackupNotificationManager().cancelSyncNotification();
     _updateState(_currentState.copyWith(
       isSyncing: false,
-      syncStepMessage: 'Backup paused',
+      syncStepMessage: 'Backup cancelled',
     ));
   }
 }

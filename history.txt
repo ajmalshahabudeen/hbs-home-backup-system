@@ -1137,7 +1137,30 @@
 - Build & Quality Verification:
   - Verified `flutter analyze`: 0 issues found.
   - Verified `flutter test`: 100% passing unit tests (37/37 tests).
+## Session: 2026-09-03 (Backup Permissions Guard, Startup Checker, Animated Splash & Notification Cancel Fix)
+- Resolved backup taking media without permission:
+  1. `BackupProvider`: Enforced strict `MediaDiscoveryService().isPermissionGranted()` before scanning or enqueuing media files. If ungranted, requests permission interactively and gracefully stops without touching device files.
+  2. `MediaDiscoveryService.getLocalMediaForAlbums`: Added `allowFallbackToAll = false` guard so selecting empty or missing folders does not fall back to backing up the entire device library.
+  3. `BackupScreen`: Guarded "Start Auto-Sync Now" button with interactive permission checks, preventing ungranted backup attempts.
+- Added Startup Permission Checker:
+  1. Created `lib/core/widgets/permission_checker.dart`: Glassmorphic bottom sheet checking Media (Photos & Videos) and System Notification permissions.
+  2. Integrated `PermissionChecker.checkAndPrompt` into `AppShell.initState()`, proactively prompting first-time or unpermissioned users to grant necessary permissions.
+- Animated Splash Screen:
+  1. Matched splash screen background color strictly to the exact edge color of `HBS_Logo.png` (`Color(0xFFF1EBE3)` / `RGB(241, 235, 227)`), eliminating any dark-mode box mismatches and creating a 100% seamless canvas.
+  2. Enhanced animations:
+     - Logo: Elastic spring entrance (`Curves.easeOutBack`) plus an organic vertical sine-wave floating loop (`-5px` to `+5px`) and gentle breathing scale.
+     - Wordmark (`HBS CLOUD`): Slide-up entrance with expanding letter spacing (`1.0` -> `3.2`) and animated gradient shimmer sheen (`ShaderMask`).
+     - Accent: Expanding gradient divider line (`Color(0xFFC27346)`).
+     - Subtitle: Slide-up fade entrance (`PERSONAL CLOUD & HOME BACKUP`).
+     - Micro-Dots: Bouncing, pulsing 3-dot wave indicator at the bottom.
+- Progress Notification Auto-Clearing on Cancel:
+  1. `UploadQueueEngine`: Added `_isCancelled` state flag. Upon `cancelSync()`, immediately cancels the token, sets `_isCancelled = true`, cancels ongoing notification, stops in-flight workers from re-posting progress, and skips `finishSyncNotification()`.
+  2. `BackupNotificationManager`: Added `_isCancelled` flag and `resetCancellation()`, ensuring cancelled progress notifications disappear immediately and are never re-created by late worker threads.
+- Build & Quality Verification:
+  - Verified `dart analyze lib test`: 0 issues found.
+  - Verified `flutter test`: 100% passing tests (39/39 tests).
   - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 successful builds with 0 errors.
+
 
 
 

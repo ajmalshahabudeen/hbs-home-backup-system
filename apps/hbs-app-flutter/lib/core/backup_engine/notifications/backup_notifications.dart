@@ -17,9 +17,14 @@ class BackupNotificationManager {
   static const String prefKey = 'hbs_backup_notifications';
 
   int _lastNotificationTime = 0;
+  bool _isCancelled = false;
 
   bool get isNotificationsEnabled {
     return StorageService().getBool(prefKey, defaultValue: true);
+  }
+
+  void resetCancellation() {
+    _isCancelled = false;
   }
 
   Future<void> setNotificationsEnabled(bool enabled) async {
@@ -77,7 +82,7 @@ class BackupNotificationManager {
     required String fileName,
     bool force = false,
   }) async {
-    if (!isNotificationsEnabled) return;
+    if (!isNotificationsEnabled || _isCancelled) return;
 
     final now = DateTime.now().millisecondsSinceEpoch;
     // Throttle updates: max once every 300ms unless it's the very first or final item
@@ -87,6 +92,7 @@ class BackupNotificationManager {
     _lastNotificationTime = now;
 
     await init();
+    if (_isCancelled) return;
     final progress = total > 0 ? ((current / total) * 100).toInt() : 0;
 
     final androidDetails = AndroidNotificationDetails(
@@ -106,6 +112,7 @@ class BackupNotificationManager {
     final details = NotificationDetails(android: androidDetails);
 
     try {
+      if (_isCancelled) return;
       await _plugin.show(
         syncNotificationId,
         'Backing up to HBS Server ($progress%)',
@@ -120,11 +127,12 @@ class BackupNotificationManager {
     required int totalSynced,
     required int failedCount,
   }) async {
+    if (_isCancelled) return;
     await init();
     // Cancel ongoing progress notification
     await cancelSyncNotification();
 
-    if (!isNotificationsEnabled) return;
+    if (!isNotificationsEnabled || _isCancelled) return;
 
     final androidDetails = AndroidNotificationDetails(
       'hbs-sync-complete',
@@ -143,6 +151,7 @@ class BackupNotificationManager {
         : 'All $totalSynced items safely backed up to your HBS server.';
 
     try {
+      if (_isCancelled) return;
       await _plugin.show(
         completeNotificationId,
         title,
@@ -153,6 +162,7 @@ class BackupNotificationManager {
   }
 
   Future<void> cancelSyncNotification() async {
+    _isCancelled = true;
     try {
       await _plugin.cancel(syncNotificationId);
     } catch (_) {}

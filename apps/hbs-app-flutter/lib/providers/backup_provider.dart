@@ -199,12 +199,47 @@ class BackupNotifier extends StateNotifier<BackupState> {
   }
 
   Future<void> startSync() async {
+    // 1. Strict permission verification before scanning or accessing device media
+    final hasPerm = await MediaDiscoveryService().isPermissionGranted();
+    if (!hasPerm) {
+      final granted = await MediaDiscoveryService().requestPermissions(force: true);
+      if (!granted) {
+        state = state.copyWith(
+          hasPermission: false,
+          syncState: state.syncState.copyWith(
+            isSyncing: false,
+            syncStepMessage: 'Media access permission required for backup',
+          ),
+        );
+        return;
+      }
+    }
+    state = state.copyWith(hasPermission: true);
+
     final selected = state.selectedAlbumIds;
+    if (state.albums.isEmpty) {
+      await loadAlbums();
+    }
+
     final targetAlbums = selected.isEmpty
         ? state.albums
         : state.albums.where((a) => selected.contains(a.id)).toList();
 
-    final itemsToSync = (await MediaDiscoveryService().getLocalMediaForAlbums(targetAlbums)).where((item) {
+    // If user selected folders but none matched, do not fallback to entire device library
+    if (selected.isNotEmpty && targetAlbums.isEmpty) {
+      state = state.copyWith(
+        syncState: state.syncState.copyWith(
+          isSyncing: false,
+          syncStepMessage: 'Selected folders not found on device',
+        ),
+      );
+      return;
+    }
+
+    final itemsToSync = (await MediaDiscoveryService().getLocalMediaForAlbums(
+      targetAlbums,
+      allowFallbackToAll: selected.isEmpty && state.albums.isNotEmpty,
+    )).where((item) {
       final includePhotos = StorageService().getBool('hbs_backup_photos', defaultValue: true);
       final includeVideos = StorageService().getBool('hbs_backup_videos', defaultValue: true);
       final maxMb = int.tryParse(StorageService().getString('hbs_backup_max_mb', defaultValue: '0')) ?? 0;
@@ -252,11 +287,14 @@ class BackupNotifier extends StateNotifier<BackupState> {
 
   Future<void> autoBackupIfEnabled() async {
     if (!state.autoBackup || state.syncState.isSyncing) return;
+    final hasPerm = await MediaDiscoveryService().isPermissionGranted();
+    if (!hasPerm) return;
     await startSync();
   }
 
-  void cancelSync() {
+  Future<void> cancelSync() async {
     UploadQueueEngine().cancelSync();
+    await BackupNotificationManager().cancelSyncNotification();
   }
 
   Future<void> purgeAndRebuildIndex() async {

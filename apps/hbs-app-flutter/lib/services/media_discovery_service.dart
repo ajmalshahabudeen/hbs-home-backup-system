@@ -269,8 +269,13 @@ class MediaDiscoveryService {
     }).toList();
   }
 
-  Future<List<PhotoMediaItem>> getLocalMediaForAlbums(List<LocalAlbum> albums) async {
-    if (albums.isEmpty) return getLocalMedia();
+  Future<List<PhotoMediaItem>> getLocalMediaForAlbums(
+    List<LocalAlbum> albums, {
+    bool allowFallbackToAll = false,
+  }) async {
+    if (albums.isEmpty) {
+      return allowFallbackToAll ? getLocalMedia() : [];
+    }
     final seen = <String>{};
     final out = <PhotoMediaItem>[];
     for (final album in albums) {

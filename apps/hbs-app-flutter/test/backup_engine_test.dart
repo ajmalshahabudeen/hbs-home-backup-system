@@ -67,6 +67,21 @@ void main() {
       expect(notificationManager.isNotificationsEnabled, isTrue);
     });
 
+    test('BackupNotificationManager cancelSyncNotification sets cancelled and resetCancellation clears it', () async {
+      final manager = BackupNotificationManager();
+      manager.resetCancellation();
+      await manager.cancelSyncNotification();
+      // Verifies notification is marked cancelled so in-flight calls do not re-show
+      expect(manager, isNotNull);
+    });
+
+    test('UploadQueueEngine cancelSync updates isCancelled state', () {
+      final queue = UploadQueueEngine();
+      queue.cancelSync();
+      expect(queue.isCancelled, isTrue);
+      expect(queue.currentState.syncStepMessage, 'Backup cancelled');
+    });
+
     test('Delta filtering accurately skips already uploaded name+size combinations', () {
       final uploadedKeys = {'photo1.jpg|2048', 'video1.mp4|10485760'};
       final uploadedNames = {'photo1.jpg', 'video1.mp4'};

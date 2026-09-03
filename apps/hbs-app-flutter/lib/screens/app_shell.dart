@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import '../core/widgets/custom_bottom_nav.dart';
+import '../core/widgets/permission_checker.dart';
 import '../providers/backup_provider.dart';
 import '../providers/media_provider.dart';
 import '../services/api_service.dart';
@@ -38,6 +39,11 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        PermissionChecker.checkAndPrompt(context, ref);
+      }
+    });
     ReceiveSharingIntent.instance.getMediaStream().listen(_handleShared);
     ReceiveSharingIntent.instance.getInitialMedia().then(_handleShared);
     WatchFolderService().start();
