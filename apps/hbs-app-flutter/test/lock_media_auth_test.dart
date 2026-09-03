@@ -63,14 +63,16 @@ void main() {
       required String name,
       int size = 100,
       bool video = false,
+      String parentPath = 'MobileBackups',
     }) {
       return PhotoMediaItem(
         id: id,
-        path: '/cloud/$name',
+        path: '$parentPath/$name',
         name: name,
+        parentPath: parentPath,
         size: size,
         isVideo: video,
-        url: 'http://server/$name',
+        url: 'http://server/$parentPath/$name',
         createdAt: DateTime(2026, 1, 1),
       );
     }
@@ -106,6 +108,25 @@ void main() {
         uploadedNameSizeKeys: {'cam.jpg|42'},
       );
       expect(merged.single.isBackedUp, isTrue);
+    });
+
+    test('strictly excludes Drive media files (outside MobileBackups) from Photos timeline', () {
+      final merged = MediaMerger.merge(
+        local: [local(id: 'l1', name: 'vacation.jpg', size: 50)],
+        server: [
+          // File backed up via Drive in root or Documents folder
+          remote(id: 'd1', name: 'vacation.jpg', size: 50, parentPath: ''),
+          remote(id: 'd2', name: 'drive-invoice.jpg', size: 80, parentPath: 'Documents'),
+          // File from MobileBackups
+          remote(id: 's1', name: 'camera-photo.jpg', size: 30, parentPath: 'MobileBackups'),
+        ],
+      );
+      // Drive files must NOT match local file or be added as remote items
+      expect(merged.any((e) => e.name == 'drive-invoice.jpg'), isFalse);
+      expect(merged.any((e) => e.name == 'camera-photo.jpg'), isTrue);
+      // Local vacation.jpg should NOT be marked backed up by the Drive file
+      final localVacation = merged.firstWhere((e) => e.name == 'vacation.jpg');
+      expect(localVacation.isBackedUp, isFalse);
     });
   });
 

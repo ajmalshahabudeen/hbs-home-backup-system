@@ -22,6 +22,8 @@ export const GET = withApiLog(
       : 80;
     const offset = Number.isFinite(offsetRaw) ? Math.max(offsetRaw, 0) : 0;
 
+    const includeDrive = searchParams.get("includeDrive") === "true";
+
     const where = {
       userId,
       isDir: false,
@@ -30,15 +32,20 @@ export const GET = withApiLog(
         { path: { contains: ".hbs-thumb" } },
         { path: { startsWith: "Trash/" } },
       ],
-      OR:
-        filter === "videos"
-          ? [{ mimeType: { startsWith: "video/" } }]
-          : filter === "photos"
-            ? [{ mimeType: { startsWith: "image/" } }]
-            : [
-                { mimeType: { startsWith: "image/" } },
-                { mimeType: { startsWith: "video/" } },
-              ],
+      AND: [
+        ...(!includeDrive ? [{ path: { startsWith: "MobileBackups" } }] : []),
+        {
+          OR:
+            filter === "videos"
+              ? [{ mimeType: { startsWith: "video/" } }]
+              : filter === "photos"
+                ? [{ mimeType: { startsWith: "image/" } }]
+                : [
+                    { mimeType: { startsWith: "image/" } },
+                    { mimeType: { startsWith: "video/" } },
+                  ],
+        },
+      ],
     };
 
     const [total, files] = await Promise.all([

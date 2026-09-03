@@ -184,7 +184,7 @@ class _AlbumGridState extends State<_AlbumGrid> {
                       resolved = await MediaDiscoveryService().resolveFile(item);
                     }
                     if (!context.mounted) return;
-                    MediaViewerModal.show(context, resolved);
+                    MediaViewerModal.show(context, resolved, items: _items, initialIndex: i);
                   },
                   child: MediaThumb(item: item),
                 );

@@ -128,7 +128,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                               child: GlassCard(
                                 padding: const EdgeInsets.all(12),
                                 borderRadius: 14,
-                                onTap: () => MediaViewerModal.show(context, photo),
+                                onTap: () => MediaViewerModal.show(
+                                  context,
+                                  photo,
+                                  items: filteredPhotos,
+                                  initialIndex: filteredPhotos.indexOf(photo),
+                                ),
                                 child: Row(
                                   children: [
                                     Icon(photo.isVideo ? Icons.videocam_rounded : Icons.photo_rounded, color: primary),

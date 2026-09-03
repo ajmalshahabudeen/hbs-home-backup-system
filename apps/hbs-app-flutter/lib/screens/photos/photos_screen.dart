@@ -300,7 +300,14 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
                                               resolved = await MediaDiscoveryService().resolveFile(item);
                                             }
                                             if (!context.mounted) return;
-                                            MediaViewerModal.show(context, resolved);
+                                            final flatList = mediaState.filteredItems;
+                                            final initialIdx = flatList.indexWhere((e) => e.id == item.id);
+                                            MediaViewerModal.show(
+                                              context,
+                                              resolved,
+                                              items: flatList,
+                                              initialIndex: initialIdx >= 0 ? initialIdx : 0,
+                                            );
                                           },
                                           onLongPress: item.isLive
                                               ? () => LiveMotionOverlay.play(context, item)

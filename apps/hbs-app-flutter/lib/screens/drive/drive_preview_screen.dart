@@ -9,6 +9,7 @@ import '../../core/utils/vault_crypto.dart';
 import '../../models/backup_file_item.dart';
 import '../../services/api_service.dart';
 import '../../services/drive_cache_service.dart';
+import '../../services/heic_service.dart';
 
 class DrivePreviewScreen extends StatefulWidget {
   final BackupFileItem file;
@@ -85,7 +86,16 @@ class _DrivePreviewScreenState extends State<DrivePreviewScreen> {
       if (!mounted) return;
 
       if (widget.category == 'photo') {
-        setState(() => _ready = true);
+        if (Formatters.isHeic(widget.file.mimeType, widget.file.name)) {
+          if (_localFile != null) {
+            final converted = await HeicService().convertLocalHeicToJpg(_localFile!.path);
+            if (converted != null) _localFile = converted;
+          } else if (_mediaUrl.isNotEmpty) {
+            final converted = await HeicService().convertRemoteHeicToJpg(_mediaUrl, headers: _headers);
+            if (converted != null) _localFile = converted;
+          }
+        }
+        if (mounted) setState(() => _ready = true);
         return;
       }
 
@@ -103,6 +113,7 @@ class _DrivePreviewScreenState extends State<DrivePreviewScreen> {
           looping: false,
           aspectRatio: _player!.value.aspectRatio == 0 ? 16 / 9 : _player!.value.aspectRatio,
           allowFullScreen: true,
+          controlsSafeAreaMinimum: const EdgeInsets.only(bottom: 24, top: 16, left: 16, right: 16),
           materialProgressColors: ChewieProgressColors(
             playedColor: Theme.of(context).primaryColor,
             handleColor: Theme.of(context).primaryColor,

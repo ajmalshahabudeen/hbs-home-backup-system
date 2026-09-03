@@ -241,9 +241,15 @@ class MediaNotifier extends StateNotifier<MediaState> {
         uploadedNames = indexKeys.names;
       } catch (_) {}
 
+      final filteredServerPhotos = serverPhotos.where((p) {
+        final path = p.path.replaceAll('\\', '/');
+        final parent = p.parentPath.replaceAll('\\', '/');
+        return path.startsWith('MobileBackups') || parent.startsWith('MobileBackups');
+      }).toList();
+
       final merged = MediaMerger.merge(
         local: localItems,
-        server: serverPhotos,
+        server: filteredServerPhotos,
         uploadedNameSizeKeys: uploadedNameSizeKeys,
         uploadedNames: uploadedNames,
       );

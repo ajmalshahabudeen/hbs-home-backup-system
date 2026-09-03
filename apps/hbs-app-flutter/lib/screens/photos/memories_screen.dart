@@ -41,7 +41,7 @@ class MemoriesScreen extends ConsumerWidget {
                       resolved = await MediaDiscoveryService().resolveFile(item);
                     }
                     if (!context.mounted) return;
-                    MediaViewerModal.show(context, resolved);
+                    MediaViewerModal.show(context, resolved, items: items, initialIndex: i);
                   },
                   child: MediaThumb(item: item),
                 );

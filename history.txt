@@ -1186,6 +1186,42 @@
   - `bun run typecheck`: 3/3 packages passed (FULL TURBO).
   - `bun run build --filter=server`: Next.js production build passed in 35.1s.
 
+## Session: 2026-09-03 (Media Swiper, HEIC Preview Decoding, Video Player Progress Bar Repositioning & Drive Media Isolation Completed)
+- Media Swiper Gallery (`MediaViewerModal`):
+  1. Overhauled `apps/hbs-app-flutter/lib/screens/photos/media_viewer_modal.dart` into an image and video swiper using `PageView.builder` with `PhotoView` and `Chewie`.
+  2. Maintained backward compatibility with `MediaViewerModal.show(context, item, {items, initialIndex})`.
+  3. Integrated active item tracking: updates top action bar (title, date, item counter `${_currentIndex + 1} of ${items.length}`, and synced badge) and bottom bar dynamically on swipe.
+  4. Added `NeverScrollableScrollPhysics` when `PhotoView` scale is zoomed in (`_isZoomed`), enabling smooth pan gestures on zoomed images and swiping between photos when zoomed out.
+  5. Isolated video lifecycle: active video plays automatically while previous/neighboring videos pause cleanly.
+  6. Added tap-to-toggle UI chrome (`_showChrome`), smoothly hiding/revealing top and bottom action bars with cubic easing for an unobstructed view.
+  7. Connected swiper across `photos_screen.dart`, `memories_screen.dart`, `albums_screen.dart`, and `search_screen.dart`.
+- HEIC/HEIF Image Previews:
+  1. Installed `heif_converter: ^1.0.7` into Flutter app.
+  2. Created `HeicService` (`apps/hbs-app-flutter/lib/services/heic_service.dart`) utilizing native Android hardware codecs (`BitmapFactory`/`ImageDecoder`) and iOS platform APIs to convert HEIC/HEIF images to JPEG.
+  3. Built automatic disk caching in `cache/heic_previews/{hash}.jpg` so conversions happen once per file and load instantly thereafter.
+  4. Handled local filesystem files, remote cloud URLs, and `AssetEntity` asset IDs.
+  5. Integrated `HeicService` into `MediaViewerModal` and `DrivePreviewScreen`, eliminating broken fallback errors and displaying full-resolution previews.
+- Video Player Overlay & Progress Bar Repositioning:
+  1. Configured `controlsSafeAreaMinimum: const EdgeInsets.only(bottom: 96, top: 72, left: 16, right: 16)` in `ChewieController` in `MediaViewerModal`.
+  2. Elevated the video player progress bar (scrubber) and controls by 96px, completely clearing the bottom action bar and info icon with generous breathing room.
+  3. Added 72px top clearance to prevent video player controls and fullscreen headers from colliding with the top action bar.
+  4. Added `controlsSafeAreaMinimum: const EdgeInsets.only(bottom: 24, top: 16, left: 16, right: 16)` in `DrivePreviewScreen` for consistent player layout.
+- Drive Media Files Exclusion from Photos:
+  1. Server API Route (`apps/server/app/api/user/photos/route.ts`):
+     - Added `AND: [...(!includeDrive ? [{ path: { startsWith: "MobileBackups" } }] : []), ...]` to restrict `GET /api/user/photos` strictly to `MobileBackups`.
+     - Completely excludes media files uploaded via Drive root `""` or user Drive folders (e.g. `Documents/`, `Work/`).
+  2. Flutter Client Guard (`apps/hbs-app-flutter/lib/providers/media_provider.dart`):
+     - Pre-filtered `serverPhotos` in `MediaNotifier.loadMedia` to items where `path` or `parentPath` starts with `MobileBackups`.
+  3. Media Merger Guard (`apps/hbs-app-flutter/lib/core/utils/media_merger.dart`):
+     - Enforced that both match candidate lookups and remote item appends are strictly scoped to `MobileBackups`.
+  4. Added unit test in `test/lock_media_auth_test.dart` asserting Drive media files are strictly excluded from the Photos timeline.
+- Verification:
+  - `dart analyze lib test`: 0 issues found.
+  - `flutter test`: 44/44 tests passed (100%).
+  - `bun run typecheck`: 3/3 packages passed.
+  - `bun run build --filter=server`: Next.js production build passed in 30.5s.
+
+
 
 
 

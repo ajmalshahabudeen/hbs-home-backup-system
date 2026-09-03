@@ -17,6 +17,11 @@ class MediaMerger {
     final serverByNameSize = <String, PhotoMediaItem>{};
     final serverByName = <String, PhotoMediaItem>{};
     for (final item in server) {
+      final normPath = item.path.replaceAll('\\', '/');
+      final normParent = item.parentPath.replaceAll('\\', '/');
+      if (!normPath.startsWith('MobileBackups') && !normParent.startsWith('MobileBackups')) {
+        continue;
+      }
       serverByNameSize.putIfAbsent(nameSizeKey(item), () => item);
       serverByName.putIfAbsent(nameKey(item), () => item);
     }
@@ -52,6 +57,11 @@ class MediaMerger {
 
     for (final remote in server) {
       if (usedServerIds.contains(remote.id)) continue;
+      final normPath = remote.path.replaceAll('\\', '/');
+      final normParent = remote.parentPath.replaceAll('\\', '/');
+      if (!normPath.startsWith('MobileBackups') && !normParent.startsWith('MobileBackups')) {
+        continue;
+      }
       merged.add(remote.copyWith(isBackedUp: true, isLocalOnly: false));
     }
 
