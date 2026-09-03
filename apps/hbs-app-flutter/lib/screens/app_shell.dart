@@ -49,6 +49,23 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
     ReceiveSharingIntent.instance.getInitialMedia().then(_handleShared);
     WatchFolderService().start();
     _startLanInbox();
+    _initDeviceWakeup();
+  }
+
+  void _initDeviceWakeup() {
+    DeviceWakeupServer().setWakeCallback((payload) async {
+      debugPrint('[AppShell] Server wake received: $payload');
+      if (mounted) {
+        await ref.read(backupProvider.notifier).autoBackupIfEnabled(force: true);
+      }
+    });
+
+    NetworkPresenceWatcher().start(onBackupTrigger: (reason) async {
+      debugPrint('[AppShell] Network presence wake triggered: $reason');
+      if (mounted) {
+        await ref.read(backupProvider.notifier).autoBackupIfEnabled();
+      }
+    });
   }
 
   void _startLanInbox() {
@@ -73,6 +90,8 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
 
   @override
   void dispose() {
+    NetworkPresenceWatcher().stop();
+    DeviceWakeupServer().stop();
     _inboxTimer?.cancel();
     _inboxStream?.cancel();
     WidgetsBinding.instance.removeObserver(this);
@@ -87,6 +106,7 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
       ref.read(backupProvider.notifier).autoBackupIfEnabled();
       MediaListenerService().processNewMediaChanges();
       _startLanInbox();
+      NetworkPresenceWatcher().announcePresenceNow(reason: 'app_resumed');
     }
   }
 

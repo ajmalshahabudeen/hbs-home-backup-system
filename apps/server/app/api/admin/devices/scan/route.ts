@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { withApiLog } from "@/lib/api-log";
 import { badRequest, ok, requireAdmin } from "@/lib/auth-guard";
 import {
+  callLanDeviceWakeup,
   scanAndWakeupDevices,
   sendDeviceWakeupPush,
 } from "@/lib/device-presence";
@@ -59,20 +60,42 @@ export const POST = withApiLog(
           where: { deviceId: String(deviceId) },
         });
 
-        if (!device || !device.pushToken) {
-          return badRequest("Device not found or has no push token");
+        if (!device) {
+          return badRequest("Device not found");
         }
 
-        const res = await sendDeviceWakeupPush(device.pushToken, {
-          title: "HBS Sync Trigger",
-          body: "Admin triggered autonomous background backup.",
-          serverUrl,
-        });
+        let lanSuccess = false;
+        if (device.lastIp && device.lastIp !== "127.0.0.1") {
+          const lanRes = await callLanDeviceWakeup(device.lastIp, { serverUrl });
+          if (lanRes.success) {
+            lanSuccess = true;
+          }
+        }
+
+        let pushRes;
+        if (!lanSuccess && device.pushToken) {
+          pushRes = await sendDeviceWakeupPush(device.pushToken, {
+            title: "HBS Sync Trigger",
+            body: "Admin triggered autonomous background backup.",
+            serverUrl,
+          });
+        }
+
+        if (lanSuccess || pushRes?.success) {
+          await prisma.mobileDevice.update({
+            where: { id: device.id },
+            data: { lastSeenAt: new Date() },
+          });
+          return ok({
+            success: true,
+            lanDelivered: lanSuccess,
+            pushDelivered: !!pushRes?.success,
+          });
+        }
 
         return ok({
-          success: res.success,
-          ticketId: res.ticketId,
-          error: res.error,
+          success: false,
+          error: "Device unreachable on LAN and no valid push token delivered",
         });
       }
 

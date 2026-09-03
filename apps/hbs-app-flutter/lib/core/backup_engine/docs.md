@@ -15,6 +15,7 @@ Welcome to the **HBS Global Backup Engine** documentation. This document explain
    - [4.4 Autonomous Background Task & Device Media Discovery](#44-autonomous-background-task--device-media-discovery)
    - [4.5 Battery Optimization Exemption Strategy](#45-battery-optimization-exemption-strategy)
    - [4.6 Dynamic Throttled Progress Notifications](#46-dynamic-throttled-progress-notifications)
+   - [4.7 Server-Initiated LAN Device Wakeup & Zero-Battery Silent Auto-Backup](#47-server-initiated-lan-device-wakeup--zero-battery-silent-auto-backup)
 5. [Backwards Compatibility & Migration Strategy](#backwards-compatibility--migration-strategy)
 6. [API & Provider Integration Guide](#api--provider-integration-guide)
 
@@ -167,6 +168,48 @@ Located in [`notifications/backup_notifications.dart`](file:///c:/programming/Tu
 - Updates are **throttled to max 1 update every 300ms** to prevent flooding the Android notification manager.
 - On completion, posts to `hbs-sync-complete` (`Importance.default`) with sound/vibration alerting the user of the final backup status.
 - User can toggle notifications on or off in Settings or Backup screens (`hbs_backup_notifications`).
+
+---
+
+### 4.7 Server-Initiated LAN Device Wakeup & Zero-Battery Silent Auto-Backup
+Located in [`wakeup/device_wakeup_server.dart`](file:///c:/programming/Turborepo/hbs-home-backup-system/apps/hbs-app-flutter/lib/core/backup_engine/wakeup/device_wakeup_server.dart) and [`wakeup/network_presence_watcher.dart`](file:///c:/programming/Turborepo/hbs-home-backup-system/apps/hbs-app-flutter/lib/core/backup_engine/wakeup/network_presence_watcher.dart).
+
+1. **The Battery Problem with Continuous Mobile Polling**:
+   If the mobile phone constantly polls the server every few seconds or keeps CPU awake checking whether it has returned home to Wi-Fi range, it drains the phone's battery rapidly.
+2. **Server-Initiated Detection (Wall-Powered Server Scans)**:
+   The HBS Server (running on continuous AC power) maintains a registry of active devices (`MobileDevice` table). The server scans the local network on port `38482` and probes registered device IPs.
+3. **Embedded Wakeup Server (Port 38482)**:
+   - The Flutter mobile app runs an ultra-lightweight embedded HTTP server on local port `38482` (`dart:io` `HttpServer`).
+   - Responds to `GET /ping`: confirms the phone is online and active on LAN.
+   - Responds to `POST /wake`: receives `{ action: 'autonomous_sync', serverUrl }`, immediately replies `200 OK`, and triggers the backup pipeline.
+4. **Zero-Battery Wi-Fi Reconnect Announcement**:
+   - When the user returns home and connects to Wi-Fi, `NetworkPresenceWatcher` listens to native OS connectivity events via `Connectivity().onConnectivityChanged`.
+   - Without background loops or polling, the app sends a single ~30ms heartbeat ping (`POST /api/user/device/ping` with its fresh Wi-Fi IP).
+   - If the server responds with `wake: true` or calls `POST /wake`, the backup engine wakes up immediately, scans allowed folders for unbacked media, enqueues delta items, and starts the upload worker pool silently in the background.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant Phone as Flutter App (Port 38482)
+    participant Server as HBS Server (Port 38480)
+    participant Engine as Backup Engine
+
+    Note over User,Phone: User arrives home & connects to Wi-Fi
+    Phone->>Server: 1. Heartbeat Ping (localIp: 192.168.1.105)
+    Server-->>Phone: 2. Ping Reply (wake: true)
+    
+    alt Or Server Periodic Sweep
+        Server->>Phone: 3. POST http://192.168.1.105:38482/wake
+        Phone-->>Server: 4. 200 OK (status: "woken")
+    end
+
+    Phone->>Engine: 5. Wakeup Callback Triggered
+    Engine->>Engine: 6. Fast Delta Pre-filtering (allowed albums)
+    Engine->>Server: 7. Parallel Upload Worker Pool (MobileBackups/)
+    Engine->>Phone: 8. Ongoing Non-Intrusive Progress Notification
+    Engine->>Server: 9. Record in Local & Server SQLite Index
+```
 
 ---
 

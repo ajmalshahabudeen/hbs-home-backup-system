@@ -397,13 +397,24 @@ class ApiService {
     return res.data;
   }
 
-  Future<void> pingDevice({required String deviceId, String? localIp}) async {
+  Future<Map<String, dynamic>?> pingDevice({
+    required String deviceId,
+    String? localIp,
+    CancelToken? cancelToken,
+  }) async {
     final token = await _getToken();
-    await _dio.post(
-      '$_serverUrl/api/user/device/ping',
-      data: {'deviceId': deviceId, if (localIp != null) 'localIp': localIp},
-      options: _buildOptions(token),
-    );
+    try {
+      final res = await _dio.post(
+        '$_serverUrl/api/user/device/ping',
+        data: {'deviceId': deviceId, if (localIp != null) 'localIp': localIp},
+        options: _buildOptions(token),
+        cancelToken: cancelToken,
+      );
+      if (res.data is Map) {
+        return Map<String, dynamic>.from(res.data as Map);
+      }
+    } catch (_) {}
+    return null;
   }
 
   Future<String> downloadFile({
@@ -650,6 +661,7 @@ class ApiService {
     );
     return res.data;
   }
+
 
   Future<({int count, List<Map<String, dynamic>> items})> fetchServerBackupIndex({
     CancelToken? cancelToken,

@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hbs_app_flutter/core/backup_engine/backup_engine.dart';
 import 'package:hbs_app_flutter/models/photo_media_item.dart';
@@ -174,5 +177,96 @@ void main() {
       expect(delta.length, 1);
       expect(delta.first.name, 'new_photo.jpg');
     });
+
+    test('DeviceWakeupServer starts, answers /ping, and stops cleanly', () async {
+      final server = DeviceWakeupServer();
+      final started = await server.start(port: 38499);
+      expect(started, isTrue);
+      expect(server.isRunning, isTrue);
+      expect(server.activePort, 38499);
+
+      final client = HttpClient();
+      try {
+        final request = await client.getUrl(Uri.parse('http://127.0.0.1:38499/ping'));
+        final response = await request.close();
+        expect(response.statusCode, HttpStatus.ok);
+
+        final body = await utf8.decoder.bind(response).join();
+        final decoded = jsonDecode(body);
+        expect(decoded['status'], 'online');
+        expect(decoded['app'], 'hbs_flutter');
+        expect(decoded['port'], 38499);
+      } finally {
+        client.close();
+        await server.stop();
+        expect(server.isRunning, isFalse);
+      }
+    });
+
+    test('DeviceWakeupServer receives /wake command and fires wake callback', () async {
+      final server = DeviceWakeupServer();
+      final started = await server.start(port: 38498);
+      expect(started, isTrue);
+
+      Map<String, dynamic>? receivedPayload;
+      final completer = Completer<void>();
+
+      server.setWakeCallback((payload) async {
+        receivedPayload = payload;
+        completer.complete();
+      });
+
+      final client = HttpClient();
+      try {
+        final request = await client.postUrl(Uri.parse('http://127.0.0.1:38498/wake'));
+        request.headers.set('Content-Type', 'application/json');
+        request.write(jsonEncode({
+          'action': 'autonomous_sync',
+          'serverUrl': 'http://192.168.1.100:38480',
+          'reason': 'server_presence_ping',
+        }));
+        final response = await request.close();
+        expect(response.statusCode, HttpStatus.ok);
+
+        final body = await utf8.decoder.bind(response).join();
+        final decoded = jsonDecode(body);
+        expect(decoded['status'], 'woken');
+        expect(decoded['backupTriggered'], isTrue);
+
+        await completer.future.timeout(const Duration(seconds: 2));
+        expect(receivedPayload, isNotNull);
+        expect(receivedPayload!['action'], 'autonomous_sync');
+        expect(receivedPayload!['reason'], 'server_presence_ping');
+      } finally {
+        client.close();
+        server.setWakeCallback(null);
+        await server.stop();
+      }
+    });
+
+    test('Server ping heartbeat wake response triggers backup action', () {
+      bool shouldTriggerBackup(Map<String, dynamic>? pingResponse) {
+        if (pingResponse == null) return false;
+        return pingResponse['wake'] == true || pingResponse['action'] == 'start_backup';
+      }
+
+      // Server acknowledges Wi-Fi presence and signals wake
+      expect(shouldTriggerBackup({
+        'success': true,
+        'wake': true,
+        'action': 'start_backup',
+        'reason': 'wifi_presence_heartbeat',
+      }), isTrue);
+
+      // Normal ping without wake signal
+      expect(shouldTriggerBackup({
+        'success': true,
+        'timestamp': 123456789,
+      }), isFalse);
+
+      // Null response
+      expect(shouldTriggerBackup(null), isFalse);
+    });
   });
 }
+

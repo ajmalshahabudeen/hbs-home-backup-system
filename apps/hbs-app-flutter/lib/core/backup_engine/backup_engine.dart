@@ -9,3 +9,5 @@ export 'client/backup_api_client.dart';
 export 'queue/upload_queue_engine.dart';
 export 'background/background_worker.dart';
 export 'listener/media_listener_service.dart';
+export 'wakeup/device_wakeup_server.dart';
+export 'wakeup/network_presence_watcher.dart';

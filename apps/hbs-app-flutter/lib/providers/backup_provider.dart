@@ -357,8 +357,8 @@ class BackupNotifier extends StateNotifier<BackupState> {
     await refreshIndexCount();
   }
 
-  Future<void> autoBackupIfEnabled() async {
-    if (!state.autoBackup || state.syncState.isSyncing) return;
+  Future<void> autoBackupIfEnabled({bool force = false}) async {
+    if ((!force && !state.autoBackup) || state.syncState.isSyncing) return;
     final hasPerm = await MediaDiscoveryService().isPermissionGranted();
     if (!hasPerm) return;
     await startSync();

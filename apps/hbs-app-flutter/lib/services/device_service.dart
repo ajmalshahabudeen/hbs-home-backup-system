@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:network_info_plus/network_info_plus.dart';
+import '../core/backup_engine/wakeup/device_wakeup_server.dart';
 import 'api_service.dart';
 
 class DeviceService {
@@ -10,6 +11,9 @@ class DeviceService {
 
   Future<void> registerAndPing() async {
     try {
+      // Ensure the LAN wakeup server is active on port 38482
+      await DeviceWakeupServer().start();
+
       final plugin = DeviceInfoPlugin();
       String deviceId = 'unknown';
       String deviceName = 'HBS Cloud';
@@ -38,8 +42,10 @@ class DeviceService {
         'deviceName': deviceName,
         'platform': platform,
         'localIp': ip,
+        'wakePort': DeviceWakeupServer.defaultPort,
       });
       await ApiService().pingDevice(deviceId: deviceId, localIp: ip);
     } catch (_) {}
   }
 }
+

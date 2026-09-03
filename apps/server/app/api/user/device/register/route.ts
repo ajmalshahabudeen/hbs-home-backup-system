@@ -86,6 +86,7 @@ export const POST = withApiLog(
           lastIp: device.lastIp,
           lastSeenAt: device.lastSeenAt.toISOString(),
         },
+        wakePort: 38482,
       });
     } catch (e) {
       return badRequest(

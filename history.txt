@@ -1221,6 +1221,39 @@
   - `bun run typecheck`: 3/3 packages passed.
   - `bun run build --filter=server`: Next.js production build passed in 30.5s.
 
+## Session: 2026-09-03 (Server-Initiated LAN Device Wakeup & Zero-Battery Silent Auto-Backup Completed)
+- Implemented server-initiated mobile wakeup and silent background backup architecture:
+  1. Embedded Mobile Wakeup Server (`apps/hbs-app-flutter/lib/core/backup_engine/wakeup/device_wakeup_server.dart`):
+     - Created `DeviceWakeupServer` singleton hosting a lightweight HTTP server on port 38482 (`dart:io` `HttpServer`).
+     - Responds to `GET /ping` (LAN presence health check) and `POST /wake` (server-triggered background backup).
+     - On `/wake`, immediately responds `200 OK` and asynchronously triggers `UploadQueueEngine` and delta camera roll discovery.
+  2. Zero-Battery Wi-Fi Reconnect Watcher (`apps/hbs-app-flutter/lib/core/backup_engine/wakeup/network_presence_watcher.dart`):
+     - Monitors OS network transitions via `Connectivity().onConnectivityChanged`.
+     - When rejoining home Wi-Fi, ensures port 38482 is listening and sends a single lightweight heartbeat (`POST /api/user/device/ping` with fresh local IP).
+     - If server reply indicates `wake: true` or `action: "start_backup"`, triggers backup pipeline immediately without waiting for next server sweep.
+  3. Server Device Presence & Direct LAN Wakeup (`apps/server/lib/device-presence.ts`):
+     - Added `callLanDeviceWakeup(ip, options)` targeting port 38482 with `action: 'autonomous_sync'`.
+     - Prioritized port 38482 in `probeLanHost` alongside fallback ports.
+     - Upgraded `scanAndWakeupDevices(serverUrl)` to scan all registered devices, deliver direct LAN HTTP calls, and update `lastSeenAt`.
+  4. Server Device API Routes (`apps/server/app/api/user/device/` & `apps/server/app/api/admin/devices/scan/`):
+     - `POST /api/user/device/ping`: Returns `wake: true` and `action: "start_backup"` to acknowledge Wi-Fi presence.
+     - `POST /api/user/device/register`: Includes `wakePort: 38482`.
+     - `POST /api/admin/devices/scan`: Supports targeted direct LAN wakeups for specific devices.
+  5. Mobile Client Integration & Lifecycle:
+     - Updated `DeviceService.registerAndPing()` to bind port 38482 and register `wakePort`.
+     - Updated `ApiService.pingDevice()` to return server responses for wake evaluation.
+     - Mounted `DeviceWakeupServer` and `NetworkPresenceWatcher` in `AppShell` (`apps/hbs-app-flutter/lib/screens/app_shell.dart`).
+     - Enhanced `BackupNotifier.autoBackupIfEnabled({bool force = false})` to process server wake events.
+  6. Documentation & Test Suite:
+     - Documented Section 4.7 in `apps/hbs-app-flutter/lib/core/backup_engine/docs.md` with protocol details, architecture, and sequence diagram.
+     - Added unit tests in `apps/hbs-app-flutter/test/backup_engine_test.dart` for `DeviceWakeupServer` and presence response evaluation.
+- Build & Quality Verification:
+  - Verified `dart analyze lib test`: 0 issues found.
+  - Verified `flutter test`: 100% passing tests (47/47 tests).
+  - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 successful builds with 0 errors.
+  - Verified Next.js server production build (`bun run build --filter=server`): 100% success.
+
+
 
 
 

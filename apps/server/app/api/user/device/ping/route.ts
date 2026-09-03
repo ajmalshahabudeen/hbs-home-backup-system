@@ -36,6 +36,9 @@ export const POST = withApiLog(
 
       return ok({
         success: true,
+        wake: true,
+        action: "start_backup",
+        reason: "wifi_presence_heartbeat",
         timestamp: Date.now(),
         serverTime: new Date().toISOString(),
         clientIp: ip,
