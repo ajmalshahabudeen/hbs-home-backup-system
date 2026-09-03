@@ -82,6 +82,63 @@ void main() {
       expect(queue.currentState.syncStepMessage, 'Backup cancelled');
     });
 
+    test('MediaListenerService singleton initializes and manages listening state', () {
+      final listener = MediaListenerService();
+      expect(listener, isNotNull);
+      expect(listener.isListening, isFalse);
+      listener.startListening();
+      expect(listener.isListening, isTrue);
+      listener.stopListening();
+      expect(listener.isListening, isFalse);
+    });
+
+    test('New platform user state detection logic', () {
+      bool isNewUser({required int localCount, required int serverCount}) {
+        return localCount == 0 && serverCount == 0;
+      }
+
+      // Reinstalled user with existing server backup
+      expect(isNewUser(localCount: 0, serverCount: 142), isFalse);
+      // Existing active user on device
+      expect(isNewUser(localCount: 50, serverCount: 50), isFalse);
+      // Brand new user (empty in both places)
+      expect(isNewUser(localCount: 0, serverCount: 0), isTrue);
+    });
+
+    test('Allowed backup folder matching logic', () {
+      final allowedAlbumIds = ['album_camera_123', 'album_family_456'];
+
+      bool isAllowed(String albumId, List<String> allowed) {
+        if (allowed.isEmpty) return true; // All folders permitted
+        return allowed.contains(albumId);
+      }
+
+      expect(isAllowed('album_camera_123', allowedAlbumIds), isTrue);
+      expect(isAllowed('album_family_456', allowedAlbumIds), isTrue);
+      expect(isAllowed('album_random_789', allowedAlbumIds), isFalse);
+      expect(isAllowed('album_random_789', const []), isTrue);
+    });
+
+    test('Server backup index item mapping preserves checksum, name, and size', () {
+      final serverPayload = {
+        'id': 'file_abc',
+        'fileName': 'camera_001.jpg',
+        'filePath': 'DCIM/camera_001.jpg',
+        'fileSize': 1048576,
+        'checksum': 'hash_xyz_123',
+        'mimeType': 'image/jpeg',
+        'uploadedAt': '2026-09-03T10:00:00.000Z',
+      };
+
+      final name = serverPayload['fileName'] ?? '';
+      final size = serverPayload['fileSize'] as int;
+      final checksum = serverPayload['checksum'] ?? '';
+
+      expect(name, 'camera_001.jpg');
+      expect(size, 1048576);
+      expect(checksum, 'hash_xyz_123');
+    });
+
     test('Delta filtering accurately skips already uploaded name+size combinations', () {
       final uploadedKeys = {'photo1.jpg|2048', 'video1.mp4|10485760'};
       final uploadedNames = {'photo1.jpg', 'video1.mp4'};

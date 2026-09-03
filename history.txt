@@ -1161,6 +1161,32 @@
   - Verified `flutter test`: 100% passing tests (39/39 tests).
   - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 successful builds with 0 errors.
 
+## Session: 2026-09-03 (Dual Index Persistence, Reinstall Recovery, New User Detection & Background Media Listener)
+- Dual Backup Index (Server + Phone) & Reinstall Recovery:
+  1. Created `GET /api/user/backup/index` and `POST /api/user/backup/index` in `apps/server/app/api/user/backup/index/route.ts`:
+     - Returns backed-up file metadata (name, size, checksum, path, createdAt) for authenticated users.
+     - Supports bulk upsert and bidirectional sync.
+  2. `BackupIndexDb`: Added `hydrateFromServer(items)` batch transaction insert (`db.batch()`) and `getAllIndexed()` to recover local SQLite index after app uninstall/reinstall.
+  3. `ApiService`: Added `fetchServerBackupIndex()` and `syncBackupIndexToServer(items)`.
+  4. `BackupProvider`:
+     - Added `checkAndHydrateIndex()`: on startup or manual refresh, if SQLite index is 0, checks server index and populates local database.
+     - If both phone SQLite and server have 0 records, recognizes user as `isNewPlatformUser = true` ("Ready for first backup").
+     - Exposed `Dual Backup Index` card in `BackupScreen` with live phone + cloud sync badge and manual resync button.
+- Real-Time Background Media Change Listener & Allowed Folder Auto-Upload:
+  1. Created `MediaListenerService` in `lib/core/backup_engine/listener/media_listener_service.dart`:
+     - Registers `PhotoManager.addChangeCallback` and `PhotoManager.startChangeNotify()` with 1500ms debouncing.
+     - Verifies user's allowed backup albums (`hbs_backup_selected_albums` from `BackupScreen`).
+     - Evaluates media preferences (photos, videos, max size, raw) and SQLite deduplication index (`getUploadedKeys()`).
+     - Automatically enqueues new delta files and launches parallel upload queue when auto-backup is active.
+  2. Integrated into `AppShell.didChangeAppLifecycleState(AppLifecycleState.resumed)` to process any photos captured while the app was suspended.
+  3. Added live listener status badge on `BackupScreen` ("LIVE - Actively watching allowed folders").
+- Verification:
+  - `dart analyze lib test`: 0 issues found.
+  - `flutter test`: 43/43 tests passed (100%).
+  - `bun run typecheck`: 3/3 packages passed (FULL TURBO).
+  - `bun run build --filter=server`: Next.js production build passed in 35.1s.
+
+
 
 
 

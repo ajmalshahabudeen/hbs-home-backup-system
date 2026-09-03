@@ -651,6 +651,53 @@ class ApiService {
     return res.data;
   }
 
+  Future<({int count, List<Map<String, dynamic>> items})> fetchServerBackupIndex({
+    CancelToken? cancelToken,
+  }) async {
+    final token = await _getToken();
+    try {
+      final res = await _dio.get(
+        '$_serverUrl/api/user/backup/index',
+        options: _buildOptions(token),
+        cancelToken: cancelToken,
+      );
+      if (res.statusCode == 200 && res.data is Map) {
+        final count = (res.data['count'] as num?)?.toInt() ?? 0;
+        final rawList = res.data['items'];
+        final items = <Map<String, dynamic>>[];
+        if (rawList is List) {
+          for (final item in rawList) {
+            if (item is Map) {
+              items.add(Map<String, dynamic>.from(item));
+            }
+          }
+        }
+        return (count: count, items: items);
+      }
+    } catch (_) {}
+    return (count: 0, items: <Map<String, dynamic>>[]);
+  }
+
+  Future<int> syncBackupIndexToServer(
+    List<Map<String, dynamic>> items, {
+    CancelToken? cancelToken,
+  }) async {
+    if (items.isEmpty) return 0;
+    final token = await _getToken();
+    try {
+      final res = await _dio.post(
+        '$_serverUrl/api/user/backup/index',
+        data: {'items': items},
+        options: _buildOptions(token),
+        cancelToken: cancelToken,
+      );
+      if (res.statusCode == 200 && res.data is Map) {
+        return (res.data['synced'] as num?)?.toInt() ?? 0;
+      }
+    } catch (_) {}
+    return 0;
+  }
+
   String getMediaUrl(String path) {
     return '$_serverUrl/api/user/media/${Uri.encodeComponent(path)}';
   }

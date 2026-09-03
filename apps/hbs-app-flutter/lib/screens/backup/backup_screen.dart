@@ -282,7 +282,7 @@ class BackupScreen extends ConsumerWidget {
 
                 const SizedBox(height: 12),
 
-                // Deduplication Index Card
+                // Dual Deduplication Index Card (Phone + Server)
                 GlassCard(
                   padding: const EdgeInsets.all(16),
                   borderRadius: 20,
@@ -292,28 +292,79 @@ class BackupScreen extends ConsumerWidget {
                         width: 40,
                         height: 40,
                         decoration: BoxDecoration(
-                          color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                          color: (backupState.isNewPlatformUser
+                                  ? const Color(0xFF3B82F6)
+                                  : const Color(0xFF10B981))
+                              .withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Icon(Icons.fingerprint_rounded, color: Color(0xFF10B981), size: 22),
+                        child: Icon(
+                          backupState.isNewPlatformUser
+                              ? Icons.cloud_done_outlined
+                              : Icons.cloud_sync_rounded,
+                          color: backupState.isNewPlatformUser
+                              ? const Color(0xFF3B82F6)
+                              : const Color(0xFF10B981),
+                          size: 22,
+                        ),
                       ),
                       const SizedBox(width: 14),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              'Local Deduplication Index',
-                              style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700),
+                            Row(
+                              children: [
+                                Text(
+                                  'Dual Backup Index',
+                                  style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: (backupState.isNewPlatformUser ? const Color(0xFF3B82F6) : primary)
+                                        .withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    backupState.isNewPlatformUser ? 'NEW USER' : 'PHONE + CLOUD',
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                      color: backupState.isNewPlatformUser ? const Color(0xFF3B82F6) : primary,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
+                            const SizedBox(height: 2),
                             Text(
-                              '${backupState.indexedCount} files cached in fast SQLite database',
+                              backupState.isHydratingIndex
+                                  ? 'Synchronizing index with HBS Cloud...'
+                                  : (backupState.isNewPlatformUser
+                                      ? 'Ready for first backup (0 prior cloud records)'
+                                      : '${backupState.indexedCount} files synced across device & cloud'),
                               style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6),
+                                color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.65),
                               ),
                             ),
                           ],
                         ),
+                      ),
+                      IconButton(
+                        tooltip: 'Resync Index with Server',
+                        icon: backupState.isHydratingIndex
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.refresh_rounded, size: 20),
+                        onPressed: backupState.isHydratingIndex
+                            ? null
+                            : () => backupNotifier.checkAndHydrateIndex(force: true),
                       ),
                     ],
                   ),
@@ -513,9 +564,34 @@ class BackupScreen extends ConsumerWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Auto-backup on resume', style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700)),
+                            Row(
+                              children: [
+                                Text('Auto-Backup & Live Listener', style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700)),
+                                if (backupState.isMediaListening) ...[
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: const Text(
+                                      'LIVE',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w800,
+                                        color: Color(0xFF10B981),
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
                             Text(
-                              'Sync new photos when you reopen the app',
+                              backupState.isMediaListening
+                                  ? 'Actively watching allowed folders for new photos & videos'
+                                  : 'Auto-upload new media from allowed folders in background',
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6),
                               ),

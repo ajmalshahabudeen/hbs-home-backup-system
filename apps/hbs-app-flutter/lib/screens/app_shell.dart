@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
+import '../core/backup_engine/backup_engine.dart';
 import '../core/widgets/custom_bottom_nav.dart';
 import '../core/widgets/permission_checker.dart';
 import '../providers/backup_provider.dart';
@@ -84,6 +85,7 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
       ref.read(mediaProvider.notifier).loadMedia();
       ref.read(backupProvider.notifier).loadAlbums();
       ref.read(backupProvider.notifier).autoBackupIfEnabled();
+      MediaListenerService().processNewMediaChanges();
       _startLanInbox();
     }
   }

@@ -154,6 +154,50 @@ class BackupIndexDb {
     await db.delete('backup_index');
   }
 
+  /// Bulk hydrate local SQLite index from server records (e.g., on reinstall or initial device link)
+  Future<int> hydrateFromServer(List<Map<String, dynamic>> items) async {
+    if (items.isEmpty) return 0;
+    final db = await database;
+    final batch = db.batch();
+    int count = 0;
+
+    for (final item in items) {
+      final name = item['fileName'] ?? item['file_name'] ?? item['name'] ?? '';
+      final path = item['filePath'] ?? item['file_path'] ?? item['path'] ?? name;
+      final size = (item['fileSize'] ?? item['file_size'] ?? item['size'] as num?)?.toInt() ?? 0;
+      final checksum = item['checksum']?.toString() ?? '';
+      final mime = item['mimeType'] ?? item['mime_type'];
+      final uploadedAt = item['uploadedAt'] ?? item['uploaded_at'] ?? DateTime.now().toIso8601String();
+      final id = item['id']?.toString() ?? (checksum.isNotEmpty ? checksum : '$name|$size');
+
+      if (name.toString().isEmpty) continue;
+
+      batch.insert(
+        'backup_index',
+        {
+          'id': id,
+          'file_name': name,
+          'file_path': path,
+          'file_size': size,
+          'checksum': checksum,
+          'mime_type': mime,
+          'uploaded_at': uploadedAt,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      count++;
+    }
+
+    await batch.commit(noResult: true);
+    return count;
+  }
+
+  Future<List<IndexedBackupItem>> getAllIndexed() async {
+    final db = await database;
+    final rows = await db.query('backup_index');
+    return rows.map((r) => IndexedBackupItem.fromMap(r)).toList();
+  }
+
   Future<void> enqueueUpload({
     required String id,
     required String filePath,

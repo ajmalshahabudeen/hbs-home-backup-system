@@ -8,3 +8,4 @@ export 'notifications/backup_notifications.dart';
 export 'client/backup_api_client.dart';
 export 'queue/upload_queue_engine.dart';
 export 'background/background_worker.dart';
+export 'listener/media_listener_service.dart';

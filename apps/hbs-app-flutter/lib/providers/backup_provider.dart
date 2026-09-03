@@ -18,6 +18,10 @@ class BackupState {
   final int indexedCount;
   final bool isLoadingAlbums;
   final bool hasPermission;
+  final bool isNewPlatformUser;
+  final bool isHydratingIndex;
+  final String? indexStatusMessage;
+  final bool isMediaListening;
 
   const BackupState({
     this.albums = const [],
@@ -31,6 +35,10 @@ class BackupState {
     this.indexedCount = 0,
     this.isLoadingAlbums = false,
     this.hasPermission = true,
+    this.isNewPlatformUser = false,
+    this.isHydratingIndex = false,
+    this.indexStatusMessage,
+    this.isMediaListening = false,
   });
 
   BackupState copyWith({
@@ -45,6 +53,10 @@ class BackupState {
     int? indexedCount,
     bool? isLoadingAlbums,
     bool? hasPermission,
+    bool? isNewPlatformUser,
+    bool? isHydratingIndex,
+    String? indexStatusMessage,
+    bool? isMediaListening,
   }) {
     return BackupState(
       albums: albums ?? this.albums,
@@ -58,6 +70,10 @@ class BackupState {
       indexedCount: indexedCount ?? this.indexedCount,
       isLoadingAlbums: isLoadingAlbums ?? this.isLoadingAlbums,
       hasPermission: hasPermission ?? this.hasPermission,
+      isNewPlatformUser: isNewPlatformUser ?? this.isNewPlatformUser,
+      isHydratingIndex: isHydratingIndex ?? this.isHydratingIndex,
+      indexStatusMessage: indexStatusMessage ?? this.indexStatusMessage,
+      isMediaListening: isMediaListening ?? this.isMediaListening,
     );
   }
 }
@@ -65,6 +81,7 @@ class BackupState {
 class BackupNotifier extends StateNotifier<BackupState> {
   StreamSubscription<SyncState>? _queueSub;
   StreamSubscription<bool>? _permissionSub;
+  StreamSubscription<int>? _mediaListenerSub;
 
   BackupNotifier() : super(const BackupState()) {
     _init();
@@ -84,6 +101,7 @@ class BackupNotifier extends StateNotifier<BackupState> {
       wifiOnly: wifiOnly,
       autoBackup: autoBackup,
       notificationsEnabled: notifications,
+      isMediaListening: autoBackup,
     );
 
     _queueSub = UploadQueueEngine().stateStream.listen((syncState) {
@@ -99,6 +117,13 @@ class BackupNotifier extends StateNotifier<BackupState> {
       }
     });
 
+    if (autoBackup) {
+      MediaListenerService().startListening();
+    }
+    _mediaListenerSub = MediaListenerService().onNewMediaDetected.listen((_) {
+      refreshIndexCount();
+    });
+
     MediaDiscoveryService().isPermissionGranted().then((granted) {
       if (!granted) {
         state = state.copyWith(isLoadingAlbums: false, hasPermission: false);
@@ -108,6 +133,7 @@ class BackupNotifier extends StateNotifier<BackupState> {
     });
 
     refreshIndexCount();
+    checkAndHydrateIndex();
     refreshBatteryOptimizationStatus();
     UploadQueueEngine().resumePending(concurrency: battery ? 2 : 4);
   }
@@ -116,7 +142,50 @@ class BackupNotifier extends StateNotifier<BackupState> {
   void dispose() {
     _queueSub?.cancel();
     _permissionSub?.cancel();
+    _mediaListenerSub?.cancel();
     super.dispose();
+  }
+
+  /// Checks local SQLite index; if empty, fetches server backup index to recover from reinstall.
+  /// If both are empty, marks user as a new platform user.
+  Future<void> checkAndHydrateIndex({bool force = false}) async {
+    final localCount = await BackupIndexDb().getIndexedCount();
+    if (localCount > 0 && !force) {
+      state = state.copyWith(
+        indexedCount: localCount,
+        isNewPlatformUser: false,
+      );
+      return;
+    }
+
+    state = state.copyWith(
+      isHydratingIndex: true,
+      indexStatusMessage: 'Checking server backup index...',
+    );
+
+    try {
+      final serverIndex = await ApiService().fetchServerBackupIndex();
+      if (serverIndex.count > 0) {
+        final restored = await BackupIndexDb().hydrateFromServer(serverIndex.items);
+        final newCount = await BackupIndexDb().getIndexedCount();
+        state = state.copyWith(
+          indexedCount: newCount,
+          isNewPlatformUser: false,
+          isHydratingIndex: false,
+          indexStatusMessage: 'Restored $restored items from HBS Cloud index',
+        );
+      } else {
+        // Neither local phone nor server has index: user is brand new to this platform!
+        state = state.copyWith(
+          indexedCount: 0,
+          isNewPlatformUser: true,
+          isHydratingIndex: false,
+          indexStatusMessage: 'New user: Ready for your first backup',
+        );
+      }
+    } catch (_) {
+      state = state.copyWith(isHydratingIndex: false);
+    }
   }
 
   Future<void> refreshBatteryOptimizationStatus() async {
@@ -189,11 +258,14 @@ class BackupNotifier extends StateNotifier<BackupState> {
   }
 
   Future<void> setAutoBackup(bool enabled) async {
-    state = state.copyWith(autoBackup: enabled);
+    state = state.copyWith(autoBackup: enabled, isMediaListening: enabled);
     await StorageService().setBool('hbs_auto_backup', enabled);
     if (enabled) {
+      MediaListenerService().startListening();
       await scheduleBackgroundBackup();
+      await autoBackupIfEnabled();
     } else {
+      MediaListenerService().stopListening();
       await cancelBackgroundBackup();
     }
   }
