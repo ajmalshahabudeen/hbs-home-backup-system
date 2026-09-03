@@ -1281,11 +1281,28 @@
      - Added scroll reset to top (0px) when navigating into folders or up hierarchy.
      - Added adaptive circular loading indicators at bottom of grid and list views when `isLoadingMore == true`.
      - Added a "Live" pulsing green indicator badge in the header breadcrumb bar to confirm real-time sync connectivity.
-  5. Test Suite & Verification:
      - Created `apps/hbs-app-flutter/test/drive_pagination_realtime_test.dart` testing `DriveChangeEvent.fromJson`, `DriveState` initial state, `copyWith`, and paginated list deduplication.
+  5. Test Suite & Verification:
      - Ran `flutter test`: 100% passed (52/52 tests).
      - Ran `dart analyze lib test`: 0 issues found.
      - Ran `bun run typecheck`: 3/3 packages successful with 0 errors.
      - Ran `bun run build --filter=server`: 100% success in 32s.
 
-
+## Session: 2026-09-03 (ListTile Ink Splash & Background Invisible Assertion Fix Completed)
+- Diagnosed and resolved repeated runtime exception: `Another exception was thrown: ListTile background color or ink splashes may be invisible.`:
+  1. Root Cause Analysis:
+     - Flutter's `ListTile` debug assertion (`_debugCheckBackgroundIsHidden` in `list_tile.dart`) walks up the widget element tree from the `ListTile` to its nearest `Material` ancestor.
+     - If an intermediate widget with an opaque background color (such as `Container` or `DecoratedBox`) is encountered before reaching `Material`, Flutter asserts that ink ripples and background colors will be hidden by that intermediate container.
+     - In `AppShell`, `IndexedStack` eagerly lays out all tab screens on launch, including `SettingsScreen`.
+     - In `SettingsScreen`, 24 `ListTile` and `SwitchListTile` widgets were direct children of `GlassCard` (`lib/core/widgets/glass_card.dart`).
+     - `GlassCard` wrapped its child in a `Container` with `defaultBg` without an inner `Material` canvas, causing every `ListTile` / `SwitchListTile` to trigger the assertion on startup.
+     - Similarly, in `FolderPickerSheet` (`lib/screens/drive/folder_picker_sheet.dart`), the modal bottom sheet `Container` with solid dark/light surface background wrapped `ListView.separated` of `ListTile` items without a `Material` canvas.
+  2. Solution:
+     - `GlassCard` (`lib/core/widgets/glass_card.dart`): Wrapped `child` inside `Material(type: MaterialType.transparency, child: child)`. This provides a transparent `Material` canvas right on top of the card's backdrop and container, ensuring nearest `Material` resolution terminates cleanly and ink splashes paint directly onto the card surface.
+     - `FolderPickerSheet` (`lib/screens/drive/folder_picker_sheet.dart`): Wrapped `SafeArea` content in `Material(color: Colors.transparent, child: SafeArea(...))`.
+  3. Test Suite & Verification:
+     - Added widget test in `test/widget_test.dart` asserting that `ListTile` inside `GlassCard` renders without throwing background hidden or ink splash assertions.
+     - Ran `dart analyze lib test`: 0 issues found.
+     - Ran `flutter test`: 100% passing tests (53/53 tests).
+     - Ran `bun run typecheck`: 3/3 packages passed (FULL TURBO).
+     - Ran `bun run build --filter=server`: 100% success in 32s.

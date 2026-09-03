@@ -192,9 +192,11 @@ class _FolderPickerSheetState extends State<FolderPickerSheet> {
           ),
         ],
       ),
-      child: SafeArea(
-        top: false,
-        child: Column(
+      child: Material(
+        color: Colors.transparent,
+        child: SafeArea(
+          top: false,
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -448,6 +450,7 @@ class _FolderPickerSheetState extends State<FolderPickerSheet> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

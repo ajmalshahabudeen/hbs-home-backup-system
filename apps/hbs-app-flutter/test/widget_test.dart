@@ -1,6 +1,8 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hbs_app_flutter/core/utils/formatters.dart';
 import 'package:hbs_app_flutter/core/utils/session_token_cleaner.dart';
+import 'package:hbs_app_flutter/core/widgets/glass_card.dart';
 import 'package:hbs_app_flutter/models/user_model.dart';
 
 void main() {
@@ -61,4 +63,23 @@ void main() {
       expect(Formatters.getMimeTypeCategory('application/pdf', 'doc.pdf'), 'doc');
     });
   });
+
+  group('GlassCard & ListTile Material Tests', () {
+    testWidgets('ListTile inside GlassCard does not throw ink splash or background hidden exception', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GlassCard(
+              child: ListTile(
+                title: const Text('Test Item'),
+                onTap: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    });
+  });
 }
+
