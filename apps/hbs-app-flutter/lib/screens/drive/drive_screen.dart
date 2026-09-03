@@ -16,6 +16,7 @@ import '../../providers/drive_provider.dart';
 import '../../providers/server_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/drive_cache_service.dart';
+import '../../services/drive_websocket_service.dart';
 import '../search/search_screen.dart';
 import '../settings/lan_scanner_modal.dart';
 import 'drive_filter_sheet.dart';
@@ -24,8 +25,45 @@ import 'drive_thumbnail.dart';
 import 'folder_picker_sheet.dart';
 import 'upload_modal.dart';
 
-class DriveScreen extends ConsumerWidget {
+class DriveScreen extends ConsumerStatefulWidget {
   const DriveScreen({super.key});
+
+  @override
+  ConsumerState<DriveScreen> createState() => _DriveScreenState();
+}
+
+class _DriveScreenState extends ConsumerState<DriveScreen> {
+  final ScrollController _scrollController = ScrollController();
+  String _previousPath = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final serverUrl = ref.read(serverProvider).url;
+      final token = ref.read(authProvider).token;
+      DriveWebSocketService().updateConfig(serverUrl: serverUrl, sessionToken: token);
+      DriveWebSocketService().connect();
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.hasClients) {
+      final maxScroll = _scrollController.position.maxScrollExtent;
+      final currentScroll = _scrollController.position.pixels;
+      if (currentScroll >= maxScroll - 400) {
+        ref.read(driveProvider.notifier).loadMoreFiles();
+      }
+    }
+  }
 
   Future<void> _handleAddAction(BuildContext context, WidgetRef ref) async {
     final action = await UploadModal.show(context);
@@ -576,7 +614,8 @@ class DriveScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
+    final ref = this.ref;
     final theme = Theme.of(context);
     final primary = theme.primaryColor;
     final isDark = theme.brightness == Brightness.dark;
@@ -587,6 +626,13 @@ class DriveScreen extends ConsumerWidget {
     final authState = ref.watch(authProvider);
     final user = authState.user;
     final mediaHeaders = SessionTokenCleaner.authHeaders(authState.token);
+
+    if (driveState.currentPath != _previousPath) {
+      _previousPath = driveState.currentPath;
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(0);
+      }
+    }
 
     final files = driveState.sortedAndFilteredFiles;
     final groupedFiles = driveState.groupedFiles;
@@ -785,6 +831,42 @@ class DriveScreen extends ConsumerWidget {
                   }),
                   const Spacer(),
 
+                  // Live Realtime Indicator
+                  if (driveState.isRealtimeConnected)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: const BoxDecoration(
+                                color: Colors.green,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            const Text(
+                              'Live',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.green,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
                   // Filter & Group Button
                   Stack(
                     alignment: Alignment.topRight,
@@ -971,6 +1053,7 @@ class DriveScreen extends ConsumerWidget {
     if (driveState.isGridView) {
       if (driveState.groupBy == DriveGroupBy.none) {
         return GridView.builder(
+          controller: _scrollController,
           padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.paddingOf(context).bottom + 160),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2,
@@ -978,8 +1061,18 @@ class DriveScreen extends ConsumerWidget {
             mainAxisSpacing: 12,
             childAspectRatio: 0.82,
           ),
-          itemCount: files.length,
+          itemCount: files.length + (driveState.isLoadingMore ? 1 : 0),
           itemBuilder: (context, index) {
+            if (index >= files.length) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: CircularProgressIndicator.adaptive(
+                    valueColor: AlwaysStoppedAnimation<Color>(primary),
+                  ),
+                ),
+              );
+            }
             final file = files[index];
             return _buildGridItem(
               context: context,
@@ -999,9 +1092,137 @@ class DriveScreen extends ConsumerWidget {
 
       // Grouped Grid View
       return ListView(
+        controller: _scrollController,
         padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.paddingOf(context).bottom + 160),
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-        children: groupedFiles.entries.map((entry) {
+        children: [
+          ...groupedFiles.entries.map((entry) {
+            final groupTitle = entry.key;
+            final groupItems = entry.value;
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 12, bottom: 8, left: 4),
+                  child: Row(
+                    children: [
+                      Text(
+                        groupTitle,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: primary,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '(${groupItems.length})',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.5),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 0.82,
+                  ),
+                  itemCount: groupItems.length,
+                  itemBuilder: (context, index) {
+                    final file = groupItems[index];
+                    return _buildGridItem(
+                      context: context,
+                      ref: ref,
+                      file: file,
+                      driveState: driveState,
+                      driveNotifier: driveNotifier,
+                      mediaHeaders: mediaHeaders,
+                      serverUrl: serverUrl,
+                      primary: primary,
+                      isDark: isDark,
+                      theme: theme,
+                    );
+                  },
+                ),
+              ],
+            );
+          }),
+          if (driveState.isLoadingMore)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: CircularProgressIndicator.adaptive(
+                  valueColor: AlwaysStoppedAnimation<Color>(primary),
+                ),
+              ),
+            ),
+        ],
+      );
+    }
+
+    // List View
+    if (driveState.groupBy == DriveGroupBy.none) {
+      return ListView.separated(
+        controller: _scrollController,
+        padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.paddingOf(context).bottom + 160),
+        itemCount: files.length + (driveState.isLoadingMore ? 1 : 0),
+        separatorBuilder: (_, __) => const SizedBox(height: 8),
+        itemBuilder: (context, index) {
+          if (index >= files.length) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: primary),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Loading more files...',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+          final file = files[index];
+          return _buildListItem(
+            context: context,
+            ref: ref,
+            file: file,
+            driveState: driveState,
+            driveNotifier: driveNotifier,
+            mediaHeaders: mediaHeaders,
+            serverUrl: serverUrl,
+            primary: primary,
+            isDark: isDark,
+            theme: theme,
+          );
+        },
+      );
+    }
+
+    // Grouped List View
+    return ListView(
+      controller: _scrollController,
+      padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.paddingOf(context).bottom + 160),
+      physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+      children: [
+        ...groupedFiles.entries.map((entry) {
           final groupTitle = entry.key;
           final groupItems = entry.value;
 
@@ -1030,19 +1251,14 @@ class DriveScreen extends ConsumerWidget {
                   ],
                 ),
               ),
-              GridView.builder(
+              ListView.separated(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: 0.82,
-                ),
                 itemCount: groupItems.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
                   final file = groupItems[index];
-                  return _buildGridItem(
+                  return _buildListItem(
                     context: context,
                     ref: ref,
                     file: file,
@@ -1058,91 +1274,17 @@ class DriveScreen extends ConsumerWidget {
               ),
             ],
           );
-        }).toList(),
-      );
-    }
-
-    // List View
-    if (driveState.groupBy == DriveGroupBy.none) {
-      return ListView.separated(
-        padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.paddingOf(context).bottom + 160),
-        itemCount: files.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 8),
-        itemBuilder: (context, index) {
-          final file = files[index];
-          return _buildListItem(
-            context: context,
-            ref: ref,
-            file: file,
-            driveState: driveState,
-            driveNotifier: driveNotifier,
-            mediaHeaders: mediaHeaders,
-            serverUrl: serverUrl,
-            primary: primary,
-            isDark: isDark,
-            theme: theme,
-          );
-        },
-      );
-    }
-
-    // Grouped List View
-    return ListView(
-      padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.paddingOf(context).bottom + 160),
-      physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-      children: groupedFiles.entries.map((entry) {
-        final groupTitle = entry.key;
-        final groupItems = entry.value;
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 12, bottom: 8, left: 4),
-              child: Row(
-                children: [
-                  Text(
-                    groupTitle,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: primary,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '(${groupItems.length})',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.5),
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
+        }),
+        if (driveState.isLoadingMore)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            child: Center(
+              child: CircularProgressIndicator.adaptive(
+                valueColor: AlwaysStoppedAnimation<Color>(primary),
               ),
             ),
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: groupItems.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                final file = groupItems[index];
-                return _buildListItem(
-                  context: context,
-                  ref: ref,
-                  file: file,
-                  driveState: driveState,
-                  driveNotifier: driveNotifier,
-                  mediaHeaders: mediaHeaders,
-                  serverUrl: serverUrl,
-                  primary: primary,
-                  isDark: isDark,
-                  theme: theme,
-                );
-              },
-            ),
-          ],
-        );
-      }).toList(),
+          ),
+      ],
     );
   }
 

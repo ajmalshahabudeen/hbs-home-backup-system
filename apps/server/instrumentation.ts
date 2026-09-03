@@ -3,6 +3,12 @@ export async function register() {
     const { printBootBanner, term } = await import("./lib/term-log");
     printBootBanner();
     term("BOOT", "Next.js instrumentation register() complete");
+
+    // Initialize real-time WebSocket server & filesystem watcher
+    const { initWebSocketServer } = await import("./lib/ws-server");
+    const { initStorageWatcher } = await import("./lib/storage-watcher");
+    initWebSocketServer();
+    initStorageWatcher();
   }
 }
 

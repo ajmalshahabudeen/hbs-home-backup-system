@@ -19,6 +19,7 @@ import {
   originalPathForTrash,
   rememberTrashOriginal,
 } from "@/lib/trash-meta";
+import { broadcastDriveChange } from "@/lib/ws-server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -55,6 +56,12 @@ export const GET = withApiLog(
     const fileId = searchParams.get("id");
     const search = searchParams.get("search")?.trim();
     const category = searchParams.get("category"); // 'image', 'video', 'document', 'audio'
+    const limitParam = searchParams.get("limit");
+    const offsetParam = searchParams.get("offset");
+    const limit = limitParam
+      ? Math.max(1, Math.min(200, parseInt(limitParam, 10)))
+      : undefined;
+    const offset = offsetParam ? Math.max(0, parseInt(offsetParam, 10)) : 0;
 
     // Download a file by id
     if (download === "1" && fileId) {
@@ -111,13 +118,16 @@ export const GET = withApiLog(
         }
         const stat = fs.statSync(abs);
         const stream = fs.createReadStream(abs);
-        return new Response(Readable.toWeb(stream) as unknown as ReadableStream, {
-          headers: {
-            "Content-Type": row.mimeType || "application/octet-stream",
-            "Content-Disposition": `attachment; filename="${encodeURIComponent(row.name)}"`,
-            "Content-Length": String(stat.size),
+        return new Response(
+          Readable.toWeb(stream) as unknown as ReadableStream,
+          {
+            headers: {
+              "Content-Type": row.mimeType || "application/octet-stream",
+              "Content-Disposition": `attachment; filename="${encodeURIComponent(row.name)}"`,
+              "Content-Length": String(stat.size),
+            },
           },
-        });
+        );
       } catch (e) {
         return badRequest(e instanceof Error ? e.message : "Read failed");
       }
@@ -125,22 +135,38 @@ export const GET = withApiLog(
 
     ensureUserDir(userId);
 
-    if (!parentPath.startsWith("__share__/")) {
-      // Sync disk -> db for current parentPath
+    if (!parentPath.startsWith("__share__/") && offset === 0) {
+      // Sync disk -> db for current parentPath on initial page load (offset 0)
       try {
         const absDir = resolveUserPath(userId, parentPath);
         if (fs.existsSync(absDir) && fs.statSync(absDir).isDirectory()) {
           const entries = fs.readdirSync(absDir, { withFileTypes: true });
+          const existingInDb = await prisma.backupFile.findMany({
+            where: { userId, parentPath },
+            select: { name: true, size: true, isDir: true },
+          });
+          const existingMap = new Map(existingInDb.map((e) => [e.name, e]));
+          const toCreate: Array<{
+            userId: string;
+            path: string;
+            name: string;
+            parentPath: string;
+            isDir: boolean;
+            size: bigint;
+            mimeType: string | null;
+          }> = [];
+
           for (const ent of entries) {
             if (ent.name.startsWith(".")) continue;
+            if (existingMap.has(ent.name)) continue;
+
             const rel = toPosixRel(
               parentPath ? `${parentPath}/${ent.name}` : ent.name,
             );
             const full = path.join(absDir, ent.name);
-            const st = fs.statSync(full);
-            await prisma.backupFile.upsert({
-              where: { userId_path: { userId, path: rel } },
-              create: {
+            try {
+              const st = fs.statSync(full);
+              toCreate.push({
                 userId,
                 path: rel,
                 name: ent.name,
@@ -148,13 +174,16 @@ export const GET = withApiLog(
                 isDir: ent.isDirectory(),
                 size: BigInt(ent.isDirectory() ? 0 : st.size),
                 mimeType: ent.isDirectory() ? null : guessMime(ent.name),
-              },
-              update: {
-                name: ent.name,
-                isDir: ent.isDirectory(),
-                size: BigInt(ent.isDirectory() ? 0 : st.size),
-                mimeType: ent.isDirectory() ? null : guessMime(ent.name),
-              },
+              });
+            } catch {
+              // skip unreadable
+            }
+          }
+
+          if (toCreate.length > 0) {
+            await prisma.backupFile.createMany({
+              data: toCreate,
+              skipDuplicates: true,
             });
           }
         }
@@ -204,16 +233,36 @@ export const GET = withApiLog(
       }
     }
 
-    const files = await prisma.backupFile.findMany({
-      where: {
-        ...where,
-        NOT: [
-          { name: { contains: ".hbs-thumb" } },
-          { path: { contains: ".hbs-thumb" } },
-        ],
-      },
-      orderBy: [{ isDir: "desc" }, { name: "asc" }],
-    });
+    const whereConditions = {
+      ...where,
+      NOT: [
+        { name: { contains: ".hbs-thumb" } },
+        { path: { contains: ".hbs-thumb" } },
+      ],
+    };
+
+    let total = 0;
+    let files: Array<any> = [];
+
+    if (limit !== undefined) {
+      const [dbTotal, dbFiles] = await Promise.all([
+        prisma.backupFile.count({ where: whereConditions }),
+        prisma.backupFile.findMany({
+          where: whereConditions,
+          orderBy: [{ isDir: "desc" }, { name: "asc" }],
+          skip: offset,
+          take: limit,
+        }),
+      ]);
+      total = dbTotal;
+      files = dbFiles;
+    } else {
+      files = await prisma.backupFile.findMany({
+        where: whereConditions,
+        orderBy: [{ isDir: "desc" }, { name: "asc" }],
+      });
+      total = files.length;
+    }
 
     const serialized = files.map(serializeFile);
 
@@ -234,17 +283,39 @@ export const GET = withApiLog(
       const ownerParent = toPosixRel(
         share.path ? (rest ? `${share.path}/${rest}` : share.path) : rest,
       );
-      const sharedFiles = await prisma.backupFile.findMany({
-        where: {
-          userId: share.ownerId,
-          parentPath: ownerParent,
-          NOT: [
-            { name: { contains: ".hbs-thumb" } },
-            { path: { contains: ".hbs-thumb" } },
-          ],
-        },
-        orderBy: [{ isDir: "desc" }, { name: "asc" }],
-      });
+
+      const sharedWhere = {
+        userId: share.ownerId,
+        parentPath: ownerParent,
+        NOT: [
+          { name: { contains: ".hbs-thumb" } },
+          { path: { contains: ".hbs-thumb" } },
+        ],
+      };
+
+      let sharedTotal = 0;
+      let sharedFiles: Array<any> = [];
+
+      if (limit !== undefined) {
+        const [stTotal, stFiles] = await Promise.all([
+          prisma.backupFile.count({ where: sharedWhere }),
+          prisma.backupFile.findMany({
+            where: sharedWhere,
+            orderBy: [{ isDir: "desc" }, { name: "asc" }],
+            skip: offset,
+            take: limit,
+          }),
+        ]);
+        sharedTotal = stTotal;
+        sharedFiles = stFiles;
+      } else {
+        sharedFiles = await prisma.backupFile.findMany({
+          where: sharedWhere,
+          orderBy: [{ isDir: "desc" }, { name: "asc" }],
+        });
+        sharedTotal = sharedFiles.length;
+      }
+
       return ok({
         userId,
         path: parentPath,
@@ -254,10 +325,17 @@ export const GET = withApiLog(
           path: `${parentPath}/${f.name}`,
           parentPath,
         })),
+        total: sharedTotal,
+        hasMore:
+          limit !== undefined
+            ? offset + sharedFiles.length < sharedTotal
+            : false,
+        offset,
+        limit: limit ?? sharedFiles.length,
       });
     }
 
-    if (!parentPath && !search) {
+    if (!parentPath && !search && offset === 0) {
       const received = await prisma.folderShare.findMany({
         where: {
           OR: [
@@ -289,6 +367,7 @@ export const GET = withApiLog(
           canWrite: share.canWrite,
         });
       }
+      total += received.length;
     }
 
     return ok({
@@ -296,6 +375,10 @@ export const GET = withApiLog(
       path: parentPath,
       currentPath: parentPath,
       files: serialized,
+      total,
+      hasMore: limit !== undefined ? offset + files.length < total : false,
+      offset,
+      limit: limit ?? files.length,
     });
   },
 );
@@ -321,7 +404,7 @@ export const POST = withApiLog(
     }
 
     const incomingParent = toPosixRel(
-      body.parentPath !== undefined ? (body.parentPath || "") : (body.path || ""),
+      body.parentPath !== undefined ? body.parentPath || "" : body.path || "",
     );
     const name = (body.folderName || body.name)?.trim().replace(/[\\/]/g, "_");
     const isDir = body.isDir !== false;
@@ -380,6 +463,13 @@ export const POST = withApiLog(
         `[HBS][FILE] create ${isDir ? "folder" : "file"} user=${session.user.email} path=${rel}`,
       );
 
+      broadcastDriveChange({
+        userId: ownerId,
+        action: "create",
+        path: parentPath,
+        file: serializeFile(row),
+      });
+
       return ok({ file: serializeFile(row) }, { status: 201 });
     } catch (e) {
       return badRequest(e instanceof Error ? e.message : "Create failed");
@@ -432,6 +522,12 @@ export const PATCH = withApiLog(
           },
         });
         forgetTrashOriginal(userId, row.path);
+        broadcastDriveChange({
+          userId,
+          action: "restore",
+          path: destParent,
+          file: { path: destRel, name: path.posix.basename(destRel) },
+        });
         return ok({ restored: true, path: destRel });
       } catch (e) {
         return badRequest(e instanceof Error ? e.message : "Restore failed");
@@ -502,6 +598,12 @@ export const PATCH = withApiLog(
       console.log(
         `[HBS][FILE] rename user=${session.user.email} ${row.path} -> ${newRel}`,
       );
+      broadcastDriveChange({
+        userId,
+        action: "rename",
+        path: parent,
+        file: updated ? serializeFile(updated) : undefined,
+      });
       return ok({ file: updated ? serializeFile(updated) : null });
     } catch (e) {
       return badRequest(e instanceof Error ? e.message : "Rename failed");
@@ -543,6 +645,12 @@ export const DELETE = withApiLog(
       } catch {
         /* ignore */
       }
+      broadcastDriveChange({
+        userId,
+        action: "delete",
+        path: "Trash",
+        meta: { emptied: true, count: rows.length },
+      });
       return ok({ emptied: true, count: rows.length });
     }
     const id = searchParams.get("id");
@@ -584,6 +692,17 @@ export const DELETE = withApiLog(
           userEmail: session.user.email,
           ...meta,
           metadata: { path: row.path, isDir: row.isDir, permanent: true },
+        });
+        broadcastDriveChange({
+          userId,
+          action: "delete",
+          path: row.parentPath,
+          file: {
+            id: row.id,
+            name: row.name,
+            path: row.path,
+            parentPath: row.parentPath,
+          },
         });
         return ok({ deleted: true, id, permanent: true });
       }
@@ -645,6 +764,17 @@ export const DELETE = withApiLog(
       console.log(
         `[HBS][FILE] trash user=${session.user.email} path=${row.path}`,
       );
+      broadcastDriveChange({
+        userId,
+        action: "trash",
+        path: row.parentPath,
+        file: {
+          id: row.id,
+          name: row.name,
+          path: row.path,
+          parentPath: row.parentPath,
+        },
+      });
       return ok({ deleted: false, trashed: true, id });
     } catch (e) {
       return badRequest(e instanceof Error ? e.message : "Delete failed");

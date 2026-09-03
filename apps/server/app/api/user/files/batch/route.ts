@@ -12,11 +12,16 @@ import {
 } from "@/lib/auth-guard";
 import { ensureUserDir, resolveUserPath, toPosixRel } from "@/lib/storage";
 import { rememberTrashOriginal } from "@/lib/trash-meta";
+import { broadcastDriveChange } from "@/lib/ws-server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-function getUniqueName(baseName: string, existingNames: Set<string>, isDir: boolean): string {
+function getUniqueName(
+  baseName: string,
+  existingNames: Set<string>,
+  isDir: boolean,
+): string {
   if (!existingNames.has(baseName.toLowerCase())) {
     return baseName;
   }
@@ -58,7 +63,12 @@ export const POST = withApiLog(
     }
 
     const { action, fileIds, destinationPath = "", permanent = false } = body;
-    if (!action || !fileIds || !Array.isArray(fileIds) || fileIds.length === 0) {
+    if (
+      !action ||
+      !fileIds ||
+      !Array.isArray(fileIds) ||
+      fileIds.length === 0
+    ) {
       return badRequest("action and fileIds array are required");
     }
 
@@ -82,7 +92,8 @@ export const POST = withApiLog(
       for (const row of sourceFiles) {
         try {
           const abs = resolveUserPath(userId, row.path);
-          const inTrash = row.parentPath === "Trash" || row.path.startsWith("Trash/");
+          const inTrash =
+            row.parentPath === "Trash" || row.path.startsWith("Trash/");
 
           if (permanent || inTrash) {
             if (fs.existsSync(abs)) {
@@ -167,6 +178,13 @@ export const POST = withApiLog(
         metadata: { deletedCount: deletedIds.length, permanent },
       });
 
+      broadcastDriveChange({
+        userId,
+        action: "delete",
+        path: destParent,
+        meta: { deletedCount: deletedIds.length, permanent },
+      });
+
       return ok({ success: true, count: deletedIds.length, ids: deletedIds });
     }
 
@@ -187,7 +205,10 @@ export const POST = withApiLog(
       // Pre-check for Rule 2: ensure no folder is moved into itself or its own subdirectories
       for (const row of sourceFiles) {
         if (row.isDir) {
-          if (destParent === row.path || destParent.startsWith(row.path + "/")) {
+          if (
+            destParent === row.path ||
+            destParent.startsWith(row.path + "/")
+          ) {
             return badRequest(
               `Cannot move folder "${row.name}" into itself or any of its subdirectories.`,
             );
@@ -200,7 +221,9 @@ export const POST = withApiLog(
         where: { userId, parentPath: destParent },
         select: { name: true },
       });
-      const existingNameSet = new Set(existingInDest.map((f) => f.name.toLowerCase()));
+      const existingNameSet = new Set(
+        existingInDest.map((f) => f.name.toLowerCase()),
+      );
 
       const movedIds: string[] = [];
 
@@ -213,7 +236,11 @@ export const POST = withApiLog(
 
         try {
           const oldAbs = resolveUserPath(userId, row.path);
-          const targetName = getUniqueName(row.name, existingNameSet, row.isDir);
+          const targetName = getUniqueName(
+            row.name,
+            existingNameSet,
+            row.isDir,
+          );
           existingNameSet.add(targetName.toLowerCase());
 
           const newRel = toPosixRel(
@@ -280,6 +307,13 @@ export const POST = withApiLog(
         metadata: { destination: destParent, count: movedIds.length },
       });
 
+      broadcastDriveChange({
+        userId,
+        action: "batch",
+        path: destParent,
+        meta: { movedCount: movedIds.length, action: "move" },
+      });
+
       return ok({ success: true, count: movedIds.length, ids: movedIds });
     }
 
@@ -300,7 +334,10 @@ export const POST = withApiLog(
       // Pre-check for Rule 2: ensure no folder is copied into itself or its own subdirectories
       for (const row of sourceFiles) {
         if (row.isDir) {
-          if (destParent === row.path || destParent.startsWith(row.path + "/")) {
+          if (
+            destParent === row.path ||
+            destParent.startsWith(row.path + "/")
+          ) {
             return badRequest(
               `Cannot copy folder "${row.name}" into itself or any of its subdirectories.`,
             );
@@ -313,14 +350,20 @@ export const POST = withApiLog(
         where: { userId, parentPath: destParent },
         select: { name: true },
       });
-      const existingNameSet = new Set(existingInDest.map((f) => f.name.toLowerCase()));
+      const existingNameSet = new Set(
+        existingInDest.map((f) => f.name.toLowerCase()),
+      );
 
       const copiedItems: string[] = [];
 
       for (const row of sourceFiles) {
         try {
           const oldAbs = resolveUserPath(userId, row.path);
-          const targetName = getUniqueName(row.name, existingNameSet, row.isDir);
+          const targetName = getUniqueName(
+            row.name,
+            existingNameSet,
+            row.isDir,
+          );
           existingNameSet.add(targetName.toLowerCase());
 
           const newRel = toPosixRel(
@@ -411,6 +454,13 @@ export const POST = withApiLog(
         userEmail: session.user.email,
         ...meta,
         metadata: { destination: destParent, count: copiedItems.length },
+      });
+
+      broadcastDriveChange({
+        userId,
+        action: "batch",
+        path: destParent,
+        meta: { copiedCount: copiedItems.length, action: "copy" },
       });
 
       return ok({ success: true, count: copiedItems.length });

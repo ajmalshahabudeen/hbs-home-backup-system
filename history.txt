@@ -1253,15 +1253,39 @@
   - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 successful builds with 0 errors.
   - Verified Next.js server production build (`bun run build --filter=server`): 100% success.
 
-
-
-
-
-
-
-
-
-
-
+## Session: 2026-09-03 (Drive On-The-Fly Loading & WebSocket Real-Time Sync Implementation)
+- Analyzed user request for Drive screen performance & real-time synchronization:
+  1. On-the-fly loading when opening folders: immediate first batch (50-100 files) display and automatic infinite scrolling when scrolling down.
+  2. Real-time WebSocket connection between Flutter Drive screen and server to see changes (uploads, deletes, renames, and future desktop file drops) without refreshing.
+- Investigated root causes of folder open latency:
+  1. Server serial disk-to-DB sync (`fs.readdirSync` with sequential `prisma.backupFile.upsert` in a `for` loop) took 10-20 seconds on folders with thousands of entries.
+  2. Lack of pagination in `GET /api/user/files` (fetching and serializing entire multi-thousand item arrays at once).
+- Executed full-stack implementation:
+  1. Backend Infrastructure:
+     - Installed `ws`, `chokidar`, and `@types/ws` in `apps/server`.
+     - Built `apps/server/lib/ws-server.ts`: Singleton WebSocket server hooking Next.js HTTP `upgrade` on port 38480 (sharing the port with HTTP/HTTPS, zero docker changes). Includes session token auth, ping/pong heartbeat, user socket registry, and `broadcastDriveChange`.
+     - Built `apps/server/lib/storage-watcher.ts`: `chokidar` filesystem watcher monitoring `STORAGE_ROOT/users/` for real-time desktop drops, syncing records with debouncing, and broadcasting changes.
+     - Registered WebSocket server and filesystem watcher in `apps/server/instrumentation.ts`.
+  2. Server API Route Optimizations & Event Triggers:
+     - Optimized `GET /api/user/files`: Replaced serial DB upserts with in-memory map diff and single `createMany` (runs only when `offset === 0`), added `limit` and `offset` pagination, returning `{ files, total, hasMore, offset, limit, currentPath }`.
+     - Added `broadcastDriveChange` calls on `POST` (create folder), `PATCH` (rename, restore), `DELETE` (trash, permanent delete, empty trash) in `apps/server/app/api/user/files/route.ts`.
+     - Added `broadcastDriveChange` call on `apps/server/app/api/user/upload/route.ts` upon file upload completion.
+     - Added `broadcastDriveChange` call on `apps/server/app/api/user/files/batch/route.ts` upon batch move, copy, and delete operations.
+  3. Flutter Client Services & Providers:
+     - Created `apps/hbs-app-flutter/lib/services/drive_websocket_service.dart`: Native `dart:io` WebSocket connection with automatic backoff reconnection, 25s ping keep-alive, auth handshake, and `DriveChangeEvent` broadcast stream.
+     - Updated `ApiService.getFiles`: Added `limit` and `offset` query parameters and parsed `total`, `hasMore`, `offset`, `limit` response fields.
+     - Updated `DriveState` and `DriveNotifier` in `apps/hbs-app-flutter/lib/providers/drive_provider.dart`: Added `pageSize` (default 60), `currentOffset`, `totalFiles`, `hasMore`, `isLoadingMore`, and `isRealtimeConnected`. Initial folder load requests page 0 immediately. Added `loadMoreFiles()` with pagination offset and item deduplication. Subscribed to `DriveWebSocketService` to auto-refresh current folder silently when remote/desktop changes occur.
+  4. Drive UI & Interaction:
+     - Converted `DriveScreen` to `ConsumerStatefulWidget` with attached `ScrollController`.
+     - Implemented infinite scroll listener: triggers `loadMoreFiles()` when scrolling within 400px of max scroll extent.
+     - Added scroll reset to top (0px) when navigating into folders or up hierarchy.
+     - Added adaptive circular loading indicators at bottom of grid and list views when `isLoadingMore == true`.
+     - Added a "Live" pulsing green indicator badge in the header breadcrumb bar to confirm real-time sync connectivity.
+  5. Test Suite & Verification:
+     - Created `apps/hbs-app-flutter/test/drive_pagination_realtime_test.dart` testing `DriveChangeEvent.fromJson`, `DriveState` initial state, `copyWith`, and paginated list deduplication.
+     - Ran `flutter test`: 100% passed (52/52 tests).
+     - Ran `dart analyze lib test`: 0 issues found.
+     - Ran `bun run typecheck`: 3/3 packages successful with 0 errors.
+     - Ran `bun run build --filter=server`: 100% success in 32s.
 
 

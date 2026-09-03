@@ -275,6 +275,21 @@ export const POST = withApiLog(
         /* ignore */
       }
 
+      try {
+        const { broadcastDriveChange } = await import("@/lib/ws-server");
+        broadcastDriveChange({
+          userId: ownerId,
+          action: "upload",
+          path: parentPath,
+          file: {
+            ...row,
+            size: Number(row.size),
+          },
+        });
+      } catch {
+        /* ignore */
+      }
+
       return ok(
         {
           file: {

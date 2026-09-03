@@ -16,6 +16,7 @@
     "@workspace/db": "workspace:*",
     "@workspace/ui": "workspace:*",
     "better-auth": "^1.5.5",
+    "chokidar": "^5.0.0",
     "ioredis": "^5.6.1",
     "lucide-react": "^1.28.0",
     "next": "16.3.0",
@@ -25,6 +26,7 @@
     "react-dom": "19.2.8",
     "recharts": "3.8.0",
     "sharp": "^0.34.2",
+    "ws": "^8.21.3",
     "zod": "^4.4.3",
     "zustand": "^5.0.14"
   },
@@ -35,6 +37,7 @@
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/ws": "^8.18.1",
     "@workspace/typescript-config": "workspace:*",
     "tailwindcss": "^4",
     "typescript": "^5"

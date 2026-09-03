@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/utils/formatters.dart';
 import '../core/widgets/filter_sort_bar.dart';
 import '../models/backup_file_item.dart';
 import '../services/api_service.dart';
+import '../services/drive_websocket_service.dart';
 
 enum DriveTypeFilter { all, folders, photos, videos, documents, audio, archives }
 
@@ -15,6 +17,12 @@ enum DriveGroupBy { none, type, date, size }
 
 class DriveState {
   final bool isLoading;
+  final bool isLoadingMore;
+  final bool hasMore;
+  final int currentOffset;
+  final int totalFiles;
+  final int pageSize;
+  final bool isRealtimeConnected;
   final String currentPath;
   final List<BackupFileItem> files;
   final String searchQuery;
@@ -30,6 +38,12 @@ class DriveState {
 
   const DriveState({
     this.isLoading = false,
+    this.isLoadingMore = false,
+    this.hasMore = true,
+    this.currentOffset = 0,
+    this.totalFiles = 0,
+    this.pageSize = 60,
+    this.isRealtimeConnected = false,
     this.currentPath = '',
     this.files = const [],
     this.searchQuery = '',
@@ -231,6 +245,12 @@ class DriveState {
 
   DriveState copyWith({
     bool? isLoading,
+    bool? isLoadingMore,
+    bool? hasMore,
+    int? currentOffset,
+    int? totalFiles,
+    int? pageSize,
+    bool? isRealtimeConnected,
     String? currentPath,
     List<BackupFileItem>? files,
     String? searchQuery,
@@ -246,6 +266,12 @@ class DriveState {
   }) {
     return DriveState(
       isLoading: isLoading ?? this.isLoading,
+      isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+      hasMore: hasMore ?? this.hasMore,
+      currentOffset: currentOffset ?? this.currentOffset,
+      totalFiles: totalFiles ?? this.totalFiles,
+      pageSize: pageSize ?? this.pageSize,
+      isRealtimeConnected: isRealtimeConnected ?? this.isRealtimeConnected,
       currentPath: currentPath ?? this.currentPath,
       files: files ?? this.files,
       searchQuery: searchQuery ?? this.searchQuery,
@@ -263,8 +289,42 @@ class DriveState {
 }
 
 class DriveNotifier extends StateNotifier<DriveState> {
+  StreamSubscription<DriveChangeEvent>? _wsSubscription;
+
   DriveNotifier() : super(const DriveState()) {
     loadFiles();
+    _subscribeWebSocket();
+  }
+
+  void _subscribeWebSocket() {
+    _wsSubscription?.cancel();
+    _wsSubscription = DriveWebSocketService().changeStream.listen((event) {
+      _handleWsDriveChange(event);
+    });
+
+    DriveWebSocketService().isConnected.addListener(_onWsConnectionChanged);
+    state = state.copyWith(isRealtimeConnected: DriveWebSocketService().isConnected.value);
+  }
+
+  void _onWsConnectionChanged() {
+    state = state.copyWith(isRealtimeConnected: DriveWebSocketService().isConnected.value);
+  }
+
+  void _handleWsDriveChange(DriveChangeEvent event) {
+    final current = state.currentPath.trim().replaceAll(RegExp(r'^/+|/+$'), '');
+    final eventFolder = event.path.trim().replaceAll(RegExp(r'^/+|/+$'), '');
+
+    if (current == eventFolder || (current.isEmpty && eventFolder.isEmpty)) {
+      // Refresh current folder without blanking out UI
+      loadFiles(state.currentPath, true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _wsSubscription?.cancel();
+    DriveWebSocketService().isConnected.removeListener(_onWsConnectionChanged);
+    super.dispose();
   }
 
   String _parseError(dynamic e) {
@@ -280,18 +340,87 @@ class DriveNotifier extends StateNotifier<DriveState> {
     return e.toString();
   }
 
-  Future<void> loadFiles([String path = '']) async {
-    state = state.copyWith(isLoading: true, currentPath: path, errorMessage: null, selectedFileIds: {});
+  Future<void> loadFiles([String path = '', bool refreshSilently = false]) async {
+    if (!refreshSilently) {
+      state = state.copyWith(
+        isLoading: true,
+        currentPath: path,
+        errorMessage: null,
+        selectedFileIds: {},
+        currentOffset: 0,
+        hasMore: true,
+        isLoadingMore: false,
+      );
+    }
     try {
-      final res = await ApiService().getFiles(path: path);
+      final res = await ApiService().getFiles(
+        path: path,
+        limit: state.pageSize,
+        offset: 0,
+      );
+      final rawList = (res['files'] as List<BackupFileItem>?) ?? [];
+      final total = res['total'] is int ? res['total'] as int : rawList.length;
+      final hasMore = res['hasMore'] is bool ? res['hasMore'] as bool : (rawList.length < total);
+
       state = state.copyWith(
         isLoading: false,
         currentPath: res['currentPath']?.toString() ?? path,
-        files: (res['files'] as List<BackupFileItem>?) ?? [],
+        files: rawList,
+        totalFiles: total,
+        currentOffset: rawList.length,
+        hasMore: hasMore,
+        isLoadingMore: false,
       );
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
+        isLoadingMore: false,
+        errorMessage: _parseError(e),
+      );
+    }
+  }
+
+  Future<void> loadMoreFiles() async {
+    if (state.isLoading || state.isLoadingMore || !state.hasMore) return;
+
+    state = state.copyWith(isLoadingMore: true);
+    try {
+      final res = await ApiService().getFiles(
+        path: state.currentPath,
+        limit: state.pageSize,
+        offset: state.currentOffset,
+      );
+      final newItems = (res['files'] as List<BackupFileItem>?) ?? [];
+      final total = res['total'] is int ? res['total'] as int : state.totalFiles;
+
+      if (newItems.isEmpty) {
+        state = state.copyWith(
+          isLoadingMore: false,
+          hasMore: false,
+        );
+        return;
+      }
+
+      // Deduplicate new items by id against existing files
+      final existingIds = state.files.map((f) => f.id).toSet();
+      final deduplicatedNew = newItems.where((f) => !existingIds.contains(f.id)).toList();
+
+      final combinedFiles = [...state.files, ...deduplicatedNew];
+      final newOffset = state.currentOffset + newItems.length;
+      final hasMore = res['hasMore'] is bool
+          ? res['hasMore'] as bool
+          : (newOffset < total);
+
+      state = state.copyWith(
+        isLoadingMore: false,
+        files: combinedFiles,
+        totalFiles: total,
+        currentOffset: newOffset,
+        hasMore: hasMore,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        isLoadingMore: false,
         errorMessage: _parseError(e),
       );
     }

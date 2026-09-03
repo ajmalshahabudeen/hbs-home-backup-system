@@ -89,6 +89,8 @@ class ApiService {
   Future<Map<String, dynamic>> getFiles({
     String path = '',
     String category = 'all',
+    int? limit,
+    int? offset,
   }) async {
     final token = await _getToken();
     final res = await _dio.get(
@@ -96,6 +98,8 @@ class ApiService {
       queryParameters: {
         if (path.isNotEmpty) 'path': path,
         if (category.isNotEmpty && category != 'all') 'category': category,
+        if (limit != null) 'limit': limit,
+        if (offset != null) 'offset': offset,
       },
       options: _buildOptions(token),
     );
@@ -104,10 +108,18 @@ class ApiService {
     final List rawFiles = data['files'] is List ? data['files'] : [];
     final files = rawFiles.map((e) => BackupFileItem.fromJson(e)).toList();
     final currentPath = data['currentPath']?.toString() ?? path;
+    final int total = data['total'] is int ? data['total'] as int : files.length;
+    final bool hasMore = data['hasMore'] is bool ? data['hasMore'] as bool : false;
+    final int returnedOffset = data['offset'] is int ? data['offset'] as int : (offset ?? 0);
+    final int returnedLimit = data['limit'] is int ? data['limit'] as int : (limit ?? files.length);
 
     return {
       'files': files,
       'currentPath': currentPath,
+      'total': total,
+      'hasMore': hasMore,
+      'offset': returnedOffset,
+      'limit': returnedLimit,
     };
   }
 
