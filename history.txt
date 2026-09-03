@@ -1116,6 +1116,29 @@
   - Verified `flutter test`: 100% passing tests (29/29 tests).
   - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 successful builds with 0 errors.
 
+## Session: 2026-09-03 (Backup Engine Centralization, Background Tasks, Battery Optimization & Notifications Completed)
+- Audited and centralized all backup architecture into `lib/core/backup_engine/`:
+  1. `docs.md`: Comprehensive documentation covering architectural overview, algorithms (tiered deduplication, delta pre-filtering, worker pool, autonomous background tasks, battery optimization, and progress notifications), what & where, and integration guide.
+  2. `models/backup_item.dart`: `IndexedBackupItem` and `QueueUploadItem` data structures.
+  3. `index/backup_index_db.dart`: SQLite database management with `db.batch()` high-throughput queue population and O(1) set lookup.
+  4. `dedupe/dedupe_engine.dart`: Two-tier deduplication (fast deterministic SHA-256 with 3-sample head/mid/tail for >4MB files, local SQLite preflight, and remote API check).
+  5. `battery/battery_optimizer.dart`: Android battery optimization exemption manager with system intent and settings deep-linking.
+  6. `notifications/backup_notifications.dart`: Throttled ongoing progress notification with dynamic % and item counter, completion alerts, and user preference persistence.
+  7. `client/backup_api_client.dart`: Dedicated network client wrapping HBS server upload routes.
+  8. `queue/upload_queue_engine.dart`: Parallel worker pool (2 in battery saver, 4 in standard) with delta pre-filtering and reactive `stateStream`.
+  9. `background/background_worker.dart`: WorkManager headless dispatcher with autonomous camera roll delta detection.
+  10. `backup_engine.dart`: Centralized barrel export.
+- Maintained zero code breaks with backward-compatible shims in `lib/services/backup_index_db.dart`, `upload_queue_service.dart`, `dedupe_service.dart`, `notification_service.dart`, and `lib/core/utils/background_backup.dart`.
+- Added `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` in `android/app/src/main/AndroidManifest.xml`.
+- Added interactive **Background Battery Access (Unrestricted)** cards in `BackupScreen` and `SettingsScreen`.
+- Added **Sync Notifications** toggles in `BackupScreen` and `SettingsScreen` with Android 13+ permission request.
+- Fixed `DriveProvider` MIME category mapping (`'doc'` vs `'document'`), resolving the test failure in `test/lock_media_auth_test.dart`.
+- Created dedicated unit test suite in `test/backup_engine_test.dart`.
+- Build & Quality Verification:
+  - Verified `flutter analyze`: 0 issues found.
+  - Verified `flutter test`: 100% passing unit tests (37/37 tests).
+  - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 successful builds with 0 errors.
+
 
 
 

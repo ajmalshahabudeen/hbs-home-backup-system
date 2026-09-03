@@ -71,6 +71,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final themeNotifier = ref.read(themeProvider.notifier);
     final lockState = ref.watch(appLockProvider);
     final lockNotifier = ref.read(appLockProvider.notifier);
+    final backupState = ref.watch(backupProvider);
     final backupNotifier = ref.read(backupProvider.notifier);
 
     final diskTotal = _stats.diskTotalBytes ?? (512 * 1024 * 1024 * 1024);
@@ -439,6 +440,92 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           side: BorderSide(color: primary.withValues(alpha: 0.5)),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Global Backup & Background Activity Card
+                GlassCard(
+                  padding: const EdgeInsets.all(16),
+                  borderRadius: 20,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Global Backup & Background Activity', style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Control background sync behavior, battery optimization, and system progress notifications.',
+                        style: TextStyle(fontSize: 12, color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6)),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Battery Optimization Exemption
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: (backupState.isBatteryOptimizationIgnored ? const Color(0xFF10B981) : const Color(0xFFF59E0B)).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            backupState.isBatteryOptimizationIgnored ? Icons.battery_charging_full_rounded : Icons.battery_alert_rounded,
+                            color: backupState.isBatteryOptimizationIgnored ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                            size: 22,
+                          ),
+                        ),
+                        title: const Text('Background Battery Access', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                        subtitle: Text(
+                          backupState.isBatteryOptimizationIgnored
+                              ? 'Unrestricted (Full background access, no Doze limits)'
+                              : 'Restricted by Android OS (Tap to grant full access)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: backupState.isBatteryOptimizationIgnored ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                          ),
+                        ),
+                        trailing: OutlinedButton(
+                          onPressed: () async {
+                            final ok = await backupNotifier.requestIgnoreBatteryOptimization();
+                            if (!ok && context.mounted) {
+                              await backupNotifier.openBatterySettings();
+                            }
+                          },
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: backupState.isBatteryOptimizationIgnored ? const Color(0xFF10B981) : primary,
+                            side: BorderSide(
+                              color: (backupState.isBatteryOptimizationIgnored ? const Color(0xFF10B981) : primary).withValues(alpha: 0.5),
+                            ),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          ),
+                          child: Text(backupState.isBatteryOptimizationIgnored ? 'Active' : 'Allow'),
+                        ),
+                      ),
+                      const Divider(height: 16),
+
+                      // Backup Progress Notifications Toggle
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        secondary: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF06B6D4).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.notifications_active_rounded, color: Color(0xFF06B6D4), size: 22),
+                        ),
+                        title: const Text('Backup Progress Notifications', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                        subtitle: const Text('Show dynamic progress and completion alerts in notification drawer', style: TextStyle(fontSize: 12)),
+                        value: backupState.notificationsEnabled,
+                        activeTrackColor: primary,
+                        onChanged: (val) async {
+                          await backupNotifier.setNotificationsEnabled(val);
+                        },
                       ),
                     ],
                   ),

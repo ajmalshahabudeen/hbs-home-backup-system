@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'core/backup_engine/backup_engine.dart';
 import 'core/theme/app_theme.dart';
-import 'core/utils/background_backup.dart';
 import 'core/utils/high_refresh_rate.dart';
 import 'core/widgets/app_splash_screen.dart';
 import 'core/widgets/app_update_gate.dart';
@@ -9,7 +9,6 @@ import 'providers/auth_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/app_shell.dart';
 import 'screens/landing/landing_screen.dart';
-import 'services/backup_index_db.dart';
 import 'services/notification_service.dart';
 import 'services/storage_service.dart';
 import 'services/watch_folder_service.dart';

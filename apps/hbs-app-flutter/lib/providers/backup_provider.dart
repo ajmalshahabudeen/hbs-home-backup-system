@@ -1,12 +1,10 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../core/utils/background_backup.dart';
+import '../core/backup_engine/backup_engine.dart';
 import '../models/sync_state.dart';
 import '../services/api_service.dart';
-import '../services/backup_index_db.dart';
 import '../services/media_discovery_service.dart';
 import '../services/storage_service.dart';
-import '../services/upload_queue_service.dart';
 
 class BackupState {
   final List<LocalAlbum> albums;
@@ -15,6 +13,8 @@ class BackupState {
   final bool batterySaverEnabled;
   final bool wifiOnly;
   final bool autoBackup;
+  final bool notificationsEnabled;
+  final bool isBatteryOptimizationIgnored;
   final int indexedCount;
   final bool isLoadingAlbums;
   final bool hasPermission;
@@ -26,6 +26,8 @@ class BackupState {
     this.batterySaverEnabled = true,
     this.wifiOnly = true,
     this.autoBackup = false,
+    this.notificationsEnabled = true,
+    this.isBatteryOptimizationIgnored = false,
     this.indexedCount = 0,
     this.isLoadingAlbums = false,
     this.hasPermission = true,
@@ -38,6 +40,8 @@ class BackupState {
     bool? batterySaverEnabled,
     bool? wifiOnly,
     bool? autoBackup,
+    bool? notificationsEnabled,
+    bool? isBatteryOptimizationIgnored,
     int? indexedCount,
     bool? isLoadingAlbums,
     bool? hasPermission,
@@ -49,6 +53,8 @@ class BackupState {
       batterySaverEnabled: batterySaverEnabled ?? this.batterySaverEnabled,
       wifiOnly: wifiOnly ?? this.wifiOnly,
       autoBackup: autoBackup ?? this.autoBackup,
+      notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
+      isBatteryOptimizationIgnored: isBatteryOptimizationIgnored ?? this.isBatteryOptimizationIgnored,
       indexedCount: indexedCount ?? this.indexedCount,
       isLoadingAlbums: isLoadingAlbums ?? this.isLoadingAlbums,
       hasPermission: hasPermission ?? this.hasPermission,
@@ -70,15 +76,17 @@ class BackupNotifier extends StateNotifier<BackupState> {
     final battery = storage.getBool('hbs_battery_saver', defaultValue: true);
     final wifiOnly = storage.getBool('hbs_wifi_only', defaultValue: true);
     final autoBackup = storage.getBool('hbs_auto_backup', defaultValue: false);
+    final notifications = BackupNotificationManager().isNotificationsEnabled;
 
     state = state.copyWith(
       selectedAlbumIds: savedAlbumIds,
       batterySaverEnabled: battery,
       wifiOnly: wifiOnly,
       autoBackup: autoBackup,
+      notificationsEnabled: notifications,
     );
 
-    _queueSub = UploadQueueService().stateStream.listen((syncState) {
+    _queueSub = UploadQueueEngine().stateStream.listen((syncState) {
       state = state.copyWith(syncState: syncState);
     });
 
@@ -100,7 +108,8 @@ class BackupNotifier extends StateNotifier<BackupState> {
     });
 
     refreshIndexCount();
-    UploadQueueService().resumePending(concurrency: battery ? 2 : 4);
+    refreshBatteryOptimizationStatus();
+    UploadQueueEngine().resumePending(concurrency: battery ? 2 : 4);
   }
 
   @override
@@ -108,6 +117,26 @@ class BackupNotifier extends StateNotifier<BackupState> {
     _queueSub?.cancel();
     _permissionSub?.cancel();
     super.dispose();
+  }
+
+  Future<void> refreshBatteryOptimizationStatus() async {
+    final ignored = await BatteryOptimizer().isBatteryOptimizationIgnored();
+    state = state.copyWith(isBatteryOptimizationIgnored: ignored);
+  }
+
+  Future<bool> requestIgnoreBatteryOptimization() async {
+    final granted = await BatteryOptimizer().requestIgnoreBatteryOptimization();
+    state = state.copyWith(isBatteryOptimizationIgnored: granted);
+    return granted;
+  }
+
+  Future<bool> openBatterySettings() async {
+    return await BatteryOptimizer().openBatterySettings();
+  }
+
+  Future<void> setNotificationsEnabled(bool enabled) async {
+    state = state.copyWith(notificationsEnabled: enabled);
+    await BackupNotificationManager().setNotificationsEnabled(enabled);
   }
 
   Future<void> loadAlbums({bool force = false}) async {
@@ -190,6 +219,7 @@ class BackupNotifier extends StateNotifier<BackupState> {
       if (maxMb > 0 && item.size > maxMb * 1024 * 1024) return false;
       return true;
     }).toList();
+
     try {
       final stats = await ApiService().getUserStats();
       final quota = stats.quotaBytes;
@@ -211,9 +241,11 @@ class BackupNotifier extends StateNotifier<BackupState> {
         );
       }
     } catch (_) {}
-    await UploadQueueService().startSync(
+
+    await UploadQueueEngine().startSync(
       items: itemsToSync,
       concurrency: state.batterySaverEnabled ? 2 : 4,
+      showNotifications: state.notificationsEnabled,
     );
     await refreshIndexCount();
   }
@@ -224,7 +256,7 @@ class BackupNotifier extends StateNotifier<BackupState> {
   }
 
   void cancelSync() {
-    UploadQueueService().cancelSync();
+    UploadQueueEngine().cancelSync();
   }
 
   Future<void> purgeAndRebuildIndex() async {

@@ -176,6 +176,7 @@ class DriveState {
               groupName = 'Audio';
               break;
             case 'document':
+            case 'doc':
               groupName = 'Documents';
               break;
             case 'archive':

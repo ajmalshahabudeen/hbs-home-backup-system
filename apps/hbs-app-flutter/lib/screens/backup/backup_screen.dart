@@ -363,6 +363,99 @@ class BackupScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
+
+                // Unrestricted Battery Optimization Exemption Card
+                GlassCard(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  borderRadius: 20,
+                  onTap: () async {
+                    if (!backupState.isBatteryOptimizationIgnored) {
+                      final granted = await backupNotifier.requestIgnoreBatteryOptimization();
+                      if (!granted && context.mounted) {
+                        await backupNotifier.openBatterySettings();
+                      }
+                    }
+                  },
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: (backupState.isBatteryOptimizationIgnored ? const Color(0xFF10B981) : const Color(0xFFF59E0B)).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          backupState.isBatteryOptimizationIgnored ? Icons.battery_charging_full_rounded : Icons.battery_alert_rounded,
+                          color: backupState.isBatteryOptimizationIgnored ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Unrestricted Battery Access', style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700)),
+                            Text(
+                              backupState.isBatteryOptimizationIgnored
+                                  ? 'Full background access granted (No Doze limits)'
+                                  : 'Restricted by Android (Tap to allow full access)',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        backupState.isBatteryOptimizationIgnored ? Icons.check_circle_rounded : Icons.chevron_right_rounded,
+                        color: backupState.isBatteryOptimizationIgnored ? const Color(0xFF10B981) : theme.textTheme.bodySmall?.color?.withValues(alpha: 0.4),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Backup Progress Notifications Toggle Card
+                GlassCard(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  borderRadius: 20,
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF06B6D4).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.notifications_active_rounded, color: Color(0xFF06B6D4), size: 22),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Sync Notifications', style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700)),
+                            Text(
+                              'Show dynamic progress in system notification bar',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Switch(
+                        value: backupState.notificationsEnabled,
+                        activeTrackColor: primary,
+                        onChanged: backupNotifier.setNotificationsEnabled,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
                 GlassCard(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   borderRadius: 20,
