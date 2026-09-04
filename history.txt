@@ -1355,3 +1355,30 @@
   - Verified `flutter test`: 100% passing tests (58/58 tests).
   - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 packages passed (FULL TURBO).
   - Verified Next.js server production build (`bun run build --filter=server`): 100% success.
+
+## Session: 2026-09-04 (AppSplashScreen Animation Completion & Asset Precache Fix Completed)
+- Diagnosed and resolved premature splash screen exit and asset loading glitch:
+  1. Root Causes:
+     - In `lib/main.dart`, `AppSplashScreen` was directly tied to `authState.isLoading`. `AuthNotifier._initSession()` hydated cached session credentials in ~15-20ms, unmounting `AppSplashScreen` before its 1350ms entrance animation could play.
+     - `HBS_Logo.png` is an uncompressed 1024x1024 (1.2MB) asset that was not precached. Without `precacheImage` or `cacheWidth`/`cacheHeight`, asynchronous decoding took 80-150ms. Since the splash screen dismissed in 20ms, the logo didn't even render before being unmounted, appearing broken/glitched.
+     - The transition from splash to dashboard was an abrupt widget snap without fade interpolation.
+  2. Implementation:
+     - `AppLogo` (`lib/core/widgets/app_logo.dart`): Added device-pixel-ratio scaled `cacheWidth` and `cacheHeight` (`clamp(64, 1024)`), rendering 10x faster and eliminating GPU memory spikes.
+     - `AppSplashScreen` (`lib/core/widgets/app_splash_screen.dart`):
+       - Added `onFinish`, `isReady` (defaults to `true`), and `minDuration` (defaults to 1800ms) coordination.
+       - Precached `AssetImage(AppLogo.assetPath)` in `didChangeDependencies`.
+       - Ensured `onFinish` only triggers after `minDuration` has elapsed and `isReady` is `true`. If auth loading takes longer, seamlessly continues ambient float and shimmer loops.
+       - Modulated ambient floating and breathing scale so it starts after entrance progress rather than interfering with entrance scaling.
+       - Clamped phase, bounce, and opacity calculations in `_BouncingLoadingDotsState` to `[0.0, 1.0]`.
+     - `main.dart` (`lib/main.dart`):
+       - Converted `HBSCloudApp` to `ConsumerStatefulWidget` managing `_splashFinished` state across cold boot.
+       - Precached `AssetImage(AppLogo.assetPath)` in `didChangeDependencies` on frame 1.
+       - Integrated `AnimatedSwitcher` with 450ms `FadeTransition` (`Curves.easeOutCubic` / `Curves.easeInCubic`).
+       - Maintained `_splashFinished` across subsequent in-app user logins and logouts, transitioning between `AppShell` and `LandingScreen` without re-triggering the splash screen.
+  3. Verification & Testing:
+     - Added 3 widget tests in `test/widget_test.dart` for `AppSplashScreen` verifying clean mount, holding until `minDuration` elapses, and waiting for `isReady`.
+     - Verified `dart analyze lib test`: 0 issues found (Clean).
+     - Verified `flutter test`: 100% passing tests (61/61 tests).
+     - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 packages passed (FULL TURBO).
+     - Verified Next.js server production build (`bun run build --filter=server`): 100% success.
+

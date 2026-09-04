@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'app_logo.dart';
@@ -12,7 +13,16 @@ class AppSplashScreen extends StatefulWidget {
   static const accentColor = Color(0xFFC27346);
   static const subtitleColor = Color(0xFF7D6553);
 
-  const AppSplashScreen({super.key});
+  final VoidCallback? onFinish;
+  final bool isReady;
+  final Duration minDuration;
+
+  const AppSplashScreen({
+    super.key,
+    this.onFinish,
+    this.isReady = true,
+    this.minDuration = const Duration(milliseconds: 1800),
+  });
 
   @override
   State<AppSplashScreen> createState() => _AppSplashScreenState();
@@ -22,6 +32,10 @@ class _AppSplashScreenState extends State<AppSplashScreen> with TickerProviderSt
   late final AnimationController _entranceController;
   late final AnimationController _floatController;
   late final AnimationController _shimmerController;
+
+  bool _minDurationElapsed = false;
+  bool _finished = false;
+  Timer? _minDurationTimer;
 
   // Logo animations
   late final Animation<double> _logoScale;
@@ -136,10 +150,38 @@ class _AppSplashScreenState extends State<AppSplashScreen> with TickerProviderSt
     )..repeat();
 
     _entranceController.forward();
+
+    _minDurationTimer = Timer(widget.minDuration, () {
+      _minDurationElapsed = true;
+      _checkFinish();
+    });
+  }
+
+  void _checkFinish() {
+    if (_finished || !mounted) return;
+    if (_minDurationElapsed && widget.isReady) {
+      _finished = true;
+      widget.onFinish?.call();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant AppSplashScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isReady && !oldWidget.isReady) {
+      _checkFinish();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    precacheImage(const AssetImage(AppLogo.assetPath), context);
   }
 
   @override
   void dispose() {
+    _minDurationTimer?.cancel();
     _entranceController.dispose();
     _floatController.dispose();
     _shimmerController.dispose();
@@ -162,10 +204,11 @@ class _AppSplashScreenState extends State<AppSplashScreen> with TickerProviderSt
                   AnimatedBuilder(
                     animation: Listenable.merge([_entranceController, _floatController]),
                     builder: (context, child) {
-                      // Smooth sine wave vertical float (-5px to +5px)
-                      final floatOffset = math.sin(_floatController.value * math.pi) * 5.0;
-                      // Gentle breathing scale (1.0 to 1.03)
-                      final breathingScale = 1.0 + 0.03 * math.sin(_floatController.value * math.pi);
+                      // Smooth sine wave vertical float (-5px to +5px) gently scaled with entrance progress
+                      final entranceProgress = _entranceController.value;
+                      final floatOffset = math.sin(_floatController.value * math.pi) * 5.0 * entranceProgress;
+                      // Gentle breathing scale (1.0 to 1.025)
+                      final breathingScale = 1.0 + 0.025 * math.sin(_floatController.value * math.pi) * entranceProgress;
 
                       return Transform.translate(
                         offset: Offset(0, floatOffset),
@@ -325,10 +368,10 @@ class _BouncingLoadingDotsState extends State<_BouncingLoadingDots> with SingleT
           mainAxisAlignment: MainAxisAlignment.center,
           children: List.generate(3, (index) {
             final delay = index * 0.22;
-            final phase = (_controller.value - delay) % 1.0;
-            final bounce = math.sin(phase * math.pi);
+            final phase = ((_controller.value - delay) % 1.0 + 1.0) % 1.0;
+            final bounce = math.sin(phase * math.pi).clamp(0.0, 1.0);
             final scale = 0.6 + 0.4 * bounce;
-            final opacity = 0.35 + 0.65 * bounce;
+            final opacity = (0.35 + 0.65 * bounce).clamp(0.0, 1.0);
 
             return Transform.translate(
               offset: Offset(0, -3.0 * bounce),

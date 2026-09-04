@@ -17,12 +17,17 @@ class AppLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final radius = circular ? size / 2 : borderRadius;
+    final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 2.0;
+    final cacheDimension = (size * dpr).round().clamp(64, 1024);
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: Image.asset(
         assetPath,
         width: size,
         height: size,
+        cacheWidth: cacheDimension,
+        cacheHeight: cacheDimension,
         fit: BoxFit.cover,
         filterQuality: FilterQuality.high,
         gaplessPlayback: true,

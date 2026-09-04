@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/backup_engine/backup_engine.dart';
 import 'core/theme/app_theme.dart';
 import 'core/utils/high_refresh_rate.dart';
+import 'core/widgets/app_logo.dart';
 import 'core/widgets/app_splash_screen.dart';
 import 'core/widgets/app_update_gate.dart';
 import 'providers/auth_provider.dart';
@@ -35,11 +36,24 @@ void main() async {
   );
 }
 
-class HBSCloudApp extends ConsumerWidget {
+class HBSCloudApp extends ConsumerStatefulWidget {
   const HBSCloudApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HBSCloudApp> createState() => _HBSCloudAppState();
+}
+
+class _HBSCloudAppState extends ConsumerState<HBSCloudApp> {
+  bool _splashFinished = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    precacheImage(const AssetImage(AppLogo.assetPath), context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final themeState = ref.watch(themeProvider);
     final authState = ref.watch(authProvider);
 
@@ -52,9 +66,28 @@ class HBSCloudApp extends ConsumerWidget {
         systemBrightness: MediaQuery.platformBrightnessOf(context),
       ),
       home: AppUpdateGate(
-        child: authState.isLoading
-            ? const AppSplashScreen()
-            : (authState.isAuthenticated ? const AppShell() : const LandingScreen()),
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 450),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (child, animation) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+          child: !_splashFinished
+              ? AppSplashScreen(
+                  key: const ValueKey('app_splash_screen'),
+                  isReady: !authState.isLoading,
+                  onFinish: () {
+                    if (mounted) {
+                      setState(() => _splashFinished = true);
+                    }
+                  },
+                )
+              : KeyedSubtree(
+                  key: ValueKey(authState.isAuthenticated ? 'app_shell' : 'landing_screen'),
+                  child: authState.isAuthenticated ? const AppShell() : const LandingScreen(),
+                ),
+        ),
       ),
     );
   }

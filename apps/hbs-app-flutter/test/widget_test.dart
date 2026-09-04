@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hbs_app_flutter/core/utils/formatters.dart';
 import 'package:hbs_app_flutter/core/utils/session_token_cleaner.dart';
+import 'package:hbs_app_flutter/core/widgets/app_splash_screen.dart';
 import 'package:hbs_app_flutter/core/widgets/glass_card.dart';
 import 'package:hbs_app_flutter/models/photo_media_item.dart';
 import 'package:hbs_app_flutter/models/user_model.dart';
@@ -110,6 +111,73 @@ void main() {
       expect(find.text('sample.mp4'), findsOneWidget);
       expect(find.byIcon(Icons.info_outline_rounded), findsOneWidget);
       expect(find.byIcon(Icons.info_rounded), findsOneWidget);
+    });
+  });
+
+  group('AppSplashScreen Tests', () {
+    testWidgets('AppSplashScreen mounts and renders branding elements cleanly', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: AppSplashScreen(
+            isReady: false,
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('HBS CLOUD'), findsOneWidget);
+      expect(find.text('PERSONAL CLOUD & HOME BACKUP'), findsOneWidget);
+    });
+
+    testWidgets('AppSplashScreen does not trigger onFinish before minDuration elapses', (tester) async {
+      var finished = false;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AppSplashScreen(
+            isReady: true,
+            minDuration: const Duration(milliseconds: 1000),
+            onFinish: () => finished = true,
+          ),
+        ),
+      );
+
+      // Advance by 500ms (half of minDuration)
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(finished, isFalse);
+
+      // Advance past minDuration
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(finished, isTrue);
+    });
+
+    testWidgets('AppSplashScreen waits for isReady before calling onFinish', (tester) async {
+      var finished = false;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AppSplashScreen(
+            isReady: false,
+            minDuration: const Duration(milliseconds: 500),
+            onFinish: () => finished = true,
+          ),
+        ),
+      );
+
+      // Advance past minDuration while isReady is false
+      await tester.pump(const Duration(milliseconds: 700));
+      expect(finished, isFalse);
+
+      // Rebuild with isReady: true
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AppSplashScreen(
+            isReady: true,
+            minDuration: const Duration(milliseconds: 500),
+            onFinish: () => finished = true,
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(finished, isTrue);
     });
   });
 }
