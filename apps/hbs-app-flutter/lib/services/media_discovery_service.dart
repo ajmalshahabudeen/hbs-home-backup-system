@@ -40,14 +40,12 @@ class MediaDiscoveryService {
   }
 
   Future<bool> requestPermissions({bool force = false}) async {
-    if (!force) {
-      final alreadyGranted = await isPermissionGranted();
-      if (alreadyGranted) {
-        try {
-          await PhotoManager.startChangeNotify();
-        } catch (_) {}
-        return true;
-      }
+    final alreadyGranted = await isPermissionGranted();
+    if (alreadyGranted) {
+      try {
+        await PhotoManager.startChangeNotify();
+      } catch (_) {}
+      return true;
     }
 
     if (_inFlightPermissionRequest != null) {
@@ -122,26 +120,42 @@ class MediaDiscoveryService {
     final hasPerm = await requestPermissions();
     if (!hasPerm) return [];
 
-    var paths = await _assetPaths(onlyAll: false);
+    List<AssetPathEntity> paths = [];
+    try {
+      paths = await PhotoManager.getAssetPathList(
+        type: RequestType.common,
+        onlyAll: false,
+      );
+    } catch (_) {}
+
     if (paths.isEmpty) {
-      await PhotoManager.clearFileCache();
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-      paths = await _assetPaths(onlyAll: false);
+      try {
+        await PhotoManager.clearFileCache();
+        await Future<void>.delayed(const Duration(milliseconds: 350));
+        paths = await PhotoManager.getAssetPathList(
+          type: RequestType.common,
+          onlyAll: false,
+        );
+      } catch (_) {}
     }
 
     final List<LocalAlbum> albums = [];
     for (final path in paths) {
-      // Skip the virtual "Recent" / "All" asset collection which aggregates all folders across the phone
-      if (path.isAll) continue;
-      if (MediaPathFilter.isAndroidAppFolder(albumName: path.name)) continue;
-      final count = await path.assetCountAsync;
-      if (count > 0) {
-        albums.add(LocalAlbum(
-          id: path.id,
-          name: path.name,
-          assetCount: count,
-          entity: path,
-        ));
+      try {
+        // Skip the virtual "Recent" / "All" asset collection which aggregates all folders across the phone
+        if (path.isAll) continue;
+        if (MediaPathFilter.isAndroidAppFolder(albumName: path.name)) continue;
+        final count = await path.assetCountAsync;
+        if (count > 0) {
+          albums.add(LocalAlbum(
+            id: path.id,
+            name: path.name,
+            assetCount: count,
+            entity: path,
+          ));
+        }
+      } catch (_) {
+        continue;
       }
     }
 

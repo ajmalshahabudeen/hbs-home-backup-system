@@ -114,8 +114,10 @@ class BackupScreen extends ConsumerWidget {
                             const SizedBox(width: 8),
                             ElevatedButton.icon(
                               onPressed: () async {
-                                await MediaDiscoveryService().requestPermissions(force: true);
-                                await backupNotifier.loadAlbums(force: true);
+                                final granted = await MediaDiscoveryService().requestPermissions(force: true);
+                                if (granted) {
+                                  await backupNotifier.loadAlbums();
+                                }
                               },
                               icon: const Icon(Icons.check_circle_outline_rounded, size: 16),
                               label: const Text('Grant Access'),
@@ -662,7 +664,9 @@ class BackupScreen extends ConsumerWidget {
                             final hasPerm = await MediaDiscoveryService().isPermissionGranted();
                             if (!hasPerm) {
                               final granted = await MediaDiscoveryService().requestPermissions(force: true);
-                              await backupNotifier.loadAlbums(force: true);
+                              if (granted) {
+                                await backupNotifier.loadAlbums();
+                              }
                               if (!granted) {
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(

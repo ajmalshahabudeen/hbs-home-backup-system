@@ -24,9 +24,12 @@ class _AlbumPickerModalState extends ConsumerState<AlbumPickerModal> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (ref.read(backupProvider).hasPermission && ref.read(backupProvider).albums.isEmpty) {
-        ref.read(backupProvider.notifier).loadAlbums();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final hasPerm = await MediaDiscoveryService().isPermissionGranted();
+      if (hasPerm) {
+        if (ref.read(backupProvider).albums.isEmpty || !ref.read(backupProvider).hasPermission) {
+          ref.read(backupProvider.notifier).loadAlbums();
+        }
       }
     });
   }
@@ -111,8 +114,10 @@ class _AlbumPickerModalState extends ConsumerState<AlbumPickerModal> {
                             children: [
                               ElevatedButton.icon(
                                 onPressed: () async {
-                                  await MediaDiscoveryService().requestPermissions(force: true);
-                                  await backupNotifier.loadAlbums(force: true);
+                                  final granted = await MediaDiscoveryService().requestPermissions(force: true);
+                                  if (granted) {
+                                    await backupNotifier.loadAlbums();
+                                  }
                                 },
                                 icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
                                 label: const Text('Grant Access'),

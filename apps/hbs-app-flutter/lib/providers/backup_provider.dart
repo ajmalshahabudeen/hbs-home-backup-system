@@ -82,6 +82,7 @@ class BackupNotifier extends StateNotifier<BackupState> {
   StreamSubscription<SyncState>? _queueSub;
   StreamSubscription<bool>? _permissionSub;
   StreamSubscription<int>? _mediaListenerSub;
+  Future<void>? _loadAlbumsFuture;
 
   BackupNotifier() : super(const BackupState()) {
     _init();
@@ -111,7 +112,7 @@ class BackupNotifier extends StateNotifier<BackupState> {
     _permissionSub = MediaDiscoveryService().onPermissionGranted.listen((granted) {
       if (granted) {
         state = state.copyWith(hasPermission: true);
-        loadAlbums(force: true);
+        loadAlbums();
       } else {
         state = state.copyWith(isLoadingAlbums: false, hasPermission: false);
       }
@@ -212,6 +213,18 @@ class BackupNotifier extends StateNotifier<BackupState> {
   }
 
   Future<void> loadAlbums({bool force = false}) async {
+    if (_loadAlbumsFuture != null) {
+      return _loadAlbumsFuture!;
+    }
+    _loadAlbumsFuture = _doLoadAlbums(force: force);
+    try {
+      await _loadAlbumsFuture!;
+    } finally {
+      _loadAlbumsFuture = null;
+    }
+  }
+
+  Future<void> _doLoadAlbums({bool force = false}) async {
     final hasPerm = await MediaDiscoveryService().isPermissionGranted();
     if (!hasPerm && !force) {
       state = state.copyWith(isLoadingAlbums: false, hasPermission: false);
@@ -227,29 +240,39 @@ class BackupNotifier extends StateNotifier<BackupState> {
     }
 
     state = state.copyWith(isLoadingAlbums: true, hasPermission: true);
-    final albums = await MediaDiscoveryService().getAlbums();
 
-    var selectedIds = List<String>.from(state.selectedAlbumIds);
-    if (selectedIds.isEmpty) {
-      final saved = StorageService().getStringList('hbs_backup_selected_albums');
-      if (saved.isNotEmpty) {
-        selectedIds = saved;
-      } else {
-        // Auto-select standard Camera Roll by default so only Camera is uploaded, never random folders
-        final cameraAlbum = albums.where(MediaDiscoveryService.isCameraRollAlbum).firstOrNull ??
-            albums.where((a) => a.name.toLowerCase().contains('camera') || a.name.toLowerCase().contains('dcim')).firstOrNull;
-        if (cameraAlbum != null) {
-          selectedIds = [cameraAlbum.id];
-          await StorageService().setStringList('hbs_backup_selected_albums', selectedIds);
+    try {
+      final albums = await MediaDiscoveryService().getAlbums();
+
+      var selectedIds = List<String>.from(state.selectedAlbumIds);
+      if (selectedIds.isEmpty) {
+        final saved = StorageService().getStringList('hbs_backup_selected_albums');
+        if (saved.isNotEmpty) {
+          selectedIds = saved;
+        } else {
+          // Auto-select standard Camera Roll by default so only Camera is uploaded, never random folders
+          final cameraAlbum = albums.where(MediaDiscoveryService.isCameraRollAlbum).firstOrNull ??
+              albums.where((a) => a.name.toLowerCase().contains('camera') || a.name.toLowerCase().contains('dcim')).firstOrNull;
+          if (cameraAlbum != null) {
+            selectedIds = [cameraAlbum.id];
+            await StorageService().setStringList('hbs_backup_selected_albums', selectedIds);
+          }
         }
       }
-    }
 
-    state = state.copyWith(
-      albums: albums,
-      selectedAlbumIds: selectedIds,
-      isLoadingAlbums: false,
-    );
+      state = state.copyWith(
+        albums: albums,
+        selectedAlbumIds: selectedIds,
+        isLoadingAlbums: false,
+        hasPermission: true,
+      );
+    } catch (_) {
+      state = state.copyWith(isLoadingAlbums: false);
+    } finally {
+      if (state.isLoadingAlbums) {
+        state = state.copyWith(isLoadingAlbums: false);
+      }
+    }
   }
 
   Future<void> refreshIndexCount() async {
