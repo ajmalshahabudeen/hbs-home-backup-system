@@ -134,6 +134,12 @@ class BackupIndexDb {
     return Sqflite.firstIntValue(res) ?? 0;
   }
 
+  Future<int> getPendingCount() async {
+    final db = await database;
+    final res = await db.rawQuery("SELECT COUNT(*) as count FROM upload_queue WHERE status = 'pending'");
+    return Sqflite.firstIntValue(res) ?? 0;
+  }
+
   Future<({Set<String> nameSizeKeys, Set<String> names, Set<String> ids, Set<String> stems})> getUploadedKeys() async {
     final db = await database;
     final rows = await db.query('backup_index', columns: ['id', 'file_name', 'file_size']);

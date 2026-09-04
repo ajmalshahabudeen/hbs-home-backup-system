@@ -27,6 +27,7 @@ class NetworkPresenceWatcher {
   BackupTriggerCallback? _onBackupTrigger;
 
   bool get isWatching => _isWatching;
+  bool get isRunning => _isWatching;
 
   void start({BackupTriggerCallback? onBackupTrigger}) {
     if (_isWatching) return;

@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/flow/flow.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
 import '../services/device_service.dart';
@@ -229,7 +230,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(isLoading: true);
     await ref.read(backupProvider.notifier).stopAndCancelBackup();
     final serverUrl = ref.read(serverProvider).url;
-    await AuthService().signOut(serverUrl: serverUrl);
+    await AppFlowOrchestrator().onUserLogout(
+      onBackendSignOut: () => AuthService().signOut(serverUrl: serverUrl),
+    );
     state = const AuthState(
       isLoading: false,
       isAuthenticated: false,

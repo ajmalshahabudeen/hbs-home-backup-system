@@ -229,6 +229,8 @@ class StorageService {
     await setUserLoggedOut(true);
   }
 
+  Future<void> clearSession() => clearAllAuthData();
+
   // ==================== General Preferences ====================
 
   String getString(String key, {String defaultValue = ''}) {

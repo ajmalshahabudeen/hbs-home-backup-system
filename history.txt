@@ -1470,3 +1470,32 @@
      - Verified `flutter test`: 100% passing tests (68/68 tests).
      - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 packages passed (FULL TURBO).
      - Verified Next.js server production build (`bun run build --filter=server`): 100% success (Turbo).
+
+## Session: 2026-09-04 (App Flow & Lifecycle Management Subsystem Completed)
+- Designed and implemented central App Flow and Lifecycle Management subsystem in `apps/hbs-app-flutter/lib/core/flow/`:
+  1. Architecture & Subsystem Layout:
+     - `lib/core/flow/flow.dart`: Master barrel export providing single-point imports for all lifecycle models, rules, and managers.
+     - `lib/core/flow/doc.md`: Comprehensive system design and documentation detailing architecture, data flow, state machine, algorithms, and integration.
+     - `lib/core/flow/models/app_flow_state.dart`: State machine models (`FlowStage`, `AppFlowState`, `FlowHealthReport`).
+     - `lib/core/flow/models/flow_event.dart`: Event hierarchy (`ServerConnectionChangedEvent`, `AppUpdateDetectedEvent`, `PermissionsEvaluatedEvent`, `AuthTransitionEvent`, `BackupEngineHealthEvent`, `SelfHealingTriggeredEvent`, `LogoutInitiatedEvent`, `LogoutCompletedEvent`, `StageTransitionEvent`).
+     - `lib/core/flow/rules/flow_rules.dart`: Declarative guardrail rules (`canRunAutoBackup`, `canRunManualBackup`, `canConnectWebSocket`, `canRunBackgroundTasks`, `canPollInbox`, `canStartMediaListener`, `canAnnounceNetworkPresence`, `canRunWatchFolder`).
+     - `lib/core/flow/rules/logout_rules.dart`: Prohibited operations list and 10-step atomic logout teardown sequence.
+     - `lib/core/flow/engine/startup_flow_coordinator.dart`: Deterministic startup pipeline (platform bindings, 250MB image cache, server connectivity & fast LAN discovery, non-blocking update check, auth session restoration, permissions check, backup engine health check).
+     - `lib/core/flow/engine/active_session_manager.dart`: Middle-tier service manager ("what needs to run in middle": WebSockets, media listeners, WorkManager, network presence, device wakeup, watch folders, inbox polling).
+     - `lib/core/flow/engine/session_teardown_manager.dart`: Atomic teardown protocol executor guaranteeing zero leaked background tasks, sockets, or tokens after logout.
+     - `lib/core/flow/engine/self_healing_monitor.dart`: Continuous watchdog engine recovering lost LAN servers, stalled backup queues, network switches, and dropped sockets.
+     - `lib/core/flow/engine/app_flow_orchestrator.dart`: Central singleton manager coordinating the entire application lifecycle.
+     - `lib/core/flow/observers/app_lifecycle_observer.dart`: Flutter WidgetsBindingObserver integration routing app foreground/background transitions to the flow engine.
+  2. Integration & Refactoring:
+     - `lib/main.dart`: Delegated platform initialization, cache sizing, and service bootstrapping to `AppFlowOrchestrator().boot()`.
+     - `lib/screens/app_shell.dart`: Refactored scattered lifecycle and service startup calls to `AppFlowOrchestrator().onUserLogin()` and `AppFlowOrchestrator().onAppForegrounded()`.
+     - `lib/providers/auth_provider.dart`: Integrated `AppFlowOrchestrator().onUserLogout()` to enforce atomic teardown during sign-out.
+     - `lib/core/backup_engine/index/backup_index_db.dart`: Added `getPendingCount()` helper method for queue health evaluation.
+     - `lib/services/storage_service.dart`: Added `clearSession()` alias mapping to `clearAllAuthData()`.
+     - `lib/core/backup_engine/wakeup/network_presence_watcher.dart`: Added `isRunning` alias getter.
+  3. Verification & Testing:
+     - Created `test/flow_engine_test.dart` with 12 unit tests covering flow rules, logout constraints, immutable state updates, health diagnostics, event emission, and orchestrator singletons.
+     - Verified `flutter analyze`: 0 issues found (Clean).
+     - Verified `flutter test`: 100% passing tests (80/80 tests across entire app).
+     - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 packages passed (FULL TURBO).
+     - Verified Next.js server production build (`bun run build --filter=server`): 100% success (Turbo).
