@@ -112,21 +112,36 @@ class DriveWebSocketService {
         headers.addAll(SessionTokenCleaner.authHeaders(_sessionToken!));
       }
 
+      bool isTimedOut = false;
       final connectFuture = WebSocket.connect(
         wsUrl,
         headers: headers.isNotEmpty ? headers : null,
       );
 
-      // Register catch-all on a detached branch to prevent unhandled late errors/leaks after timeout
+      // Clean up zombie socket if connection completes after timeout has already triggered
       unawaited(connectFuture.then((lateSocket) {
-        if (lateSocket != _socket) {
+        if (isTimedOut || _isDisposed) {
           try {
             lateSocket.close();
           } catch (_) {}
         }
       }).catchError((_) {}));
 
-      final socket = await connectFuture.timeout(const Duration(seconds: 10));
+      final socket = await connectFuture.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          isTimedOut = true;
+          throw TimeoutException('WebSocket connection timed out');
+        },
+      );
+
+      if (_isDisposed) {
+        try {
+          socket.close();
+        } catch (_) {}
+        _isConnecting = false;
+        return;
+      }
 
       _socket = socket;
       isConnected.value = true;
@@ -140,16 +155,7 @@ class DriveWebSocketService {
         debugPrint('[DriveWS] Connected successfully');
       }
 
-      // Send immediate auth message as redundant handshake
-      if (_sessionToken != null && _sessionToken!.isNotEmpty) {
-        socket.add(jsonEncode({
-          'type': 'auth',
-          'token': _sessionToken,
-        }));
-      }
-
-      _startPingTimer();
-
+      // Attach listener immediately
       socket.listen(
         _onMessage,
         onDone: _onDisconnected,
@@ -161,6 +167,22 @@ class DriveWebSocketService {
         },
         cancelOnError: true,
       );
+
+      // Send immediate auth message as redundant handshake
+      if (_sessionToken != null && _sessionToken!.isNotEmpty) {
+        try {
+          if (socket.readyState == WebSocket.open) {
+            socket.add(jsonEncode({
+              'type': 'auth',
+              'token': _sessionToken,
+            }));
+          }
+        } catch (err) {
+          debugPrint('[DriveWS] Auth handshake error: $err');
+        }
+      }
+
+      _startPingTimer();
     } catch (e) {
       if (shouldLog) {
         String errMsg = e.toString();

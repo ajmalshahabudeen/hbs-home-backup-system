@@ -1331,6 +1331,24 @@
      - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 packages passed (FULL TURBO).
      - Verified Next.js server production build (`bun run build --filter=server`): 100% success in 34.4s.
 
+## Session: 2026-09-04 (Drive WebSocket Premature Closure & StreamSink Bug Fixed)
+- Diagnosed and resolved continuous WebSocket disconnection loop in `lib/services/drive_websocket_service.dart`:
+  1. Root Cause:
+     - In `connect()`, a detached cleanup handler `connectFuture.then((lateSocket) { if (lateSocket != _socket) lateSocket.close(); })` was attached to `connectFuture`.
+     - In Dart's microtask queue, when `connectFuture` completed, this `then` callback executed *before* the awaiting function resumed (`_socket = socket;` had not yet executed, leaving `_socket` null).
+     - Because `lateSocket != null` evaluated to `true`, `lateSocket.close()` was executed immediately upon every successful connection.
+     - When the awaiting function resumed, it called `socket.add(...)` for the auth handshake on a socket that had just been closed, throwing `Bad state: StreamSink is closed`, catching the error, and triggering an endless 2s reconnect loop.
+  2. Implementation:
+     - Updated `connectFuture.timeout()` with `onTimeout` handler setting `isTimedOut = true`.
+     - Scoped `lateSocket.close()` in `connectFuture.then(...)` strictly to `if (isTimedOut || _isDisposed)`, preventing premature closure of valid, active sockets.
+     - Attached `socket.listen(...)` listener before sending authentication handshake.
+     - Guarded `socket.add(...)` auth handshake with `socket.readyState == WebSocket.open` and try/catch error handling.
+  3. Verification & Testing:
+     - Verified `dart analyze lib test`: 0 issues found (Clean).
+     - Verified `flutter test`: 100% passing tests (80/80 tests).
+     - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 packages passed (FULL TURBO).
+     - Verified Next.js server production build (`bun run build --filter=server`): 100% success in 34.4s.
+
 ## Session: 2026-09-03 (Backup Allowed Folders Isolation & Logout Termination Implementation)
 - Analyzed and resolved two critical issues in the Flutter backup engine:
   1. Backup uploading random folder files (Downloads, WhatsApp, Screenshots, caches) and displaying them in notifications.
@@ -1499,3 +1517,21 @@
      - Verified `flutter test`: 100% passing tests (80/80 tests across entire app).
      - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 packages passed (FULL TURBO).
      - Verified Next.js server production build (`bun run build --filter=server`): 100% success (Turbo).
+
+## Session: 2026-09-04 (Drive WebSocket Premature Closure & StreamSink Bug Fixed)
+- Diagnosed and resolved continuous WebSocket disconnection loop in `lib/services/drive_websocket_service.dart`:
+  1. Root Cause:
+     - In `connect()`, a detached cleanup handler `connectFuture.then((lateSocket) { if (lateSocket != _socket) lateSocket.close(); })` was attached to `connectFuture`.
+     - In Dart's microtask queue, when `connectFuture` completed, this `then` callback executed *before* the awaiting function resumed (`_socket = socket;` had not yet executed, leaving `_socket` null).
+     - Because `lateSocket != null` evaluated to `true`, `lateSocket.close()` was executed immediately upon every successful connection.
+     - When the awaiting function resumed, it called `socket.add(...)` for the auth handshake on a socket that had just been closed, throwing `Bad state: StreamSink is closed`, catching the error, and triggering an endless 2s reconnect loop.
+  2. Implementation:
+     - Updated `connectFuture.timeout()` with `onTimeout` handler setting `isTimedOut = true`.
+     - Scoped `lateSocket.close()` in `connectFuture.then(...)` strictly to `if (isTimedOut || _isDisposed)`, preventing premature closure of valid, active sockets.
+     - Attached `socket.listen(...)` listener before sending authentication handshake.
+     - Guarded `socket.add(...)` auth handshake with `socket.readyState == WebSocket.open` and try/catch error handling.
+  3. Verification & Testing:
+     - Verified `dart analyze lib test`: 0 issues found (Clean).
+     - Verified `flutter test`: 100% passing tests (80/80 tests).
+     - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 packages passed (FULL TURBO).
+
