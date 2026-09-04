@@ -6,6 +6,33 @@ import { ok, requireSession } from "@/lib/auth-guard";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+const NON_MEDIA_EXTENSIONS = new Set([
+  "db",
+  "tmp",
+  "part",
+  "crdownload",
+  "txt",
+  "pdf",
+  "doc",
+  "docx",
+  "xls",
+  "xlsx",
+  "zip",
+  "tar",
+  "gz",
+  "7z",
+  "rar",
+  "json",
+  "xml",
+  "exe",
+  "apk",
+  "bin",
+  "iso",
+  "nomedia",
+  "bak",
+  "log",
+]);
+
 export const GET = withApiLog(
   "GET /api/user/photos",
   async (request: NextRequest) => {
@@ -31,9 +58,21 @@ export const GET = withApiLog(
         { name: { contains: ".hbs-thumb" } },
         { path: { contains: ".hbs-thumb" } },
         { path: { startsWith: "Trash/" } },
+        { path: { startsWith: "/Trash/" } },
       ],
       AND: [
-        ...(!includeDrive ? [{ path: { startsWith: "MobileBackups" } }] : []),
+        ...(!includeDrive
+          ? [
+              {
+                OR: [
+                  { path: { startsWith: "MobileBackups" } },
+                  { path: { startsWith: "/MobileBackups" } },
+                  { parentPath: { startsWith: "MobileBackups" } },
+                  { parentPath: { startsWith: "/MobileBackups" } },
+                ],
+              },
+            ]
+          : []),
         {
           OR:
             filter === "videos"
@@ -58,7 +97,13 @@ export const GET = withApiLog(
       }),
     ]);
 
-    const mediaList = files.map((f) => {
+    const validMediaFiles = files.filter((f) => {
+      const ext = f.name.split(".").pop()?.toLowerCase() || "";
+      if (NON_MEDIA_EXTENSIONS.has(ext)) return false;
+      return true;
+    });
+
+    const mediaList = validMediaFiles.map((f) => {
       const enc = f.path
         .split("/")
         .map((p) => encodeURIComponent(p))

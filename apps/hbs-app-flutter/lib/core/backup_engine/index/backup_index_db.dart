@@ -134,19 +134,29 @@ class BackupIndexDb {
     return Sqflite.firstIntValue(res) ?? 0;
   }
 
-  Future<({Set<String> nameSizeKeys, Set<String> names})> getUploadedKeys() async {
+  Future<({Set<String> nameSizeKeys, Set<String> names, Set<String> ids, Set<String> stems})> getUploadedKeys() async {
     final db = await database;
-    final rows = await db.query('backup_index', columns: ['file_name', 'file_size']);
+    final rows = await db.query('backup_index', columns: ['id', 'file_name', 'file_size']);
     final nameSize = <String>{};
     final names = <String>{};
+    final ids = <String>{};
+    final stems = <String>{};
     for (final row in rows) {
-      final name = (row['file_name']?.toString() ?? '').trim().toLowerCase();
+      final id = row['id']?.toString() ?? '';
+      if (id.isNotEmpty) ids.add(id);
+
+      final rawName = (row['file_name']?.toString() ?? '').trim().toLowerCase();
       final size = (row['file_size'] as num?)?.toInt() ?? 0;
-      if (name.isEmpty) continue;
-      names.add(name);
-      nameSize.add('$name|$size');
+      if (rawName.isEmpty) continue;
+
+      names.add(rawName);
+      nameSize.add('$rawName|$size');
+
+      final lastDot = rawName.lastIndexOf('.');
+      final stem = lastDot > 0 ? rawName.substring(0, lastDot) : rawName;
+      stems.add(stem);
     }
-    return (nameSizeKeys: nameSize, names: names);
+    return (nameSizeKeys: nameSize, names: names, ids: ids, stems: stems);
   }
 
   Future<void> clearAll() async {

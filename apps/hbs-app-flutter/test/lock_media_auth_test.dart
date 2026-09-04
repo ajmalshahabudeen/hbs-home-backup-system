@@ -128,6 +128,88 @@ void main() {
       final localVacation = merged.firstWhere((e) => e.name == 'vacation.jpg');
       expect(localVacation.isBackedUp, isFalse);
     });
+
+    test('unifies local item with size 0 and server item into a single backed-up tile', () {
+      final merged = MediaMerger.merge(
+        local: [local(id: 'l1', name: 'PXL_2026.jpg', size: 0)],
+        server: [remote(id: 's1', name: 'PXL_2026.jpg', size: 4096)],
+      );
+      expect(merged.length, 1);
+      expect(merged.first.id, 'l1');
+      expect(merged.first.isBackedUp, isTrue);
+      expect(merged.first.isLocalOnly, isFalse);
+    });
+
+    test('unifies local item without extension (stem match) with server item into 1 tile', () {
+      final merged = MediaMerger.merge(
+        local: [local(id: 'l1', name: 'IMG_20260904_120000', size: 0)],
+        server: [remote(id: 's1', name: 'IMG_20260904_120000.jpg', size: 2048)],
+      );
+      expect(merged.length, 1);
+      expect(merged.first.id, 'l1');
+      expect(merged.first.isBackedUp, isTrue);
+      expect(merged.first.isLocalOnly, isFalse);
+    });
+
+    test('unifies local item using uploadedIds and uploadedStems from index', () {
+      final merged = MediaMerger.merge(
+        local: [
+          local(id: 'asset_123', name: 'family_photo.jpg', size: 0),
+          local(id: 'asset_456', name: 'sunset', size: 0),
+        ],
+        server: const [],
+        uploadedIds: {'asset_123'},
+        uploadedStems: {'sunset'},
+      );
+      expect(merged.length, 2);
+      expect(merged.every((e) => e.isBackedUp), isTrue);
+    });
+
+    test('strictly rejects non-media files from server and local', () {
+      final merged = MediaMerger.merge(
+        local: [
+          local(id: 'l1', name: 'notes.txt'),
+          local(id: 'l2', name: 'photo.jpg'),
+        ],
+        server: [
+          remote(id: 's1', name: 'backup.db'),
+          remote(id: 's2', name: 'document.pdf'),
+          remote(id: 's3', name: 'archive.zip'),
+          remote(id: 's4', name: 'temp.tmp'),
+          remote(id: 's5', name: 'server-pic.png'),
+        ],
+      );
+      // Non-media must not exist in merged list
+      expect(merged.any((e) => e.name.endsWith('.txt')), isFalse);
+      expect(merged.any((e) => e.name.endsWith('.db')), isFalse);
+      expect(merged.any((e) => e.name.endsWith('.pdf')), isFalse);
+      expect(merged.any((e) => e.name.endsWith('.zip')), isFalse);
+      expect(merged.any((e) => e.name.endsWith('.tmp')), isFalse);
+
+      // Only valid media photos exist
+      expect(merged.any((e) => e.name == 'photo.jpg'), isTrue);
+      expect(merged.any((e) => e.name == 'server-pic.png'), isTrue);
+      expect(merged.length, 2);
+    });
+
+    test('handles path variations with leading slashes and Windows backslashes', () {
+      final merged = MediaMerger.merge(
+        local: [local(id: 'l1', name: 'pic.jpg')],
+        server: [
+          PhotoMediaItem(
+            id: 's1',
+            path: r'\MobileBackups\Camera\pic.jpg',
+            name: 'pic.jpg',
+            parentPath: r'\MobileBackups\Camera',
+            size: 100,
+            isVideo: false,
+            url: 'http://server/pic.jpg',
+          ),
+        ],
+      );
+      expect(merged.length, 1);
+      expect(merged.first.isBackedUp, isTrue);
+    });
   });
 
   group('SavedAccount', () {

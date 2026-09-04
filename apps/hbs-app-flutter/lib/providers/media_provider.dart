@@ -151,9 +151,11 @@ class MediaNotifier extends StateNotifier<MediaState> {
     }
   }
 
+  Future<void>? _activeLoadFuture;
+
   void _onLibraryChange(MethodCall _) {
     _libraryDebounce?.cancel();
-    _libraryDebounce = Timer(const Duration(milliseconds: 500), loadMedia);
+    _libraryDebounce = Timer(const Duration(milliseconds: 1500), loadMedia);
   }
 
   @override
@@ -172,6 +174,19 @@ class MediaNotifier extends StateNotifier<MediaState> {
   }
 
   Future<void> loadMedia({bool force = false}) async {
+    if (_activeLoadFuture != null) return _activeLoadFuture!;
+    final future = _doLoadMedia(force: force);
+    _activeLoadFuture = future;
+    try {
+      await future;
+    } finally {
+      if (_activeLoadFuture == future) {
+        _activeLoadFuture = null;
+      }
+    }
+  }
+
+  Future<void> _doLoadMedia({bool force = false}) async {
     final hasPerm = await MediaDiscoveryService().isPermissionGranted();
     if (!hasPerm && !force) {
       if (state.items.isEmpty) {
@@ -198,7 +213,7 @@ class MediaNotifier extends StateNotifier<MediaState> {
       // Phase 1: High-Throughput Local Discovery
       final localItems = await MediaDiscoveryService().getLocalMedia(
         onPage: (soFar) {
-          // If state was empty (first install / cache cleared), show initial 200 items immediately
+          // If state was empty (first install / cache cleared), show initial items immediately
           if (state.items.isEmpty) {
             state = state.copyWith(isLoading: false, items: soFar);
           }
@@ -211,8 +226,10 @@ class MediaNotifier extends StateNotifier<MediaState> {
         return bDate.compareTo(aDate);
       });
 
-      // Render local assets immediately if available
-      if (sortedLocal.isNotEmpty || state.items.isEmpty) {
+      // Render raw local assets ONLY if state was previously empty.
+      // Never wipe out previously merged state (which holds cloud badges and server photos),
+      // preventing the timeline from violently blinking/flickering.
+      if (state.items.isEmpty && sortedLocal.isNotEmpty) {
         state = state.copyWith(isLoading: false, items: sortedLocal);
       }
 
@@ -235,16 +252,22 @@ class MediaNotifier extends StateNotifier<MediaState> {
 
       Set<String> uploadedNameSizeKeys = {};
       Set<String> uploadedNames = {};
+      Set<String> uploadedIds = {};
+      Set<String> uploadedStems = {};
       try {
         final indexKeys = await BackupIndexDb().getUploadedKeys();
         uploadedNameSizeKeys = indexKeys.nameSizeKeys;
         uploadedNames = indexKeys.names;
+        uploadedIds = indexKeys.ids;
+        uploadedStems = indexKeys.stems;
       } catch (_) {}
 
       final filteredServerPhotos = serverPhotos.where((p) {
-        final path = p.path.replaceAll('\\', '/');
-        final parent = p.parentPath.replaceAll('\\', '/');
-        return path.startsWith('MobileBackups') || parent.startsWith('MobileBackups');
+        final path = p.path.replaceAll('\\', '/').replaceAll(RegExp(r'^/+'), '').trim().toLowerCase();
+        final parent = p.parentPath.replaceAll('\\', '/').replaceAll(RegExp(r'^/+'), '').trim().toLowerCase();
+        final isBackup = path.startsWith('mobilebackups') || parent.startsWith('mobilebackups');
+        final isMedia = MediaMerger.isMediaFile(p.name, isVideo: p.isVideo, mimeType: p.mimeType);
+        return isBackup && isMedia;
       }).toList();
 
       final merged = MediaMerger.merge(
@@ -252,6 +275,8 @@ class MediaNotifier extends StateNotifier<MediaState> {
         server: filteredServerPhotos,
         uploadedNameSizeKeys: uploadedNameSizeKeys,
         uploadedNames: uploadedNames,
+        uploadedIds: uploadedIds,
+        uploadedStems: uploadedStems,
       );
 
       state = state.copyWith(

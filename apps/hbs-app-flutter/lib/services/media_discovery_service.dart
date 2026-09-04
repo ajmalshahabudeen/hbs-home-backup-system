@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:photo_manager/photo_manager.dart';
+import '../core/utils/media_merger.dart';
 import '../core/utils/media_path_filter.dart';
 import '../models/photo_media_item.dart';
 
@@ -248,13 +249,20 @@ class MediaDiscoveryService {
     );
 
     for (final entity in initialEntities) {
+      if (entity.type != AssetType.image && entity.type != AssetType.video) {
+        continue;
+      }
       if (MediaPathFilter.isAndroidAppFolder(
         relativePath: entity.relativePath,
         albumName: targetAlbum.name,
       )) {
         continue;
       }
-      items.add(itemFromEntity(entity));
+      final item = itemFromEntity(entity);
+      if (!MediaMerger.isMediaFile(item.name, isVideo: item.isVideo)) {
+        continue;
+      }
+      items.add(item);
     }
 
     if (onPage != null && items.isNotEmpty) {
@@ -272,13 +280,20 @@ class MediaDiscoveryService {
         if (entities.isEmpty) break;
 
         for (final entity in entities) {
+          if (entity.type != AssetType.image && entity.type != AssetType.video) {
+            continue;
+          }
           if (MediaPathFilter.isAndroidAppFolder(
             relativePath: entity.relativePath,
             albumName: targetAlbum.name,
           )) {
             continue;
           }
-          items.add(itemFromEntity(entity));
+          final item = itemFromEntity(entity);
+          if (!MediaMerger.isMediaFile(item.name, isVideo: item.isVideo)) {
+            continue;
+          }
+          items.add(item);
         }
 
         offset += entities.length;

@@ -1377,8 +1377,68 @@
        - Maintained `_splashFinished` across subsequent in-app user logins and logouts, transitioning between `AppShell` and `LandingScreen` without re-triggering the splash screen.
   3. Verification & Testing:
      - Added 3 widget tests in `test/widget_test.dart` for `AppSplashScreen` verifying clean mount, holding until `minDuration` elapses, and waiting for `isReady`.
-     - Verified `dart analyze lib test`: 0 issues found (Clean).
      - Verified `flutter test`: 100% passing tests (61/61 tests).
      - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 packages passed (FULL TURBO).
      - Verified Next.js server production build (`bun run build --filter=server`): 100% success.
 
+## Session: 2026-09-04 (Auto-Sync Folders Endless Loading & Permission Race Condition Fix)
+- Diagnosed and resolved issue where Auto-Sync folders modal was stuck in infinite loading spinner after granting media permissions:
+  1. Root Causes:
+     - Concurrency Race Condition: When permissions were granted via `PermissionChecker` or modal dialog, `MediaDiscoveryService._permissionStreamController`, `PermissionChecker.onGrantCompleted`, and `AppShell.didChangeAppLifecycleState(resumed)` fired `loadAlbums(force: true)` concurrently.
+     - `PhotoManager.requestPermissionExtend()` was re-triggered while another call was actively running, clearing the native cache cursor mid-fetch.
+     - Android MediaStore Query Failure: In `MediaDiscoveryService._assetPaths`, passing `filterOption: _filterOption` with `OrderOption(type: OrderOptionType.createDate)` caused SQLite errors on bucket groupings because folder entities do not have `createDate`.
+     - Sequential `path.assetCountAsync` calls had no individual `try-catch`, so a single restricted folder aborted the loop.
+     - Lack of `try/catch/finally` in `BackupNotifier.loadAlbums()`: When an exception was thrown, `isLoadingAlbums` was left stuck on `true` indefinitely until app restart.
+  2. Implementation:
+     - `MediaDiscoveryService` (`lib/services/media_discovery_service.dart`):
+       - In `requestPermissions`, checked `isPermissionGranted()` upfront even when `force: true`, preventing redundant native permission re-requests when already authorized.
+       - In `getAlbums()`, removed invalid `_filterOption` from `PhotoManager.getAssetPathList(onlyAll: false)` and wrapped album retrieval in resilient `try-catch` with retry.
+       - Wrapped individual folder inspection and `path.assetCountAsync` in per-folder `try-catch` blocks.
+     - `BackupNotifier` (`lib/providers/backup_provider.dart`):
+       - Added `_loadAlbumsFuture` re-entrancy deduplication guard to merge concurrent `loadAlbums` calls into a single shared Future.
+       - Wrapped `_doLoadAlbums` in `try-catch-finally`, guaranteeing `isLoadingAlbums: false` is restored under all outcomes.
+     - `AlbumPickerModal` (`lib/screens/backup/album_picker_modal.dart`):
+       - Updated `initState` post-frame callback to inspect actual permission state and load albums if authorized.
+       - Updated "Grant Access" action to await permission grant before calling `loadAlbums()`.
+     - `BackupScreen` (`lib/screens/backup/backup_screen.dart`):
+       - Updated Grant Access button and Start Auto-Sync permission handler to await permission grant before loading albums.
+  3. Verification & Testing:
+     - Verified `dart analyze lib test`: 0 issues found (Clean).
+     - Verified `flutter test`: 100% passing tests (61/61 tests).
+     - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 packages passed (FULL TURBO).
+
+
+
+## Session: 2026-09-04 (Photos Screen Deduplication, Glitch Blinking & Drive File Exclusion Completed)
+- Diagnosed and resolved Photos screen blinking glitch, media entity duplication, non-media artifact tiles, and Drive file leakage:
+  1. Root Causes:
+     - Blinking / Flickering: In `MediaNotifier.loadMedia()` (`lib/providers/media_provider.dart`), `state.items` was unconditionally overwritten with raw unmerged `sortedLocal` on every invocation. All remote items and cloud badges vanished from the UI, and then reappeared ~500ms later when `merged` was dispatched. Because `PhotoManager.addChangeCallback` fires during background sync, this produced continuous flickering every second.
+     - Media Duplication: Local `PhotoMediaItem` items created by `PhotoManager` had `size: 0`. In `MediaMerger.merge()`, matching on `nameKey` failed when Android MediaStore titles lacked file extensions (e.g., `IMG_20260904_120000` vs server `IMG_20260904_120000.jpg`). Even when indexed locally in `BackupIndexDb`, `usedServerIds` was not updated, appending the remote file as a duplicate tile alongside the local one.
+     - Non-Media Files with Cloud Badges: `MediaMerger.merge()` iterated over server results without checking if files were valid photos/videos. Non-media files (e.g. `.pdf`, `.txt`, `.zip`, `.db`, `.part`, `.tmp`) were added to the timeline as photo tiles with green cloud icons.
+     - Drive File Leakage: Files uploaded to Drive (outside `MobileBackups`) appeared in Photos timeline when paths contained leading slashes or when server queries did not strictly check `MobileBackups` prefix across `path` and `parentPath`.
+  2. Implementation:
+     - `MediaMerger` (`lib/core/utils/media_merger.dart`):
+       - Added media whitelist (`_photoExtensions`, `_videoExtensions`) and explicit non-media blacklist (`_nonMediaExtensions`).
+       - Added `isMobileBackupPath()` to strictly reject Drive files (outside `MobileBackups`).
+       - Added stem-aware matching (`stem(name)`), filename matching, stem+size matching, and indexed IDs/stems matching against `BackupIndexDb`.
+       - Unified matched local items into single tiles with `isBackedUp: true`, `isLocalOnly: false`, and remote URLs.
+       - Tracked all matching server IDs in `usedServerIds` (including sibling stems) to prevent duplicate tile insertion.
+     - `BackupIndexDb` (`lib/core/backup_engine/index/backup_index_db.dart`):
+       - Extended `getUploadedKeys()` to query and return `ids` and `stems` alongside `nameSizeKeys` and `names`.
+     - `MediaNotifier` (`lib/providers/media_provider.dart`):
+       - Added `_activeLoadFuture` re-entrancy lock to prevent overlapping concurrent `loadMedia()` executions.
+       - Removed premature `state = state.copyWith(items: sortedLocal)` when `state.items.isNotEmpty`. Local assets are only rendered raw on cold-boot when `state.items.isEmpty`, eliminating the blinking glitch completely.
+       - Increased `_libraryDebounce` to 1500ms.
+       - Supplied `uploadedIds` and `uploadedStems` from `BackupIndexDb` to `MediaMerger.merge()`.
+       - Filtered server photos against `isMobileBackup` and `isMediaFile` before merge.
+     - `MediaDiscoveryService` (`lib/services/media_discovery_service.dart`):
+       - In `getLocalMedia()`, verified `entity.type` is `AssetType.image` or `video` and validated against `MediaMerger.isMediaFile()`.
+     - Server API (`apps/server/app/api/user/photos/route.ts`):
+       - Reinforced `where.AND` condition with `path` and `parentPath` prefix checks for `MobileBackups` and `/MobileBackups`.
+       - Added `NON_MEDIA_EXTENSIONS` post-filter to strictly prevent non-media files from being returned by the Photos API.
+  3. Verification & Testing:
+     - Added 5 new unit tests in `test/lock_media_auth_test.dart` verifying `size: 0` deduplication, stem matching, `uploadedIds`/`uploadedStems` index matching, non-media rejection, and path normalization.
+     - Verified `flutter analyze`: No issues found (Clean).
+     - Verified `flutter test`: 100% passing tests (66/66 tests).
+     - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 packages passed (FULL TURBO).
+     - Verified Next.js server production build (`bun run build --filter=server`): 100% success (Turbo).
