@@ -290,6 +290,7 @@ class DriveState {
 
 class DriveNotifier extends StateNotifier<DriveState> {
   StreamSubscription<DriveChangeEvent>? _wsSubscription;
+  Timer? _fallbackPollTimer;
 
   DriveNotifier() : super(const DriveState()) {
     loadFiles();
@@ -302,12 +303,33 @@ class DriveNotifier extends StateNotifier<DriveState> {
       _handleWsDriveChange(event);
     });
 
+    DriveWebSocketService().isConnected.removeListener(_onWsConnectionChanged);
     DriveWebSocketService().isConnected.addListener(_onWsConnectionChanged);
-    state = state.copyWith(isRealtimeConnected: DriveWebSocketService().isConnected.value);
+    _onWsConnectionChanged();
   }
 
   void _onWsConnectionChanged() {
-    state = state.copyWith(isRealtimeConnected: DriveWebSocketService().isConnected.value);
+    final connected = DriveWebSocketService().isConnected.value;
+    state = state.copyWith(isRealtimeConnected: connected);
+    if (connected) {
+      _stopFallbackPolling();
+    } else {
+      _startFallbackPolling();
+    }
+  }
+
+  void _startFallbackPolling() {
+    _fallbackPollTimer?.cancel();
+    _fallbackPollTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+      if (!state.isLoading && !state.isLoadingMore) {
+        loadFiles(state.currentPath, true);
+      }
+    });
+  }
+
+  void _stopFallbackPolling() {
+    _fallbackPollTimer?.cancel();
+    _fallbackPollTimer = null;
   }
 
   void _handleWsDriveChange(DriveChangeEvent event) {
@@ -323,6 +345,7 @@ class DriveNotifier extends StateNotifier<DriveState> {
   @override
   void dispose() {
     _wsSubscription?.cancel();
+    _stopFallbackPolling();
     DriveWebSocketService().isConnected.removeListener(_onWsConnectionChanged);
     super.dispose();
   }

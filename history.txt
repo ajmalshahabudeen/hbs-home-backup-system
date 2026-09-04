@@ -1442,3 +1442,31 @@
      - Verified `flutter test`: 100% passing tests (66/66 tests).
      - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 packages passed (FULL TURBO).
      - Verified Next.js server production build (`bun run build --filter=server`): 100% success (Turbo).
+
+## Session: 2026-09-04 (WebSocket Connection & Robustness Overhaul Completed)
+- Diagnosed and resolved WebSocket connection timeouts and terminal spam:
+  1. Root Causes:
+     - Next.js HTTP Server Upgrade Bypass: `instrumentation.ts` registers `initWebSocketServer()`, which monkey-patched `http.Server.prototype.listen`. However, Next.js (standalone/dev) invokes `server.listen()` before `instrumentation.ts` registers. The monkey-patched `listen` was never called on the active HTTP server, leaving the upgrade listener unattached. When the mobile app connected to `ws://ajmal.local:38480/api/ws`, Next.js ignored the upgrade header, causing the socket to hang until the client's 8s timeout expired.
+     - Static 12s Reconnect & Console Log Spam: In `DriveWebSocketService`, reconnect attempts were capped at a static 12s delay with debugPrint output on every attempt, filling the Flutter log console every 12s indefinitely.
+     - Unhandled Async Errors on Timeout: When `WebSocket.connect().timeout()` timed out, late failures on the underlying future could cause unhandled asynchronous errors or socket leaks.
+     - Lack of Disconnected Fallback: In `DriveProvider`, if WebSockets were disconnected, the app relied entirely on manual pull-to-refresh to discover server file changes.
+  2. Implementation:
+     - `apps/server/lib/ws-server.ts`:
+       - Implemented global prototype hook on `http.Server.prototype.emit`: intercepts `event === 'upgrade'` across all active and future `http.Server` instances.
+       - If request pathname matches `/api/ws`, `/ws`, or `/api/user/ws`, invokes `handleUpgradeRequest(req, socket, head)` directly via `wss.handleUpgrade` and returns `true`, completely preventing Next.js default handlers from dropping or rejecting the socket.
+       - Allows non-ws upgrades (e.g. Next.js HMR) to pass through cleanly via `origEmit`.
+     - `DriveWebSocketService` (`lib/services/drive_websocket_service.dart`):
+       - Increased connect timeout to 10s.
+       - Attached catch-all to the connect future to prevent unhandled late exceptions after timeout, and immediately closes late-arriving sockets.
+       - Added progressive exponential backoff (2s -> 4s -> 8s -> 16s -> 30s max).
+       - Added quiet logging: logs full detail on first 3 attempts, then suppresses spam to every 5th attempt, cleanly reporting successful reconnection and attempt count.
+       - Added public `reconnect()` method.
+     - `DriveProvider` (`lib/providers/drive_provider.dart`):
+       - Added fallback background polling timer (every 15s) that runs only when `!isRealtimeConnected`, ensuring file changes are never missed if WebSockets are down or blocked.
+       - Automatically halts polling as soon as WebSockets connect.
+  3. Verification & Testing:
+     - Added unit tests in `drive_pagination_realtime_test.dart` for singleton instance, configuration update, and realtime connection toggling.
+     - Verified `dart analyze lib test`: No issues found (Clean).
+     - Verified `flutter test`: 100% passing tests (68/68 tests).
+     - Verified Turborepo workspace typecheck (`bun run typecheck`): 3/3 packages passed (FULL TURBO).
+     - Verified Next.js server production build (`bun run build --filter=server`): 100% success (Turbo).

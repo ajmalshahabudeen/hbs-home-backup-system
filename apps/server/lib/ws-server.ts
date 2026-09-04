@@ -115,59 +115,133 @@ function unregisterUserSocket(ws: AuthenticatedSocket) {
   }
 }
 
+const attachedServers = new WeakSet<http.Server>();
+
+/**
+ * Handle WebSocket upgrade request directly.
+ * Returns true if the request was an HBS WebSocket upgrade and was handled.
+ */
+function handleUpgradeRequest(
+  req: http.IncomingMessage,
+  socket: any,
+  head: Buffer,
+): boolean {
+  if (!wss) {
+    initWebSocketServer();
+  }
+  if (!wss) return false;
+
+  try {
+    const host = req.headers.host || "localhost:38480";
+    const url = new URL(req.url || "", `http://${host}`);
+    const pathname = (url.pathname || "").replace(/\/+$/, "") || "/";
+
+    // Only handle drive and user websocket paths
+    if (
+      pathname !== "/api/ws" &&
+      pathname !== "/ws" &&
+      pathname !== "/api/user/ws"
+    ) {
+      return false;
+    }
+
+    // Convert IncomingHttpHeaders to standard Headers
+    const headers = new Headers();
+    for (const [key, val] of Object.entries(req.headers)) {
+      if (Array.isArray(val)) {
+        for (const v of val) headers.append(key, v);
+      } else if (val !== undefined) {
+        headers.set(key, val);
+      }
+    }
+
+    // Extract tokens from query string and headers
+    const urlToken =
+      url.searchParams.get("token") ||
+      url.searchParams.get("sessionToken") ||
+      url.searchParams.get("auth_token");
+
+    const rawCandidates = extractCandidateSessionTokens(undefined, headers);
+    if (urlToken) rawCandidates.push(urlToken);
+
+    // Perform upgrade
+    wss.handleUpgrade(req, socket, head, (ws: AuthenticatedSocket) => {
+      wss!.emit("connection", ws, req, rawCandidates);
+    });
+    return true;
+  } catch (err) {
+    term("ERROR", "ws upgrade handling error", { err });
+    try {
+      socket.destroy();
+    } catch {}
+    return true;
+  }
+}
+
 /**
  * Attach WebSocket upgrade handling to a Node.js http.Server.
  */
 export function attachWsToHttpServer(server: http.Server) {
+  if (!server || attachedServers.has(server)) return;
+  attachedServers.add(server);
+
   if (!wss) {
     initWebSocketServer();
   }
-  if (!wss) return;
 
-  server.on("upgrade", async (req: http.IncomingMessage, socket, head) => {
-    try {
-      const host = req.headers.host || "localhost:38480";
-      const url = new URL(req.url || "", `http://${host}`);
-
-      // Only handle drive websocket paths
-      if (
-        url.pathname !== "/api/ws" &&
-        url.pathname !== "/ws" &&
-        url.pathname !== "/api/user/ws"
-      ) {
-        return;
-      }
-
-      // Convert IncomingHttpHeaders to standard Headers
-      const headers = new Headers();
-      for (const [key, val] of Object.entries(req.headers)) {
-        if (Array.isArray(val)) {
-          for (const v of val) headers.append(key, v);
-        } else if (val !== undefined) {
-          headers.set(key, val);
-        }
-      }
-
-      // Extract tokens from query string and headers
-      const urlToken =
-        url.searchParams.get("token") ||
-        url.searchParams.get("sessionToken") ||
-        url.searchParams.get("auth_token");
-
-      const rawCandidates = extractCandidateSessionTokens(undefined, headers);
-      if (urlToken) rawCandidates.push(urlToken);
-
-      // Perform upgrade
-      wss!.handleUpgrade(req, socket, head, async (ws: AuthenticatedSocket) => {
-        wss!.emit("connection", ws, req, rawCandidates);
-      });
-    } catch (err) {
-      term("ERROR", "ws upgrade error", { err });
-      socket.destroy();
-    }
+  server.on("upgrade", (req: http.IncomingMessage, socket, head) => {
+    handleUpgradeRequest(req, socket, head);
   });
 
-  term("WS", "attached upgrade listener to HTTP server");
+  server.on("close", () => {
+    attachedServers.delete(server);
+  });
+
+  term("WS", "attached upgrade listener to HTTP server instance");
+}
+
+/**
+ * Install global hooks on http.Server prototype so Next.js standalone and dev servers
+ * intercept WebSocket upgrade requests even if server.listen was invoked before instrumentation.
+ */
+function installGlobalHook() {
+  if (hookInstalled) return;
+  hookInstalled = true;
+
+  // 1. Hook http.Server.prototype.listen to capture any future servers
+  const origListen = http.Server.prototype.listen;
+  http.Server.prototype.listen = function (
+    this: http.Server,
+    ...args: unknown[]
+  ) {
+    attachWsToHttpServer(this);
+    return origListen.apply(this, args as never);
+  };
+
+  // 2. Hook http.Server.prototype.emit to intercept 'upgrade' events on ALL servers
+  // (including servers created and listening before instrumentation runs)
+  const origEmit = http.Server.prototype.emit;
+  http.Server.prototype.emit = function (
+    this: http.Server,
+    event: string,
+    ...args: any[]
+  ) {
+    if (event === "upgrade") {
+      const req = args[0] as http.IncomingMessage;
+      const socket = args[1];
+      const head = args[2] as Buffer;
+
+      const handled = handleUpgradeRequest(req, socket, head);
+      if (handled) {
+        return true;
+      }
+    }
+
+    attachWsToHttpServer(this);
+    return origEmit.apply(this, [event, ...args] as any);
+  };
+
+  term("WS", "global HTTP upgrade hooks installed on http.Server prototype");
 }
 
 /**
@@ -185,18 +259,7 @@ export function initWebSocketServer(
 
   wss = new WebSocketServer({ noServer: true });
 
-  // Install global hook on http.Server.prototype.listen so Next.js server is captured automatically
-  if (!hookInstalled) {
-    hookInstalled = true;
-    const origListen = http.Server.prototype.listen;
-    http.Server.prototype.listen = function (
-      this: http.Server,
-      ...args: unknown[]
-    ) {
-      attachWsToHttpServer(this);
-      return origListen.apply(this, args as never);
-    };
-  }
+  installGlobalHook();
 
   if (explicitServer) {
     attachWsToHttpServer(explicitServer);

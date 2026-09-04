@@ -116,5 +116,29 @@ void main() {
       expect(combined.length, equals(3));
       expect(combined.map((f) => f.id).toList(), equals(['1', '2', '3']));
     });
+
+    test('DriveWebSocketService maintains singleton and isConnected notifier', () {
+      final ws1 = DriveWebSocketService();
+      final ws2 = DriveWebSocketService();
+      expect(identical(ws1, ws2), isTrue);
+      expect(ws1.isConnected.value, isFalse);
+
+      ws1.updateConfig(
+        serverUrl: 'http://192.168.1.100:38480/',
+        sessionToken: 'test_token_123',
+      );
+      expect(ws1.isConnected.value, isFalse);
+    });
+
+    test('DriveState handles realtime connection status toggle cleanly', () {
+      var state = const DriveState(isRealtimeConnected: false);
+      expect(state.isRealtimeConnected, isFalse);
+
+      state = state.copyWith(isRealtimeConnected: true);
+      expect(state.isRealtimeConnected, isTrue);
+
+      state = state.copyWith(isRealtimeConnected: false);
+      expect(state.isRealtimeConnected, isFalse);
+    });
   });
 }

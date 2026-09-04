@@ -86,6 +86,12 @@ class DriveWebSocketService {
     return '$wsBase/api/ws$tokenParam';
   }
 
+  void reconnect() {
+    disconnect();
+    _reconnectAttempts = 0;
+    connect();
+  }
+
   Future<void> connect() async {
     if (_isDisposed || _isConnecting) return;
     if (_socket != null && _socket!.readyState == WebSocket.open) return;
@@ -93,26 +99,46 @@ class DriveWebSocketService {
     _isConnecting = true;
     _cancelReconnect();
 
-    try {
-      final wsUrl = _getWsUrl();
-      debugPrint('[DriveWS] Connecting to $wsUrl ...');
+    final wsUrl = _getWsUrl();
+    final shouldLog = _reconnectAttempts <= 3 || (_reconnectAttempts % 5 == 0);
 
+    if (shouldLog) {
+      debugPrint('[DriveWS] Connecting to $wsUrl ...');
+    }
+
+    try {
       final headers = <String, dynamic>{};
       if (_sessionToken != null && _sessionToken!.isNotEmpty) {
         headers.addAll(SessionTokenCleaner.authHeaders(_sessionToken!));
       }
 
-      final socket = await WebSocket.connect(
+      final connectFuture = WebSocket.connect(
         wsUrl,
         headers: headers.isNotEmpty ? headers : null,
-      ).timeout(const Duration(seconds: 8));
+      );
+
+      // Register catch-all on a detached branch to prevent unhandled late errors/leaks after timeout
+      unawaited(connectFuture.then((lateSocket) {
+        if (lateSocket != _socket) {
+          try {
+            lateSocket.close();
+          } catch (_) {}
+        }
+      }).catchError((_) {}));
+
+      final socket = await connectFuture.timeout(const Duration(seconds: 10));
 
       _socket = socket;
       isConnected.value = true;
+      final prevAttempts = _reconnectAttempts;
       _reconnectAttempts = 0;
       _isConnecting = false;
 
-      debugPrint('[DriveWS] Connected successfully');
+      if (prevAttempts > 0) {
+        debugPrint('[DriveWS] Connected successfully after $prevAttempts attempt(s)');
+      } else {
+        debugPrint('[DriveWS] Connected successfully');
+      }
 
       // Send immediate auth message as redundant handshake
       if (_sessionToken != null && _sessionToken!.isNotEmpty) {
@@ -128,13 +154,25 @@ class DriveWebSocketService {
         _onMessage,
         onDone: _onDisconnected,
         onError: (err) {
-          debugPrint('[DriveWS] Socket error: $err');
+          if (shouldLog) {
+            debugPrint('[DriveWS] Socket error: $err');
+          }
           _onDisconnected();
         },
         cancelOnError: true,
       );
     } catch (e) {
-      debugPrint('[DriveWS] Connection attempt failed: $e');
+      if (shouldLog) {
+        String errMsg = e.toString();
+        if (e is TimeoutException) {
+          errMsg = 'Connection timed out (server unreachable or busy)';
+        } else if (e is SocketException) {
+          errMsg = 'Socket connection failed: ${e.message}';
+        } else if (e is WebSocketException) {
+          errMsg = 'WebSocket protocol error: ${e.message}';
+        }
+        debugPrint('[DriveWS] Connection attempt ${_reconnectAttempts + 1} failed: $errMsg');
+      }
       _isConnecting = false;
       isConnected.value = false;
       _scheduleReconnect();
@@ -175,7 +213,10 @@ class DriveWebSocketService {
     _isConnecting = false;
     _pingTimer?.cancel();
     _socket = null;
-    debugPrint('[DriveWS] Disconnected');
+    final shouldLog = _reconnectAttempts <= 3 || (_reconnectAttempts % 5 == 0);
+    if (shouldLog) {
+      debugPrint('[DriveWS] Disconnected');
+    }
     _scheduleReconnect();
   }
 
@@ -198,17 +239,22 @@ class DriveWebSocketService {
     if (_isDisposed) return;
     _cancelReconnect();
 
-    // Exponential backoff capped at 15s
     _reconnectAttempts++;
+    // Progressive backoff: 2s, 4s, 8s, 16s, capped at 30s
     final delaySeconds = (_reconnectAttempts == 1)
-        ? 1
+        ? 2
         : (_reconnectAttempts == 2)
-            ? 3
+            ? 4
             : (_reconnectAttempts == 3)
-                ? 6
-                : 12;
+                ? 8
+                : (_reconnectAttempts == 4)
+                    ? 16
+                    : 30;
 
-    debugPrint('[DriveWS] Scheduling reconnect attempt $_reconnectAttempts in ${delaySeconds}s');
+    final shouldLog = _reconnectAttempts <= 3 || (_reconnectAttempts % 5 == 0);
+    if (shouldLog) {
+      debugPrint('[DriveWS] Scheduling reconnect attempt $_reconnectAttempts in ${delaySeconds}s');
+    }
     _reconnectTimer = Timer(Duration(seconds: delaySeconds), () {
       connect();
     });
